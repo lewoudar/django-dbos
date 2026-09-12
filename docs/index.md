@@ -1,0 +1,61 @@
+# django-dbos
+
+**DBOS-backed backend for [Django's tasks framework](https://docs.djangoproject.com/en/stable/topics/tasks/)**:
+durable background tasks, cron scheduling and optional Sentry monitoring.
+
+```python
+from django.tasks import task
+
+@task
+def send_welcome_email(user_id: int):
+    ...
+
+result = send_welcome_email.enqueue(user_id)  # durable, survives crashes
+```
+
+If you know [Django's tasks API](https://docs.djangoproject.com/en/stable/ref/tasks/), you already
+know django-dbos: tasks are declared with `@task`, enqueued with `.enqueue()`, and results are
+standard `TaskResult` objects. Under the hood, executions are [DBOS](https://docs.dbos.dev/)
+workflows recorded in a system database, which makes them fault-tolerant: if a worker crashes,
+tasks resume where they stopped.
+
+## Requirements
+
+- Python 3.12+
+- Django 6.0+
+- A DBOS system database: PostgreSQL (recommended) or SQLite
+
+## Installation
+
+```bash
+uv add django-dbos
+```
+
+Add the app and register the backend in your settings:
+
+```python
+INSTALLED_APPS = [
+    ...,
+    "django_dbos",
+]
+
+TASKS = {
+    "default": {
+        "BACKEND": "django_dbos.backends.DBOSBackend",
+        "QUEUES": ["default", "emails"],
+    },
+}
+```
+
+Then run the worker:
+
+```bash
+python manage.py dbos_worker
+```
+
+That's it — every task enqueued through this backend is now durable.
+See [Configuration](configuration.md) for the database setup and the available options.
+
+## License
+
+MIT
