@@ -73,18 +73,14 @@ def _sqlite_system_database_url(django_db: dict[str, Any]) -> str:
 
 
 def _postgres_url_from_django(django_db: dict[str, Any], db_name: str) -> str:
-    import sqlalchemy
+    from urllib.parse import quote
 
-    # let sqlalchemy do the quoting of credentials
-    url = sqlalchemy.engine.URL.create(
-        drivername="postgresql+psycopg",
-        username=django_db.get("USER") or "",
-        password=django_db.get("PASSWORD") or "",
-        host=django_db.get("HOST") or "localhost",
-        port=int(django_db.get("PORT") or 5432),
-        database=db_name,
-    )
-    return url.render_as_string(hide_password=False)
+    # percent-encode the credentials (a password may contain '@', ':' or '/')
+    user = quote(django_db.get("USER") or "", safe="")
+    password = quote(django_db.get("PASSWORD") or "", safe="")
+    host = django_db.get("HOST") or "localhost"
+    port = django_db.get("PORT") or "5432"
+    return f"postgresql+psycopg://{user}:{password}@{host}:{port}/{db_name}"
 
 
 def _postgres_system_database_url(django_db: dict[str, Any]) -> str:

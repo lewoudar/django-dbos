@@ -30,6 +30,19 @@ class TestSystemDatabaseUrlDerivation:
         )
         assert url == "postgresql+psycopg://kevin:hunter2@db.example.com:5433/dbos_myproject"
 
+    def test_postgres_credentials_are_percent_encoded(self):
+        url = dbos_settings.derive_system_database_url(
+            {
+                "ENGINE": "django.db.backends.postgresql",
+                "NAME": "myproject",
+                "USER": "user@domain",
+                "PASSWORD": "p@ss:word/",
+            }
+        )
+        assert url == (
+            "postgresql+psycopg://user%40domain:p%40ss%3Aword%2F@localhost:5432/dbos_myproject"
+        )
+
     def test_postgres_defaults(self):
         url = dbos_settings.derive_system_database_url({"ENGINE": "django.db.backends.postgresql", "NAME": "myproject"})
         assert url == "postgresql+psycopg://:@localhost:5432/dbos_myproject"
