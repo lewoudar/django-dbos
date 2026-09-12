@@ -27,7 +27,9 @@ class DjangoDbosConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
 
     def ready(self) -> None:
-        from . import dbos_setup
+        from . import admin, dbos_setup
+
+        admin.register_admin_sites()
 
         if not settings_module.get_dbos_setting("AUTO_INIT", True):
             return

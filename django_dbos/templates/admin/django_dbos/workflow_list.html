@@ -1,0 +1,68 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a>
+  &rsaquo; DBOS workflows
+</div>
+{% endblock %}
+
+{% block content %}
+<form method="get" action="" id="changelist-search" style="margin-bottom: 20px;">
+  <select name="status">
+    <option value="">All statuses</option>
+    {% for status in statuses %}
+      <option value="{{ status }}" {% if filters.status == status %}selected{% endif %}>{{ status }}</option>
+    {% endfor %}
+  </select>
+  <input type="text" name="queue" value="{{ filters.queue }}" placeholder="Queue" size="12">
+  <input type="text" name="name" value="{{ filters.name }}" placeholder="Workflow name" size="20">
+  <input type="text" name="q" value="{{ filters.q }}" placeholder="Workflow ID prefix" size="20">
+  <button type="submit" class="button">Filter</button>
+</form>
+
+<div class="results">
+<table id="result_list">
+  <thead>
+    <tr>
+      <th scope="col">Workflow ID</th>
+      <th scope="col">Name</th>
+      <th scope="col">Status</th>
+      <th scope="col">Queue</th>
+      <th scope="col">Priority</th>
+      <th scope="col">Created at</th>
+      <th scope="col">Updated at</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in rows %}
+    <tr>
+      <td><a href="{% url 'admin:django_dbos_workflow_detail' row.workflow_id %}">{{ row.workflow_id|truncatechars:26 }}</a></td>
+      <td>{{ row.name }}</td>
+      <td><span class="badge badge-{{ row.badge }}">{{ row.status }}</span></td>
+      <td>{{ row.queue_name|default_if_none:"-" }}</td>
+      <td>{{ row.priority|default_if_none:"-" }}</td>
+      <td>{{ row.created_at }}</td>
+      <td>{{ row.updated_at }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="7">No workflows found.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<p class="paginator">
+  {% if has_previous %}<a href="?page={{ page|add:"-1" }}">&laquo; previous</a>{% endif %}
+  page {{ page }}
+  {% if has_next %}<a href="?page={{ page|add:"1" }}">next &raquo;</a>{% endif %}
+</p>
+
+<style>
+  .badge { padding: 2px 8px; border-radius: 4px; font-weight: bold; color: white; font-size: 11px; }
+  .badge-success { background: #2e7d32; }
+  .badge-error { background: #c62828; }
+  .badge-info { background: #1565c0; }
+  .badge-warning { background: #ef6c00; }
+  .badge-neutral { background: #757575; }
+</style>
+{% endblock %}
