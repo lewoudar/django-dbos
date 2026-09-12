@@ -25,3 +25,6 @@ htmlcov/
 dbos/
 dbos.sqlite*
 *.sqlite3
+
+# ZCode local plans
+.zcode/
