@@ -38,6 +38,9 @@ def _build_dbos_config() -> dict[str, Any]:
         config["application_version"] = resolved.application_version
     if resolved.dbos_system_schema:
         config["dbos_system_schema"] = resolved.dbos_system_schema
+    scheduler_polling_interval = settings_module.get_dbos_setting("SCHEDULER_POLLING_INTERVAL_SEC")
+    if scheduler_polling_interval is not None:
+        config["scheduler_polling_interval_sec"] = float(scheduler_polling_interval)
     return config
 
 
@@ -70,7 +73,7 @@ def ensure_initialized() -> None:
             return
         try:
             config = _build_dbos_config()
-        except Exception as exc:  # noqa: BLE001 - surfaced as a Django-friendly error
+        except Exception as exc:
             raise ImproperlyConfiguredDbos(str(exc)) from exc
         DBOS(config=config)  # type: ignore[arg-type]
         _register_queues()

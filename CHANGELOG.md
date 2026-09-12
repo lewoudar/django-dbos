@@ -9,4 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Project scaffold.
+- `DBOSBackend`, a DBOS-backed backend for Django's tasks framework
+  (`django.tasks`): durable task execution on database-backed queues, with
+  support for async tasks, deferred tasks (`run_after`), priorities and result
+  retrieval.
+- `DBOSTask` with DBOS execution options attached via `@dbos_params` (step
+  retries, deduplication, queue partition key, workflow timeout, recovery
+  attempts).
+- `get_dbos_context()` giving access to DBOS durable primitives (checkpointed
+  steps, durable sleep, events, durable messages) inside tasks declared with
+  `durable_operations=True`.
+- `@cron` decorator stacking on `@task` to schedule tasks with crontab
+  expressions, backed by idempotent DBOS schedules and managed by
+  `manage.py dbos_worker`.
+- Optional `sentry` extra: Sentry cron monitors for scheduled tasks, with
+  monitor configuration derived from the crontab and per-task opt-out.
+- System database URL derived from the default Django connection (PostgreSQL
+  or SQLite), overridable via `DJANGO_DBOS["SYSTEM_DATABASE_URL"]` or
+  `DBOS_SYSTEM_DATABASE_URL`.
+- Queue declaration and configuration from `DJANGO_DBOS["QUEUES"]`.
+- `django_dbos.test.run_task` / `arun_task` helpers to execute task functions
+  in tests without a system database.
+- structlog-based logging under the `django_dbos` logger.
+- System checks validating the configuration.

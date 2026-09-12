@@ -9,14 +9,12 @@ from django_dbos.exceptions import ImproperlyConfiguredDbos
 class TestSystemDatabaseUrlDerivation:
     def test_sqlite_database(self):
         url = dbos_settings.derive_system_database_url(
-            {"ENGINE": "django.db.backends.sqlite3", "NAME": "/tmp/myproject.sqlite3"}
+            {"ENGINE": "django.db.backends.sqlite3", "NAME": "myproject.sqlite3"}
         )
-        assert url == "sqlite:////tmp/myproject.sqlite3-dbos.sqlite"
+        assert url == "sqlite:///myproject.sqlite3-dbos.sqlite"
 
     def test_sqlite_memory_database(self):
-        url = dbos_settings.derive_system_database_url(
-            {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}
-        )
+        url = dbos_settings.derive_system_database_url({"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"})
         assert url == "sqlite:///:memory:"
 
     def test_postgres_database(self):
@@ -33,23 +31,17 @@ class TestSystemDatabaseUrlDerivation:
         assert url == "postgresql+psycopg://kevin:hunter2@db.example.com:5433/dbos_myproject"
 
     def test_postgres_defaults(self):
-        url = dbos_settings.derive_system_database_url(
-            {"ENGINE": "django.db.backends.postgresql", "NAME": "myproject"}
-        )
+        url = dbos_settings.derive_system_database_url({"ENGINE": "django.db.backends.postgresql", "NAME": "myproject"})
         assert url == "postgresql+psycopg://:@localhost:5432/dbos_myproject"
 
     def test_postgres_custom_prefix(self, settings):
         settings.DJANGO_DBOS = {"SYSTEM_DB_PREFIX": "mydbos_"}
-        url = dbos_settings.derive_system_database_url(
-            {"ENGINE": "django.db.backends.postgresql", "NAME": "myproject"}
-        )
+        url = dbos_settings.derive_system_database_url({"ENGINE": "django.db.backends.postgresql", "NAME": "myproject"})
         assert url == "postgresql+psycopg://:@localhost:5432/mydbos_myproject"
 
     def test_unsupported_engine_raises(self):
         with pytest.raises(ImproperlyConfiguredDbos):
-            dbos_settings.derive_system_database_url(
-                {"ENGINE": "django.db.backends.oracle", "NAME": "orcl"}
-            )
+            dbos_settings.derive_system_database_url({"ENGINE": "django.db.backends.oracle", "NAME": "orcl"})
 
 
 class TestSystemDatabaseUrlResolution:
