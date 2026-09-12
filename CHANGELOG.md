@@ -37,3 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`--dbos-system-db=postgres|auto|sqlite`).
 - structlog-based logging under the `django_dbos` logger.
 - System checks validating the configuration.
+- Admin pages (staff-only, registered on the configured AdminSite instances):
+  workflow list with filters and pagination, detail view with steps
+  (durations, outputs, child workflow links), schedule list, and operational
+  actions (cancel, resume, fork, delete workflows; pause, resume, delete
+  schedules). Gated by `DJANGO_DBOS["ADMIN_ENABLED"]` / `ADMIN_SITE`.

@@ -15,6 +15,7 @@ nav = [
   { "Configuration" = "configuration.md" },
   { "Tasks" = "tasks.md" },
   { "Cron scheduling" = "cron.md" },
+  { "Admin" = "admin.md" },
   { "Testing" = "testing.md" },
 ]
 

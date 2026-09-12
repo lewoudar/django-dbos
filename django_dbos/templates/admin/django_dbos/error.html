@@ -1,0 +1,14 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a>
+  &rsaquo; django-dbos
+</div>
+{% endblock %}
+
+{% block content %}
+<h2>django-dbos is not available</h2>
+<p class="errornote">{{ error_message }}</p>
+<p>Fix your <code>DJANGO_DBOS</code> setting (or the
+<code>DBOS_SYSTEM_DATABASE_URL</code> environment variable) and reload.</p>
+{% endblock %}

@@ -4,7 +4,33 @@ SECRET_KEY = "django-dbos-test-secret-key"  # noqa: S105 - test-only
 
 DEBUG = True
 
+ROOT_URLCONF = "tests.urls"
+
+MIDDLEWARE = [
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+]
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    },
+]
+
 INSTALLED_APPS = [
+    "django.contrib.admin",
+    "django.contrib.sessions",
+    "django.contrib.messages",
     "django.contrib.contenttypes",
     "django.contrib.auth",
     "django_dbos",

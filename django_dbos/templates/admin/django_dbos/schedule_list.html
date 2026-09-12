@@ -1,0 +1,52 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a>
+  &rsaquo; DBOS schedules
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="results">
+<table id="result_list">
+  <thead>
+    <tr>
+      <th scope="col">Schedule</th>
+      <th scope="col">Workflow</th>
+      <th scope="col">Crontab</th>
+      <th scope="col">Timezone</th>
+      <th scope="col">Status</th>
+      <th scope="col">Queue</th>
+      <th scope="col">Last fired at</th>
+      <th scope="col">Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in rows %}
+    <tr>
+      <td>{{ row.schedule_name }}</td>
+      <td>{{ row.workflow_name }}</td>
+      <td><code>{{ row.crontab }}</code></td>
+      <td>{{ row.cron_timezone|default_if_none:"-" }}</td>
+      <td><span class="badge {% if row.status == 'ACTIVE' %}badge-success{% else %}badge-neutral{% endif %}">{{ row.status }}</span></td>
+      <td>{{ row.queue_name|default_if_none:"-" }}</td>
+      <td>{{ row.last_fired_at|default_if_none:"never" }}</td>
+      <td>
+        {% if row.status == 'ACTIVE' %}
+        <form method="post" action="{% url 'admin:django_dbos_schedule_pause' row.schedule_name %}" style="display:inline">{% csrf_token %}
+          <button type="submit" class="button">Pause</button></form>
+        {% else %}
+        <form method="post" action="{% url 'admin:django_dbos_schedule_resume' row.schedule_name %}" style="display:inline">{% csrf_token %}
+          <button type="submit" class="button">Resume</button></form>
+        {% endif %}
+        <form method="post" action="{% url 'admin:django_dbos_schedule_delete' row.schedule_name %}" style="display:inline">{% csrf_token %}
+          <button type="submit" class="button deletelink">Delete</button></form>
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="8">No schedules. Register cron tasks with @cron and start dbos_worker.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

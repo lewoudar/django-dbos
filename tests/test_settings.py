@@ -57,7 +57,11 @@ class TestSystemDatabaseUrlResolution:
     def test_falls_back_to_derivation(self, settings, monkeypatch):
         monkeypatch.delenv("DBOS_SYSTEM_DATABASE_URL", raising=False)
         settings.DJANGO_DBOS = {"SYSTEM_DATABASE_URL": None}
-        assert dbos_settings.resolve_system_database_url() == "sqlite:///:memory:"
+        # The derived URL follows the configured Django database (pytest-django
+        # may rewrite the test database name, so assert on the derivation rule).
+        url = dbos_settings.resolve_system_database_url()
+        assert url.startswith("sqlite:///")
+        assert url.endswith("-dbos.sqlite") or url == "sqlite:///:memory:"
 
 
 class TestQueues:
