@@ -30,5 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Queue declaration and configuration from `DJANGO_DBOS["QUEUES"]`.
 - `django_dbos.test.run_task` / `arun_task` helpers to execute task functions
   in tests without a system database.
+- Pytest plugin (loaded automatically) with `dbos_inline` — synchronous
+  in-process execution without a system database, `--dbos-inline-strict` to
+  fail on unreproducible semantics — and `dbos_system` — a real in-process
+  DBOS worker on a SQLite file or a PostgreSQL container
+  (`--dbos-system-db=postgres|auto|sqlite`).
 - structlog-based logging under the `django_dbos` logger.
 - System checks validating the configuration.
