@@ -28,3 +28,6 @@ dbos.sqlite*
 
 # ZCode local plans
 .zcode/
+
+# Docs build output
+site/
