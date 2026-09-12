@@ -122,3 +122,29 @@ class TestAppName:
         assert resolved.application_version == "1.2.3"
         assert resolved.dbos_system_schema == "dbos_custom"
         assert [q.name for q in resolved.queues] == ["default"]
+
+
+class TestCredentialScrubbing:
+    def test_postgres_dsn_password_masked(self):
+        from django_dbos.dbos_setup import _scrub_credentials
+
+        message = (
+            "connection to server failed: "
+            "postgresql+psycopg://app_user:s3cret-pw@db.internal:5432/dbos_mydb"
+        )
+        scrubbed = _scrub_credentials(message)
+        assert "s3cret-pw" not in scrubbed
+        assert "postgresql+psycopg://app_user:***@db.internal:5432/dbos_mydb" in scrubbed
+
+    def test_schemes_and_special_characters(self):
+        from django_dbos.dbos_setup import _scrub_credentials
+
+        scrubbed = _scrub_credentials("mysql://u:p@h/db then postgresql://u2:p2%40x@h2/db2")
+        assert "mysql://u:***@h/db" in scrubbed
+        assert "postgresql://u2:***@h2/db2" in scrubbed
+
+    def test_message_without_dsn_unchanged(self):
+        from django_dbos.dbos_setup import _scrub_credentials
+
+        message = "No credentials in here, just text."
+        assert _scrub_credentials(message) == message

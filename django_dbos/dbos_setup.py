@@ -15,6 +15,7 @@ management commands, tests) can share one idempotent lifecycle:
 
 from __future__ import annotations
 
+import re
 import threading
 from typing import Any
 
@@ -65,6 +66,17 @@ def _register_queues() -> None:
         Queue(queue.name, **kwargs)
 
 
+#: A DSN with credentials embedded in an error message, e.g.
+#: ``postgresql+psycopg://user:secrets@host/db``. Driver and ORMs may include
+#: one in connection errors; the password is masked before showing the message.
+_DSN_WITH_PASSWORD_RE = re.compile(r"([a-z][a-z0-9+.-]*://[^\s:/@\"']+):([^\s@\"'/]+)@", re.IGNORECASE)
+
+
+def _scrub_credentials(message: str) -> str:
+    """Mask passwords in any DSN found in an error message."""
+    return _DSN_WITH_PASSWORD_RE.sub(r"\1:***@", message)
+
+
 def ensure_initialized() -> None:
     """Create the DBOS singleton if it does not exist yet."""
     global _initialized
@@ -74,7 +86,7 @@ def ensure_initialized() -> None:
         try:
             config = _build_dbos_config()
         except Exception as exc:
-            raise ImproperlyConfiguredDbos(str(exc)) from exc
+            raise ImproperlyConfiguredDbos(_scrub_credentials(str(exc))) from exc
         DBOS(config=config)  # type: ignore[arg-type]
         _register_queues()
         _initialized = True

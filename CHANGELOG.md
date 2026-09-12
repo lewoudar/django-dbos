@@ -49,3 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Admin pages are restricted to superusers: they expose destructive
   operations and every workflow's data (inputs, outputs, errors). Plain
   staff accounts get a 403.
+- Database credentials are masked in configuration error messages (a failed
+  connection may otherwise surface the system database URL with its
+  password in the admin error page and logs).
+- Workflow names read from the system database are validated (dotted module
+  path, no dunder or empty segments) and must resolve to a declared task
+  before being imported.
