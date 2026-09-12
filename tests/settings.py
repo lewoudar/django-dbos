@@ -31,3 +31,7 @@ TASKS = {
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Do not spin up a DBOS singleton on app ready in the test suite; tests that
+# need it call dbos_setup helpers explicitly.
+DJANGO_DBOS = {"AUTO_INIT": False}

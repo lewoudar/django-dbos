@@ -1,0 +1,115 @@
+"""Tests for the DJANGO_DBOS setting resolution."""
+
+import pytest
+
+from django_dbos import settings as dbos_settings
+from django_dbos.exceptions import ImproperlyConfiguredDbos
+
+
+class TestSystemDatabaseUrlDerivation:
+    def test_sqlite_database(self):
+        url = dbos_settings.derive_system_database_url(
+            {"ENGINE": "django.db.backends.sqlite3", "NAME": "/tmp/myproject.sqlite3"}
+        )
+        assert url == "sqlite:////tmp/myproject.sqlite3-dbos.sqlite"
+
+    def test_sqlite_memory_database(self):
+        url = dbos_settings.derive_system_database_url(
+            {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}
+        )
+        assert url == "sqlite:///:memory:"
+
+    def test_postgres_database(self):
+        url = dbos_settings.derive_system_database_url(
+            {
+                "ENGINE": "django.db.backends.postgresql",
+                "NAME": "myproject",
+                "USER": "kevin",
+                "PASSWORD": "hunter2",
+                "HOST": "db.example.com",
+                "PORT": "5433",
+            }
+        )
+        assert url == "postgresql+psycopg://kevin:hunter2@db.example.com:5433/dbos_myproject"
+
+    def test_postgres_defaults(self):
+        url = dbos_settings.derive_system_database_url(
+            {"ENGINE": "django.db.backends.postgresql", "NAME": "myproject"}
+        )
+        assert url == "postgresql+psycopg://:@localhost:5432/dbos_myproject"
+
+    def test_postgres_custom_prefix(self, settings):
+        settings.DJANGO_DBOS = {"SYSTEM_DB_PREFIX": "mydbos_"}
+        url = dbos_settings.derive_system_database_url(
+            {"ENGINE": "django.db.backends.postgresql", "NAME": "myproject"}
+        )
+        assert url == "postgresql+psycopg://:@localhost:5432/mydbos_myproject"
+
+    def test_unsupported_engine_raises(self):
+        with pytest.raises(ImproperlyConfiguredDbos):
+            dbos_settings.derive_system_database_url(
+                {"ENGINE": "django.db.backends.oracle", "NAME": "orcl"}
+            )
+
+
+class TestSystemDatabaseUrlResolution:
+    def test_env_var_wins(self, settings, monkeypatch):
+        monkeypatch.setenv("DBOS_SYSTEM_DATABASE_URL", "postgresql://env-url")
+        assert dbos_settings.resolve_system_database_url() == "postgresql://env-url"
+
+    def test_setting_wins(self, settings, monkeypatch):
+        monkeypatch.setenv("DBOS_SYSTEM_DATABASE_URL", "postgresql://env-url")
+        settings.DJANGO_DBOS = {"SYSTEM_DATABASE_URL": "postgresql://setting-url"}
+        assert dbos_settings.resolve_system_database_url() == "postgresql://setting-url"
+
+    def test_falls_back_to_derivation(self, settings, monkeypatch):
+        monkeypatch.delenv("DBOS_SYSTEM_DATABASE_URL", raising=False)
+        settings.DJANGO_DBOS = {"SYSTEM_DATABASE_URL": None}
+        assert dbos_settings.resolve_system_database_url() == "sqlite:///:memory:"
+
+
+class TestQueues:
+    def test_default_queue(self, settings):
+        settings.DJANGO_DBOS = {}
+        queues = dbos_settings.resolve_queues()
+        assert [q.name for q in queues] == ["default"]
+
+    def test_declared_queues(self, settings):
+        settings.DJANGO_DBOS = {
+            "QUEUES": {
+                "emails": {"worker_concurrency": 4},
+                "reports": {"global_concurrency": 2},
+            },
+        }
+        queues = dbos_settings.resolve_queues()
+        assert [q.name for q in queues] == ["emails", "reports"]
+        assert queues[0].worker_concurrency == 4
+        assert queues[1].global_concurrency == 2
+
+    def test_non_mapping_queues_raise(self, settings):
+        settings.DJANGO_DBOS = {"QUEUES": ["emails"]}
+        with pytest.raises(ImproperlyConfiguredDbos):
+            dbos_settings.resolve_queues()
+
+
+class TestAppName:
+    def test_defaults_to_django(self, settings):
+        settings.DJANGO_DBOS = {}
+        assert dbos_settings.resolve_app_name() == "django"
+
+    def test_from_setting(self, settings):
+        settings.DJANGO_DBOS = {"NAME": "myproject"}
+        assert dbos_settings.resolve_app_name() == "myproject"
+
+    def test_resolve_settings(self, settings, monkeypatch):
+        monkeypatch.delenv("DBOS_SYSTEM_DATABASE_URL", raising=False)
+        settings.DJANGO_DBOS = {
+            "NAME": "myproject",
+            "APPLICATION_VERSION": "1.2.3",
+            "SYSTEM_DB_SCHEMA": "dbos_custom",
+        }
+        resolved = dbos_settings.resolve_settings()
+        assert resolved.app_name == "myproject"
+        assert resolved.application_version == "1.2.3"
+        assert resolved.dbos_system_schema == "dbos_custom"
+        assert [q.name for q in resolved.queues] == ["default"]
