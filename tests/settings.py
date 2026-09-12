@@ -67,6 +67,9 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # need it call dbos_setup helpers explicitly.
 DJANGO_DBOS = {
     "AUTO_INIT": False,
+    # Explicit for clarity: the admin pages are registered by default and
+    # restricted to superusers.
+    "ADMIN_ENABLED": True,
     "SCHEDULER_POLLING_INTERVAL_SEC": 0.5,
     "QUEUES": {
         "default": None,

@@ -10,6 +10,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
+from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
@@ -36,9 +37,16 @@ WORKFLOW_STATUSES = list(STATUS_BADGES)
 
 
 def _dbos_view(view: Any) -> Any:
-    """Wrap an admin view: ensure DBOS is launched and translate DBOS errors."""
+    """Wrap an admin view: require the superuser and ensure DBOS is launched.
+
+    ``site.admin_view`` already enforces staff-only access; these pages also
+    expose destructive operations and every workflow's data, so they are
+    restricted to superusers.
+    """
 
     def wrapper(request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        if not request.user.is_active or not request.user.is_superuser:
+            raise PermissionDenied("django-dbos admin pages are restricted to superusers.")
         try:
             ensure_launched()
         except ImproperlyConfiguredDbos as exc:

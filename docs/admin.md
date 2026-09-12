@@ -6,7 +6,9 @@ database through the DBOS Python API.
 
 !!! note
     Access requires the Django admin (`django.contrib.admin` in
-    `INSTALLED_APPS`); all pages are staff-only.
+    `INSTALLED_APPS`); the pages are **superuser-only** — a plain staff
+    account gets a 403, because they expose every workflow's data
+    (inputs, outputs, errors) and destructive operations.
 
 ## Workflows
 
@@ -34,6 +36,8 @@ queue and last fire time. Each schedule can be paused, resumed or deleted.
 
 ## Options
 
+The pages are enabled by default; you can disable them entirely:
+
 ```python
 DJANGO_DBOS = {
     # Disable the admin pages entirely:
@@ -45,6 +49,13 @@ DJANGO_DBOS = {
 
 `ADMIN_SITE` defaults to `["django.contrib.admin.site"]`. If
 `django.contrib.admin` is not installed at all, registration is skipped.
+
+!!! warning
+    The DBOS pages let any superuser cancel, fork and permanently delete
+    workflows and schedules, and display workflow inputs and outputs, which
+    may contain secrets or personal data. Any plain staff account is
+    rejected (403). On a deployment where superusers are not fully trusted,
+    set `ADMIN_ENABLED` to `False`.
 
 !!! note
     The pages require the DBOS singleton to be launched: opening them runs

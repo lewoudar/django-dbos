@@ -7,6 +7,10 @@ database.
 Registration is gated by ``DJANGO_DBOS["ADMIN_ENABLED"]`` (default ``True``)
 and targets the admin sites listed in ``DJANGO_DBOS["ADMIN_SITE"]`` (dotted
 paths, default: the default ``django.contrib.admin.site``).
+
+The pages expose destructive operations and every workflow's data (inputs,
+outputs, errors), so they additionally require the superuser flag — the
+standard staff membership is not enough.
 """
 
 from __future__ import annotations

@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 from django.contrib.auth.models import User
+from django.test import Client
 
 pytestmark = pytest.mark.integration
 
@@ -87,10 +88,34 @@ class TestSchedulePages:
 
 
 class TestAdminGating:
+    def test_admin_enabled_by_default(self, settings):
+        from django_dbos.admin import is_admin_enabled
+
+        settings.DJANGO_DBOS = {k: v for k, v in settings.DJANGO_DBOS.items() if k != "ADMIN_ENABLED"}
+        assert is_admin_enabled()
+
     def test_urls_registered_by_default(self, dbos_environment):
         from django.urls import reverse
 
         reverse("admin:django_dbos_workflow_changelist")  # raises if missing
+
+    def test_urls_registered_when_enabled(self, settings):
+        from django.urls import reverse
+
+        settings.DJANGO_DBOS = {**settings.DJANGO_DBOS, "ADMIN_ENABLED": True}
+        reverse("admin:django_dbos_workflow_changelist")  # raises if missing
+
+    def test_staff_without_superuser_gets_403(self, db, dbos_environment):
+        staff = User.objects.create_user(username="editor", password="hunter2", is_staff=True)
+        client = Client()
+        client.force_login(staff)
+        try:
+            response = client.get("/admin/dbos/workflows/")
+            assert response.status_code == 403
+            response = client.post("/admin/dbos/workflows/whatever/delete/")
+            assert response.status_code == 403
+        finally:
+            User.objects.filter(pk=staff.pk).delete()
 
     def test_disabled_admin_skips_registration(self, settings):
         from django.contrib.admin import AdminSite
