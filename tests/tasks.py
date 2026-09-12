@@ -4,10 +4,11 @@ import asyncio
 
 from django.tasks import task
 
-from django_dbos import dbos_params
+from django_dbos import cron, dbos_params
 
 results: dict[str, list[object]] = {"events": []}
 flaky_calls: list[int] = []
+cron_runs: list[str] = []
 
 
 @task(backend="dbos")
@@ -55,3 +56,15 @@ def durable_onboarding() -> list[str]:
     ctx.set_event("onboarded", True)
     ctx.run_step(record_step, "step2", name="second_step")
     return results["events"]  # type: ignore[return-value]
+
+
+@cron("* * * * * *")  # every second, for fast tests
+@task(backend="dbos")
+def scheduled_cleanup() -> str:
+    cron_runs.append("ran")
+    return "cleaned"
+
+
+@cron("*/5 * * * *")
+@task(backend="dbos")
+def cron_task() -> None: ...

@@ -25,6 +25,11 @@ class Command(BaseCommand):
         discovery.autodiscover_tasks()
         dbos_setup.ensure_launched()
 
+        if not options["no_scheduler"]:
+            from django_dbos import scheduling
+
+            scheduling.register_cron_schedules()
+
         stop_event = threading.Event()
 
         def _stop(signum: int, frame: Any) -> None:

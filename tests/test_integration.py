@@ -8,6 +8,7 @@ import pytest
 from django.tasks import TaskResultStatus
 from django.utils import timezone
 
+from . import tasks as tasks_module
 from .conftest import wait_for_result
 from .tasks import (
     add,
@@ -65,9 +66,29 @@ def test_step_retry_after_transient_failure(dbos_environment):
 
 
 def test_durable_operations_in_task(dbos_environment):
-    from . import tasks as tasks_module
 
     tasks_module.results["events"] = []
     result = durable_onboarding.enqueue()
     result = wait_for_result(result, TaskResultStatus.SUCCESSFUL)
     assert result.return_value == ["step1", "step2"]
+
+
+def test_cron_schedule_created_and_fires(dbos_environment):
+    import time
+
+    from dbos import DBOS
+
+    from django_dbos.scheduling import register_cron_schedules
+
+    tasks_module.cron_runs.clear()
+    register_cron_schedules()
+
+    schedule_name = f"django_dbos.schedules.{tasks_module.scheduled_cleanup.module_path}"
+    schedule = DBOS.get_schedule(schedule_name)
+    assert schedule is not None
+    assert schedule["schedule"] == "* * * * * *"
+
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline and not tasks_module.cron_runs:
+        time.sleep(0.5)
+    assert tasks_module.cron_runs, "cron task did not fire within 15s"

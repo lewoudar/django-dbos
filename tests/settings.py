@@ -41,6 +41,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # need it call dbos_setup helpers explicitly.
 DJANGO_DBOS = {
     "AUTO_INIT": False,
+    "SCHEDULER_POLLING_INTERVAL_SEC": 0.5,
     "QUEUES": {
         "default": None,
         "emails": None,
