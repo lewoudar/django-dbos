@@ -27,6 +27,7 @@ def dbos_params(
     deduplication_id: str | None = None,
     queue_partition_key: str | None = None,
     workflow_timeout: float | None = None,
+    durable_operations: bool = False,
 ) -> Any:
     """Attach DBOS execution options to a Django task.
 
@@ -45,6 +46,7 @@ def dbos_params(
         deduplication_id=deduplication_id,
         queue_partition_key=queue_partition_key,
         workflow_timeout=workflow_timeout,
+        durable_operations=durable_operations,
     )
 
     def wrapper(task: Any) -> Any:

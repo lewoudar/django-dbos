@@ -38,3 +38,20 @@ def flaky_with_retries() -> int:
     if len(flaky_calls) < 2:
         raise RuntimeError("first attempt fails")
     return len(flaky_calls)
+
+
+def record_step(event: str) -> str:
+    results["events"] = results["events"] + [event]
+    return event
+
+
+@task(backend="dbos")
+@dbos_params(durable_operations=True)
+def durable_onboarding() -> list[str]:
+    from django_dbos import get_dbos_context
+
+    ctx = get_dbos_context()
+    ctx.run_step(record_step, "step1", name="first_step")
+    ctx.set_event("onboarded", True)
+    ctx.run_step(record_step, "step2", name="second_step")
+    return results["events"]  # type: ignore[return-value]

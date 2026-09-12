@@ -87,6 +87,7 @@ def register_task_workflow(task: DBOSTask) -> str:
     options = _step_options(task.dbos_params)
     takes_context = task.takes_context
     max_recovery_attempts = task.dbos_params.max_recovery_attempts
+    durable_operations = task.dbos_params.durable_operations
     func = task.func
 
     if inspect.iscoroutinefunction(func):
@@ -95,6 +96,10 @@ def register_task_workflow(task: DBOSTask) -> str:
         async def workflow(*args: Any, **kwargs: Any) -> Any:
             if takes_context:
                 args = (_build_task_context(task, args, kwargs), *args)
+            if durable_operations:
+                # Runs at workflow level: the task uses get_dbos_context() to
+                # checkpoint its own operations.
+                return await func(*args, **kwargs)
             return await DBOS.run_step_async(options, func, *args, **kwargs)
 
     else:
@@ -103,6 +108,8 @@ def register_task_workflow(task: DBOSTask) -> str:
         def workflow(*args: Any, **kwargs: Any) -> Any:
             if takes_context:
                 args = (_build_task_context(task, args, kwargs), *args)
+            if durable_operations:
+                return func(*args, **kwargs)
             return DBOS.run_step(options, func, *args, **kwargs)
 
     logger.debug("registered DBOS workflow", workflow_name=name)

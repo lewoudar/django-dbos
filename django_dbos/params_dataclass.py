@@ -26,6 +26,11 @@ class DbosTaskParams:
             partition-enabled queue).
         workflow_timeout: Max wall-clock duration of the whole workflow, in
             seconds.
+        durable_operations: Run the task function at workflow level instead of
+            as a single checkpointed step, enabling durable primitives inside
+            the task (``get_dbos_context()``: additional steps, durable sleep,
+            events, messages). The task is then responsible for checkpointing
+            its side effects.
     """
 
     max_recovery_attempts: int | None = None
@@ -36,3 +41,4 @@ class DbosTaskParams:
     deduplication_id: str | None = None
     queue_partition_key: str | None = None
     workflow_timeout: float | None = None
+    durable_operations: bool = False

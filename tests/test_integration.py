@@ -9,7 +9,15 @@ from django.tasks import TaskResultStatus
 from django.utils import timezone
 
 from .conftest import wait_for_result
-from .tasks import add, async_add, failing_task, flaky_calls, flaky_with_retries, send_email
+from .tasks import (
+    add,
+    async_add,
+    durable_onboarding,
+    failing_task,
+    flaky_calls,
+    flaky_with_retries,
+    send_email,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -54,3 +62,12 @@ def test_step_retry_after_transient_failure(dbos_environment):
     assert result.return_value == 2
     # The failing first attempt was checkpointed and retried by DBOS.
     assert len(flaky_calls) == 2
+
+
+def test_durable_operations_in_task(dbos_environment):
+    from . import tasks as tasks_module
+
+    tasks_module.results["events"] = []
+    result = durable_onboarding.enqueue()
+    result = wait_for_result(result, TaskResultStatus.SUCCESSFUL)
+    assert result.return_value == ["step1", "step2"]
