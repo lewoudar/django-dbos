@@ -40,10 +40,8 @@ def check_system_database_engine(app_configs: Any = None, **kwargs: Any) -> list
 
     return [
         Info(
-            "The default Django database engine does not allow django-dbos to "
-            "derive a DBOS system database URL.",
+            "The default Django database engine does not allow django-dbos to derive a DBOS system database URL.",
             id="django_dbos.I001",
-            hint=f"Set {settings_module.SETTING_NAME}['SYSTEM_DATABASE_URL'] or "
-            "DBOS_SYSTEM_DATABASE_URL.",
+            hint=f"Set {settings_module.SETTING_NAME}['SYSTEM_DATABASE_URL'] or DBOS_SYSTEM_DATABASE_URL.",
         )
     ]

@@ -70,7 +70,7 @@ def ensure_initialized() -> None:
             return
         try:
             config = _build_dbos_config()
-        except Exception as exc:  # noqa: BLE001 - surfaced as a Django-friendly error
+        except Exception as exc:
             raise ImproperlyConfiguredDbos(str(exc)) from exc
         DBOS(config=config)  # type: ignore[arg-type]
         _register_queues()

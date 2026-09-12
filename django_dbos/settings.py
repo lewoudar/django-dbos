@@ -113,9 +113,7 @@ def resolve_system_database_url() -> str:
     2. ``DBOS_SYSTEM_DATABASE_URL`` environment variable
     3. Derived from the default Django database connection
     """
-    url = get_dbos_setting("SYSTEM_DATABASE_URL") or os.environ.get(
-        "DBOS_SYSTEM_DATABASE_URL"
-    )
+    url = get_dbos_setting("SYSTEM_DATABASE_URL") or os.environ.get("DBOS_SYSTEM_DATABASE_URL")
     if url:
         return url
     return derive_system_database_url(_django_database_settings())
@@ -135,12 +133,10 @@ def resolve_queues() -> tuple[QueueConfig, ...]:
     """
     queues_setting = get_dbos_setting("QUEUES") or {}
     if not isinstance(queues_setting, dict):
-        raise ImproperlyConfiguredDbos(
-            f"{SETTING_NAME}['QUEUES'] must be a mapping of queue name to options."
-        )
-    queues = tuple(
-        QueueConfig(name=str(name), **(options or {})) for name, options in queues_setting.items()
-    ) or tuple(QueueConfig(name=name) for name in DEFAULT_QUEUES)
+        raise ImproperlyConfiguredDbos(f"{SETTING_NAME}['QUEUES'] must be a mapping of queue name to options.")
+    queues = tuple(QueueConfig(name=str(name), **(options or {})) for name, options in queues_setting.items()) or tuple(
+        QueueConfig(name=name) for name in DEFAULT_QUEUES
+    )
     names = [queue.name for queue in queues]
     if len(names) != len(set(names)):
         raise ImproperlyConfiguredDbos(f"Duplicate queue names in {SETTING_NAME}['QUEUES'].")
