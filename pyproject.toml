@@ -1,0 +1,105 @@
+[project]
+name = "django-dbos"
+version = "0.1.0"
+description = "DBOS-backed backend for Django's tasks framework: durable background tasks, cron scheduling and optional Sentry monitoring."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Kevin Tewouda", email = "rollandkev@yahoo.fr" }]
+requires-python = ">=3.12"
+dependencies = [
+    "django>=6.0",
+    "dbos>=1.6",
+    "structlog>=25.1",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Framework :: Django",
+    "Framework :: Django :: 6.0",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/lewoudar/django-dbos"
+Repository = "https://github.com/lewoudar/django-dbos"
+Changelog = "https://github.com/lewoudar/django-dbos/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+sentry = ["sentry-sdk>=2.19"]
+
+[dependency-groups]
+dev = [
+    "commitizen>=4.8",
+    "django-extensions>=4.1",
+    "nox>=2025.5",
+    "prek>=0.2",
+    "pyrefly>=0.25",
+    "ruff>=0.14",
+    "zizmor>=1.14",
+]
+test = [
+    "model-bakery>=1.20",
+    "pytest>=8.4",
+    "pytest-django>=4.11",
+    "pytest-mock>=3.14",
+    "testcontainers[postgres]>=4.13",
+    "time-machine>=2.16",
+]
+doc = [
+    "zensical>=0.0.59",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["django_dbos"]
+
+[tool.uv]
+default-groups = ["dev", "test"]
+exclude-newer = "7 days"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+extend-select = [
+    "UP",  # pyupgrade
+    "I",   # isort
+    "S",   # flake8-bandit
+    "B",   # flake8-bugbear
+    "DJ",  # flake8-django
+    "SIM", # flake8-simplify
+    "C90", # McCabe complexity
+    "RUF", # ruff rules
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S106"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+testpaths = ["tests"]
+addopts = "--strict-markers"
+filterwarnings = ["error"]
+markers = [
+    "integration: tests that require a running Postgres via testcontainers",
+]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+tag_format = "v$version"
+version_scheme = "pep440"
+version_provider = "pep621"
+update_changelog_on_bump = true
+changelog_file = "CHANGELOG.md"
