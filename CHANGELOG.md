@@ -37,6 +37,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`--dbos-system-db=postgres|auto|sqlite`).
 - structlog-based logging under the `django_dbos` logger.
 - System checks validating the configuration.
+- `manage.py dbos_status`: worker capacity report from the DBOS system
+  database — per-queue backlog, waiting age, running counts and declared
+  concurrency with a simple SCALE_UP/SCALE_DOWN/OK advice, per-executor load
+  and stuck (recovery-exhausted) workflow counts. `--json` for alerting.
+- Worker heartbeats: running `dbos_worker` processes push their pid, CPU and
+  memory through Django's cache every 10 seconds (extra `[metrics]` with
+  psutil); the report and the admin read them back, dead workers expiring by
+  themselves through the cache TTL.
 - Admin pages (superuser-only, registered on the configured AdminSite
   instances): workflow list with filters and pagination, detail view with
   steps (durations, outputs, child workflow links), schedule list, and
@@ -46,6 +54,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- `manage.py dbos_status`: worker capacity report from the DBOS system
+  database — per-queue backlog, waiting age, running counts and declared
+  concurrency with a simple SCALE_UP/SCALE_DOWN/OK advice, per-executor load
+  and stuck (recovery-exhausted) workflow counts. `--json` for alerting.
+- Worker heartbeats: running `dbos_worker` processes push their pid, CPU and
+  memory through Django's cache every 10 seconds (extra `[metrics]` with
+  psutil); the report and the admin read them back, dead workers expiring by
+  themselves through the cache TTL.
 - Admin pages are restricted to superusers: they expose destructive
   operations and every workflow's data (inputs, outputs, errors). Plain
   staff accounts get a 403.

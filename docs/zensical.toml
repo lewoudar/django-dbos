@@ -16,6 +16,7 @@ nav = [
   { "Tasks" = "tasks.md" },
   { "Cron scheduling" = "cron.md" },
   { "Admin" = "admin.md" },
+  { "Worker capacity" = "status.md" },
   { "Testing" = "testing.md" },
 ]
 
