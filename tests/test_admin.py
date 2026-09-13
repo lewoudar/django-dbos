@@ -49,6 +49,21 @@ class TestWorkflowPages:
         assert_text(response, "tests.tasks.add")
         assert_text(response, "task_body")
 
+    def test_workflow_list_bad_page_inputs_render_page_1(self, admin_client, dbos_environment):
+        result = _enqueue_sample_workflow()
+        for bad in ("abc", "-3"):
+            response = admin_client.get("/admin/dbos/workflows/", {"page": bad})
+            assert response.status_code == 200, bad
+            # The first page is rendered: the newest workflow is listed.
+            assert_text(response, result.id)
+
+    def test_workflow_list_huge_page_is_clamped_not_500(self, admin_client, dbos_environment):
+        # Out-of-range page: clamped to the last allowed page, so the offset
+        # stays within bigint range instead of erroring in the database.
+        response = admin_client.get("/admin/dbos/workflows/", {"page": "99999999999999999999999"})
+        assert response.status_code == 200
+        assert_text(response, "No workflows found.")
+
     def test_workflow_detail_404_on_unknown_id(self, admin_client, dbos_environment):
         response = admin_client.get("/admin/dbos/workflows/unknown-id/")
         assert response.status_code == 404

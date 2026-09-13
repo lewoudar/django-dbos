@@ -92,6 +92,19 @@ def _row(status: Any) -> dict[str, Any]:
     }
 
 
+#: Cap on the page query parameter: beyond this there is no meaningful data
+#: (50 pages of 50 workflows), and unbounded offsets overflow database integers.
+_MAX_PAGE = 50
+
+
+def _page_number(value: str | None) -> int:
+    """Parse a page query parameter, clamped to a sane range."""
+    try:
+        return min(max(int(value or ""), 1), _MAX_PAGE)
+    except ValueError:
+        return 1
+
+
 @_dbos_view
 def workflow_list(request: HttpRequest) -> HttpResponse:
     from dbos import DBOS
@@ -100,7 +113,7 @@ def workflow_list(request: HttpRequest) -> HttpResponse:
     queue_filter = request.GET.get("queue") or None
     name_filter = request.GET.get("name") or None
     search = request.GET.get("q") or None
-    page = max(int(request.GET.get("page", 1)), 1)
+    page = _page_number(request.GET.get("page"))
     offset = (page - 1) * PAGE_SIZE
 
     workflows = DBOS.list_workflows(
