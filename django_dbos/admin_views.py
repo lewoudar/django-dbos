@@ -261,8 +261,11 @@ def workflow_delete(request: HttpRequest, workflow_id: str) -> HttpResponse:
         "admin/django_dbos/delete_confirmation.html",
         {
             "title": f"Delete workflow {workflow_id}",
-            "object_name": "workflow",
-            "workflow_id": workflow_id,
+            "back_list_url": reverse("admin:django_dbos_workflow_changelist"),
+            "back_list_label": "DBOS workflows",
+            "object_kind": "workflow",
+            "object_id": workflow_id,
+            "warning": "permanently removes its execution history and steps from the system database.",
             "back_url": reverse("admin:django_dbos_workflow_detail", args=[workflow_id]),
         },
     )
@@ -299,10 +302,20 @@ def _redirect_to_schedules() -> HttpResponseRedirect:
     return HttpResponseRedirect(reverse("admin:django_dbos_schedule_changelist"))
 
 
+def _get_schedule_or_404(schedule_name: str) -> Any:
+    from dbos import DBOS
+
+    schedule = DBOS.get_schedule(schedule_name)
+    if schedule is None:
+        raise Http404(f"No schedule found with name {schedule_name!r}")
+    return schedule
+
+
 @_dbos_view
 def schedule_pause(request: HttpRequest, schedule_name: str) -> HttpResponse:
     from dbos import DBOS
 
+    _get_schedule_or_404(schedule_name)
     if request.method == "POST":
         DBOS.pause_schedule(schedule_name)
         logger.info("admin: paused schedule", schedule_name=schedule_name, user=request.user.pk)
@@ -313,6 +326,7 @@ def schedule_pause(request: HttpRequest, schedule_name: str) -> HttpResponse:
 def schedule_resume(request: HttpRequest, schedule_name: str) -> HttpResponse:
     from dbos import DBOS
 
+    _get_schedule_or_404(schedule_name)
     if request.method == "POST":
         DBOS.resume_schedule(schedule_name)
         logger.info("admin: resumed schedule", schedule_name=schedule_name, user=request.user.pk)
@@ -323,10 +337,24 @@ def schedule_resume(request: HttpRequest, schedule_name: str) -> HttpResponse:
 def schedule_delete(request: HttpRequest, schedule_name: str) -> HttpResponse:
     from dbos import DBOS
 
+    _get_schedule_or_404(schedule_name)
     if request.method == "POST":
         DBOS.delete_schedule(schedule_name)
         logger.info("admin: deleted schedule", schedule_name=schedule_name, user=request.user.pk)
-    return _redirect_to_schedules()
+        return _redirect_to_schedules()
+
+    return render(
+        request,
+        "admin/django_dbos/delete_confirmation.html",
+        {
+            "title": f"Delete schedule {schedule_name}",
+            "back_list_url": reverse("admin:django_dbos_schedule_changelist"),
+            "back_list_label": "DBOS schedules",
+            "object_kind": "schedule",
+            "object_id": schedule_name,
+            "warning": "stops its cron firings (it is re-created on the next dbos_worker start if the task is still scheduled).",
+        },
+    )
 
 
 def _redirect_to_workflow(workflow_id: str) -> HttpResponseRedirect:

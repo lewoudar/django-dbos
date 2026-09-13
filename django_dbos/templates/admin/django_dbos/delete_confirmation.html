@@ -2,18 +2,17 @@
 {% block breadcrumbs %}
 <div class="breadcrumbs">
   <a href="{% url 'admin:index' %}">Home</a>
-  &rsaquo; <a href="{% url 'admin:django_dbos_workflow_changelist' %}">DBOS workflows</a>
-  &rsaquo; Delete {{ workflow_id|truncatechars:26 }}
+  &rsaquo; <a href="{{ back_list_url }}">{{ back_list_label }}</a>
+  &rsaquo; Delete {{ object_id|truncatechars:26 }}
 </div>
 {% endblock %}
 
 {% block content %}
 <h2>Are you sure?</h2>
-<p>Deleting workflow <strong>{{ workflow_id }}</strong> permanently removes its
-execution history and steps from the system database. This cannot be undone.</p>
+<p>Deleting {{ object_kind }} <strong>{{ object_id }}</strong> {{ warning }} This cannot be undone.</p>
 <form method="post">
   {% csrf_token %}
   <button type="submit" class="button deletelink">Yes, delete</button>
-  <a href="{{ back_url }}" class="button">Cancel</a>
+  <a href="{{ back_url|default:back_list_url }}" class="button">Cancel</a>
 </form>
 {% endblock %}

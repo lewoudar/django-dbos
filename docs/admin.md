@@ -32,7 +32,8 @@ Open **Home › DBOS workflows** (`/admin/dbos/workflows/`):
 
 **Home › DBOS schedules** (`/admin/dbos/schedules/`) lists every DBOS schedule
 (registered by `@cron` tasks when a worker starts) with its crontab, timezone,
-queue and last fire time. Each schedule can be paused, resumed or deleted.
+queue and last fire time. Each schedule can be paused, resumed or deleted
+(deletion asks for confirmation first, like workflow deletion).
 
 ## Options
 

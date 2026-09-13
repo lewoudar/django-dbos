@@ -71,3 +71,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Workflow names read from the system database are validated (dotted module
   path, no dunder or empty segments) and must resolve to a declared task
   before being imported.
+- Schedule deletion asks for a confirmation page, like workflow deletion,
+  and unknown schedules return 404 instead of a 500 on pause/resume/delete.
