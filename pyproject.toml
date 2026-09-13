@@ -35,6 +35,7 @@ Changelog = "https://github.com/lewoudar/django-dbos/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 sentry = ["sentry-sdk>=2.19"]
+metrics = ["psutil>=7.0"]
 
 [dependency-groups]
 dev = [

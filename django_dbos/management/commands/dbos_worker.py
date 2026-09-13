@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import signal
 import threading
 from typing import Any
@@ -38,9 +39,20 @@ class Command(BaseCommand):
         for sig in (signal.SIGTERM, signal.SIGINT):
             signal.signal(sig, _stop)
 
+        from dbos import DBOS
+
+        from django_dbos.heartbeat import HeartbeatThread
+
+        heartbeat_thread = HeartbeatThread(
+            executor_id=DBOS.executor_id or "local",
+            has_metrics=importlib.util.find_spec("psutil") is not None,
+        )
+        heartbeat_thread.start()
+
         self.stdout.write("DBOS worker started. Press Ctrl+C to stop.")
         try:
             stop_event.wait()
         finally:
             self.stdout.write("Shutting down DBOS worker...")
+            heartbeat_thread.stop()
             dbos_setup.shutdown()

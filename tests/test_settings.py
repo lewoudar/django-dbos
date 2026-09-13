@@ -39,9 +39,7 @@ class TestSystemDatabaseUrlDerivation:
                 "PASSWORD": "p@ss:word/",
             }
         )
-        assert url == (
-            "postgresql+psycopg://user%40domain:p%40ss%3Aword%2F@localhost:5432/dbos_myproject"
-        )
+        assert url == ("postgresql+psycopg://user%40domain:p%40ss%3Aword%2F@localhost:5432/dbos_myproject")
 
     def test_postgres_defaults(self):
         url = dbos_settings.derive_system_database_url({"ENGINE": "django.db.backends.postgresql", "NAME": "myproject"})
@@ -128,10 +126,7 @@ class TestCredentialScrubbing:
     def test_postgres_dsn_password_masked(self):
         from django_dbos.dbos_setup import _scrub_credentials
 
-        message = (
-            "connection to server failed: "
-            "postgresql+psycopg://app_user:s3cret-pw@db.internal:5432/dbos_mydb"
-        )
+        message = "connection to server failed: postgresql+psycopg://app_user:s3cret-pw@db.internal:5432/dbos_mydb"
         scrubbed = _scrub_credentials(message)
         assert "s3cret-pw" not in scrubbed
         assert "postgresql+psycopg://app_user:***@db.internal:5432/dbos_mydb" in scrubbed
