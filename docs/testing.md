@@ -72,4 +72,3 @@ def test_enqueue_logs():
         send_email.enqueue('kevin@example.com')
     assert any(event == 'enqueued task' for event in [log['event'] for log in logs])
 ```
-
