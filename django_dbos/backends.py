@@ -26,14 +26,14 @@ _PRIORITY_OFFSET = 101
 
 #: Workflow statuses DBOS uses, mapped onto Django's TaskResultStatus.
 _STATUS_MAPPING: dict[str, TaskResultStatus] = {
-    "DELAYED": TaskResultStatus.READY,
-    "ENQUEUED": TaskResultStatus.READY,
-    "PENDING": TaskResultStatus.READY,
-    "RUNNING": TaskResultStatus.RUNNING,
-    "SUCCESS": TaskResultStatus.SUCCESSFUL,
-    "ERROR": TaskResultStatus.FAILED,
-    "CANCELLED": TaskResultStatus.FAILED,
-    "MAX_RECOVERY_ATTEMPTS_EXCEEDED": TaskResultStatus.FAILED,
+    'DELAYED': TaskResultStatus.READY,
+    'ENQUEUED': TaskResultStatus.READY,
+    'PENDING': TaskResultStatus.READY,
+    'RUNNING': TaskResultStatus.RUNNING,
+    'SUCCESS': TaskResultStatus.SUCCESSFUL,
+    'ERROR': TaskResultStatus.FAILED,
+    'CANCELLED': TaskResultStatus.FAILED,
+    'MAX_RECOVERY_ATTEMPTS_EXCEEDED': TaskResultStatus.FAILED,
 }
 
 
@@ -74,7 +74,7 @@ class DBOSBackend(BaseTaskBackend):
             handle = DBOS.enqueue_workflow(task.queue_name, workflow, *args, **kwargs)
 
         logger.debug(
-            "enqueued task",
+            'enqueued task',
             task_name=task.name,
             queue=task.queue_name,
             workflow_id=handle.workflow_id,
@@ -90,12 +90,12 @@ class DBOSBackend(BaseTaskBackend):
             handle = await DBOS.enqueue_workflow_async(task.queue_name, workflow, *args, **kwargs)
 
         logger.debug(
-            "enqueued task",
+            'enqueued task',
             task_name=task.name,
             queue=task.queue_name,
             workflow_id=handle.workflow_id,
         )
-        return self._fresh_result(handle.workflow_id)
+        return await self._fresh_result_async(handle.workflow_id)
 
     def get_result(self, result_id: str) -> TaskResult:
         dbos_setup.ensure_initialized()
@@ -118,8 +118,8 @@ class DBOSBackend(BaseTaskBackend):
         return SetEnqueueOptions(
             priority=_django_to_dbos_priority(task.priority),
             delay_seconds=_delay_seconds(task.run_after),
-            **({"deduplication_id": params.deduplication_id} if params.deduplication_id is not None else {}),
-            **({"queue_partition_key": params.queue_partition_key} if params.queue_partition_key is not None else {}),
+            **({'deduplication_id': params.deduplication_id} if params.deduplication_id is not None else {}),
+            **({'queue_partition_key': params.queue_partition_key} if params.queue_partition_key is not None else {}),
         )
 
     def _validate_queue(self, task: DBOSTask) -> None:
@@ -130,7 +130,7 @@ class DBOSBackend(BaseTaskBackend):
             raise QueueNotDeclared(
                 f"Queue '{task.queue_name}' is not declared in the DJANGO_DBOS "
                 "setting. Declare it under DJANGO_DBOS['QUEUES'] so a worker "
-                "can process it."
+                'can process it.'
             )
 
     def _fresh_result(self, workflow_id: str) -> TaskResult:
@@ -138,19 +138,30 @@ class DBOSBackend(BaseTaskBackend):
             status = DBOS.retrieve_workflow(workflow_id).get_status()
         except Exception as exc:
             raise TaskResultDoesNotExist(workflow_id) from exc
-        result = _build_task_result(workflow_id, status)
-        if result.status == TaskResultStatus.READY:
-            # Just enqueued: normalize timestamps to enqueue time.
-            now = datetime.now(tz=UTC)
-            result = replace(result, enqueued_at=now, started_at=None, finished_at=None, last_attempted_at=now)
-        return result
+        return _normalize_fresh_result(_build_task_result(workflow_id, status))
+
+    async def _fresh_result_async(self, workflow_id: str) -> TaskResult:
+        # Async variant: the synchronous retrieve_workflow() refuses to run
+        # inside a running event loop.
+        status = await DBOS.get_workflow_status_async(workflow_id)
+        if status is None:
+            raise TaskResultDoesNotExist(workflow_id)
+        return _normalize_fresh_result(_build_task_result(workflow_id, status))
 
 
 def _get_workflow(workflow_name: str) -> Any:
     workflow = _get_or_create_dbos_registry().workflow_info_map.get(workflow_name)
     if workflow is None:  # pragma: no cover - register_task_workflow just ran
-        raise RuntimeError(f"Workflow {workflow_name} was not registered")
+        raise RuntimeError(f'Workflow {workflow_name} was not registered')
     return workflow
+
+
+def _normalize_fresh_result(result: TaskResult) -> TaskResult:
+    """Just-enqueued results: normalize timestamps to the enqueue time."""
+    if result.status == TaskResultStatus.READY:
+        now = datetime.now(tz=UTC)
+        result = replace(result, enqueued_at=now, started_at=None, finished_at=None, last_attempted_at=now)
+    return result
 
 
 def _build_task_result(workflow_id: str, status: Any) -> TaskResult:
@@ -158,7 +169,7 @@ def _build_task_result(workflow_id: str, status: Any) -> TaskResult:
     if dbos_status not in _STATUS_MAPPING:
         raise TaskResultDoesNotExist(workflow_id)
 
-    task = task_from_workflow_name(status.name or "")
+    task = task_from_workflow_name(status.name or '')
     if task is None:
         raise TaskResultDoesNotExist(workflow_id)
 
@@ -168,7 +179,7 @@ def _build_task_result(workflow_id: str, status: Any) -> TaskResult:
         error_class = type(status.error)
         errors = [
             TaskError(
-                exception_class_path=f"{error_class.__module__}.{error_class.__qualname__}",
+                exception_class_path=f'{error_class.__module__}.{error_class.__qualname__}',
                 traceback=repr(status.error),
             )
         ]
@@ -190,14 +201,14 @@ def _build_task_result(workflow_id: str, status: Any) -> TaskResult:
         started_at=started_at,
         finished_at=finished_at,
         last_attempted_at=finished_at or started_at or enqueued_at,
-        args=list(inputs.get("args") or []),
-        kwargs=dict(inputs.get("kwargs") or {}),
+        args=list(inputs.get('args') or []),
+        kwargs=dict(inputs.get('kwargs') or {}),
         backend=task.backend,
         errors=errors,
         worker_ids=[],
     )
     if django_status == TaskResultStatus.SUCCESSFUL and status.output is not None:
-        object.__setattr__(result, "_return_value", status.output)
+        object.__setattr__(result, '_return_value', status.output)
     return result
 
 

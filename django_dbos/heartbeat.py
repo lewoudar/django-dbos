@@ -22,13 +22,13 @@ from .logging import logger
 
 HEARTBEAT_INTERVAL_SECONDS = 10.0
 HEARTBEAT_TTL_SECONDS = 30.0
-HEARTBEAT_KEY_PREFIX = "django_dbos:worker_heartbeat:"
+HEARTBEAT_KEY_PREFIX = 'django_dbos:worker_heartbeat:'
 
 _sentinel = object()
 
 
 def _cache_key(executor_id: str) -> str:
-    return f"{HEARTBEAT_KEY_PREFIX}{executor_id}"
+    return f'{HEARTBEAT_KEY_PREFIX}{executor_id}'
 
 
 def _local_metrics() -> dict[str, Any] | None:
@@ -40,9 +40,9 @@ def _local_metrics() -> dict[str, Any] | None:
 
     process = psutil.Process()
     return {
-        "cpu_percent": process.cpu_percent(interval=None),
-        "memory_rss_mb": round(process.memory_info().rss / 1024 / 1024, 1),
-        "pid": process.pid,
+        'cpu_percent': process.cpu_percent(interval=None),
+        'memory_rss_mb': round(process.memory_info().rss / 1024 / 1024, 1),
+        'pid': process.pid,
     }
 
 
@@ -52,7 +52,7 @@ def write_heartbeat(executor_id: str, has_metrics: bool) -> bool:
     Returns False when the cache is not shared/available (LocMemCache can only
     be read back by the writing process).
     """
-    payload: dict[str, Any] = {"executor_id": executor_id, "has_metrics": has_metrics}
+    payload: dict[str, Any] = {'executor_id': executor_id, 'has_metrics': has_metrics}
     if has_metrics:
         metrics = _local_metrics()
         if metrics is not None:
@@ -60,8 +60,8 @@ def write_heartbeat(executor_id: str, has_metrics: bool) -> bool:
     try:
         cache.set(_cache_key(executor_id), payload, timeout=HEARTBEAT_TTL_SECONDS)
         return True
-    except Exception as exc:  # noqa: BLE001 - a cache failure must not kill the worker
-        logger.warning("could not write worker heartbeat", error=str(exc))
+    except Exception as exc:
+        logger.warning('could not write worker heartbeat', error=str(exc))
         return False
 
 
@@ -79,13 +79,13 @@ class HeartbeatThread(threading.Thread):
     """Background thread pushing this worker's heartbeat until stopped."""
 
     def __init__(self, executor_id: str, has_metrics: bool) -> None:
-        super().__init__(name="django-dbos-heartbeat", daemon=True)
+        super().__init__(name='django-dbos-heartbeat', daemon=True)
         self._executor_id = executor_id
         self._has_metrics = has_metrics
         self._stop_event = threading.Event()
 
     def run(self) -> None:
-        logger.info("worker heartbeat thread started", executor_id=self._executor_id)
+        logger.info('worker heartbeat thread started', executor_id=self._executor_id)
         while not self._stop_event.wait(timeout=0.0):
             write_heartbeat(self._executor_id, self._has_metrics)
             self._stop_event.wait(timeout=HEARTBEAT_INTERVAL_SECONDS)
@@ -94,4 +94,5 @@ class HeartbeatThread(threading.Thread):
 
     def stop(self) -> None:
         self._stop_event.set()
-        self.join(timeout=5.0)
+        if self.is_alive():
+            self.join(timeout=5.0)

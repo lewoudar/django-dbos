@@ -42,9 +42,9 @@ The pages are enabled by default; you can disable them entirely:
 ```python
 DJANGO_DBOS = {
     # Disable the admin pages entirely:
-    "ADMIN_ENABLED": False,
+    'ADMIN_ENABLED': False,
     # Register the pages on custom AdminSite instances (dotted paths):
-    "ADMIN_SITE": ["myapp.admin.admin_site"],
+    'ADMIN_SITE': ['myapp.admin.admin_site'],
 }
 ```
 

@@ -9,7 +9,7 @@ from django.utils.module_loading import module_has_submodule
 
 from .logging import logger
 
-TASK_MODULE_NAMES = ("tasks", "dbos_tasks")
+TASK_MODULE_NAMES = ('tasks', 'dbos_tasks')
 
 
 def autodiscover_tasks() -> None:
@@ -21,11 +21,11 @@ def autodiscover_tasks() -> None:
     """
     for app_config in apps.get_app_configs():
         for module_name in TASK_MODULE_NAMES:
-            module = f"{app_config.name}.{module_name}"
+            module = f'{app_config.name}.{module_name}'
             try:
                 importlib.import_module(module)
             except ImportError:
                 if module_has_submodule(app_config.module, module_name):
                     raise
                 continue
-        logger.debug("autodiscovered tasks", app=app_config.name)
+        logger.debug('autodiscovered tasks', app=app_config.name)

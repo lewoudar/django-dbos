@@ -23,14 +23,14 @@ PAGE_SIZE = 50
 
 #: Workflow status -> CSS class for the status badge in templates.
 STATUS_BADGES = {
-    "SUCCESS": "success",
-    "ERROR": "error",
-    "MAX_RECOVERY_ATTEMPTS_EXCEEDED": "error",
-    "RUNNING": "info",
-    "PENDING": "info",
-    "ENQUEUED": "neutral",
-    "DELAYED": "neutral",
-    "CANCELLED": "warning",
+    'SUCCESS': 'success',
+    'ERROR': 'error',
+    'MAX_RECOVERY_ATTEMPTS_EXCEEDED': 'error',
+    'RUNNING': 'info',
+    'PENDING': 'info',
+    'ENQUEUED': 'neutral',
+    'DELAYED': 'neutral',
+    'CANCELLED': 'warning',
 }
 
 WORKFLOW_STATUSES = list(STATUS_BADGES)
@@ -46,14 +46,14 @@ def _dbos_view(view: Any) -> Any:
 
     def wrapper(request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
         if not request.user.is_active or not request.user.is_superuser:
-            raise PermissionDenied("django-dbos admin pages are restricted to superusers.")
+            raise PermissionDenied('django-dbos admin pages are restricted to superusers.')
         try:
             ensure_launched()
         except ImproperlyConfiguredDbos as exc:
             return render(
                 request,
-                "admin/django_dbos/error.html",
-                {"title": "django-dbos", "error_message": str(exc)},
+                'admin/django_dbos/error.html',
+                {'title': 'django-dbos', 'error_message': str(exc)},
             )
         return view(request, *args, **kwargs)
 
@@ -78,17 +78,17 @@ def _epoch_ms(value: int | None) -> datetime | None:
 
 
 def _row(status: Any) -> dict[str, Any]:
-    django_status = status.status.value if hasattr(status.status, "value") else str(status.status)
+    django_status = status.status.value if hasattr(status.status, 'value') else str(status.status)
     return {
-        "workflow_id": status.workflow_id,
-        "name": status.name,
-        "status": django_status,
-        "badge": STATUS_BADGES.get(django_status, "neutral"),
-        "queue_name": status.queue_name,
-        "priority": status.priority,
-        "created_at": _epoch_ms(status.created_at),
-        "updated_at": _epoch_ms(status.updated_at),
-        "error": status.error,
+        'workflow_id': status.workflow_id,
+        'name': status.name,
+        'status': django_status,
+        'badge': STATUS_BADGES.get(django_status, 'neutral'),
+        'queue_name': status.queue_name,
+        'priority': status.priority,
+        'created_at': _epoch_ms(status.created_at),
+        'updated_at': _epoch_ms(status.updated_at),
+        'error': status.error,
     }
 
 
@@ -100,7 +100,7 @@ _MAX_PAGE = 50
 def _page_number(value: str | None) -> int:
     """Parse a page query parameter, clamped to a sane range."""
     try:
-        return min(max(int(value or ""), 1), _MAX_PAGE)
+        return min(max(int(value or ''), 1), _MAX_PAGE)
     except ValueError:
         return 1
 
@@ -109,11 +109,11 @@ def _page_number(value: str | None) -> int:
 def workflow_list(request: HttpRequest) -> HttpResponse:
     from dbos import DBOS
 
-    status_filter = request.GET.get("status") or None
-    queue_filter = request.GET.get("queue") or None
-    name_filter = request.GET.get("name") or None
-    search = request.GET.get("q") or None
-    page = _page_number(request.GET.get("page"))
+    status_filter = request.GET.get('status') or None
+    queue_filter = request.GET.get('queue') or None
+    name_filter = request.GET.get('name') or None
+    search = request.GET.get('q') or None
+    page = _page_number(request.GET.get('page'))
     offset = (page - 1) * PAGE_SIZE
 
     workflows = DBOS.list_workflows(
@@ -132,20 +132,20 @@ def workflow_list(request: HttpRequest) -> HttpResponse:
 
     return render(
         request,
-        "admin/django_dbos/workflow_list.html",
+        'admin/django_dbos/workflow_list.html',
         {
-            "title": "DBOS workflows",
-            "rows": rows,
-            "statuses": WORKFLOW_STATUSES,
-            "filters": {
-                "status": status_filter or "",
-                "queue": queue_filter or "",
-                "name": name_filter or "",
-                "q": search or "",
+            'title': 'DBOS workflows',
+            'rows': rows,
+            'statuses': WORKFLOW_STATUSES,
+            'filters': {
+                'status': status_filter or '',
+                'queue': queue_filter or '',
+                'name': name_filter or '',
+                'q': search or '',
             },
-            "page": page,
-            "has_previous": page > 1,
-            "has_next": has_next,
+            'page': page,
+            'has_previous': page > 1,
+            'has_next': has_next,
         },
     )
 
@@ -155,7 +155,7 @@ def _get_workflow_or_404(workflow_id: str) -> Any:
 
     status = DBOS.get_workflow_status(workflow_id)
     if status is None:
-        raise Http404(f"No workflow found with id {workflow_id!r}")
+        raise Http404(f'No workflow found with id {workflow_id!r}')
     return status
 
 
@@ -164,48 +164,48 @@ def workflow_detail(request: HttpRequest, workflow_id: str) -> HttpResponse:
     from dbos import DBOS
 
     status = _get_workflow_or_404(workflow_id)
-    django_status = status.status.value if hasattr(status.status, "value") else str(status.status)
+    django_status = status.status.value if hasattr(status.status, 'value') else str(status.status)
 
     steps = []
     for step in DBOS.list_workflow_steps(workflow_id, load_output=True):
         duration_ms = None
-        if step.get("started_at_epoch_ms") is not None and step.get("completed_at_epoch_ms") is not None:
-            duration_ms = step["completed_at_epoch_ms"] - step["started_at_epoch_ms"]
+        if step.get('started_at_epoch_ms') is not None and step.get('completed_at_epoch_ms') is not None:
+            duration_ms = step['completed_at_epoch_ms'] - step['started_at_epoch_ms']
         steps.append(
             {
-                "function_id": step.get("function_id"),
-                "name": step.get("function_name"),
-                "duration_ms": duration_ms,
-                "output": _pretty(step.get("output")),
-                "error": _pretty(step.get("error")),
-                "child_workflow_id": step.get("child_workflow_id"),
+                'function_id': step.get('function_id'),
+                'name': step.get('function_name'),
+                'duration_ms': duration_ms,
+                'output': _pretty(step.get('output')),
+                'error': _pretty(step.get('error')),
+                'child_workflow_id': step.get('child_workflow_id'),
             }
         )
 
     return render(
         request,
-        "admin/django_dbos/workflow_detail.html",
+        'admin/django_dbos/workflow_detail.html',
         {
-            "title": f"DBOS workflow {workflow_id}",
-            "row": _row(status),
-            "fields": [
-                ("Workflow ID", status.workflow_id),
-                ("Name", status.name),
-                ("Status", django_status),
-                ("Queue", status.queue_name),
-                ("Priority", status.priority),
-                ("Created at", _epoch_ms(status.created_at)),
-                ("Updated at", _epoch_ms(status.updated_at)),
-                ("Completed at", _epoch_ms(status.completed_at)),
-                ("Executor", status.executor_id),
-                ("Application version", status.app_version),
-                ("Schedule", status.schedule_name),
-                ("Deduplication ID", status.deduplication_id),
+            'title': f'DBOS workflow {workflow_id}',
+            'row': _row(status),
+            'fields': [
+                ('Workflow ID', status.workflow_id),
+                ('Name', status.name),
+                ('Status', django_status),
+                ('Queue', status.queue_name),
+                ('Priority', status.priority),
+                ('Created at', _epoch_ms(status.created_at)),
+                ('Updated at', _epoch_ms(status.updated_at)),
+                ('Completed at', _epoch_ms(status.completed_at)),
+                ('Executor', status.executor_id),
+                ('Application version', status.app_version),
+                ('Schedule', status.schedule_name),
+                ('Deduplication ID', status.deduplication_id),
             ],
-            "input": _pretty(status.input),
-            "output": _pretty(status.output),
-            "error": _pretty(status.error),
-            "steps": steps,
+            'input': _pretty(status.input),
+            'output': _pretty(status.output),
+            'error': _pretty(status.error),
+            'steps': steps,
         },
     )
 
@@ -214,11 +214,11 @@ def workflow_detail(request: HttpRequest, workflow_id: str) -> HttpResponse:
 def workflow_cancel(request: HttpRequest, workflow_id: str) -> HttpResponse:
     from dbos import DBOS
 
-    if request.method != "POST":
-        return HttpResponseRedirect(reverse("admin:django_dbos_workflow_detail", args=[workflow_id]))
+    if request.method != 'POST':
+        return HttpResponseRedirect(reverse('admin:django_dbos_workflow_detail', args=[workflow_id]))
     _get_workflow_or_404(workflow_id)
     DBOS.cancel_workflow(workflow_id)
-    logger.info("admin: cancelled workflow", workflow_id=workflow_id, user=request.user.pk)
+    logger.info('admin: cancelled workflow', workflow_id=workflow_id, user=request.user.pk)
     return _redirect_to_workflow(workflow_id)
 
 
@@ -226,11 +226,11 @@ def workflow_cancel(request: HttpRequest, workflow_id: str) -> HttpResponse:
 def workflow_resume(request: HttpRequest, workflow_id: str) -> HttpResponse:
     from dbos import DBOS
 
-    if request.method != "POST":
-        return HttpResponseRedirect(reverse("admin:django_dbos_workflow_detail", args=[workflow_id]))
+    if request.method != 'POST':
+        return HttpResponseRedirect(reverse('admin:django_dbos_workflow_detail', args=[workflow_id]))
     _get_workflow_or_404(workflow_id)
     DBOS.resume_workflow(workflow_id)
-    logger.info("admin: resumed workflow", workflow_id=workflow_id, user=request.user.pk)
+    logger.info('admin: resumed workflow', workflow_id=workflow_id, user=request.user.pk)
     return _redirect_to_workflow(workflow_id)
 
 
@@ -238,11 +238,11 @@ def workflow_resume(request: HttpRequest, workflow_id: str) -> HttpResponse:
 def workflow_fork(request: HttpRequest, workflow_id: str) -> HttpResponse:
     from dbos import DBOS
 
-    if request.method != "POST":
-        return HttpResponseRedirect(reverse("admin:django_dbos_workflow_detail", args=[workflow_id]))
+    if request.method != 'POST':
+        return HttpResponseRedirect(reverse('admin:django_dbos_workflow_detail', args=[workflow_id]))
     _get_workflow_or_404(workflow_id)
     handle = DBOS.fork_workflow(workflow_id, 0)
-    logger.info("admin: forked workflow", workflow_id=workflow_id, fork=handle.workflow_id, user=request.user.pk)
+    logger.info('admin: forked workflow', workflow_id=workflow_id, fork=handle.workflow_id, user=request.user.pk)
     return _redirect_to_workflow(handle.workflow_id)
 
 
@@ -251,22 +251,22 @@ def workflow_delete(request: HttpRequest, workflow_id: str) -> HttpResponse:
     from dbos import DBOS
 
     _get_workflow_or_404(workflow_id)
-    if request.method == "POST":
+    if request.method == 'POST':
         DBOS.delete_workflow(workflow_id)
-        logger.info("admin: deleted workflow", workflow_id=workflow_id, user=request.user.pk)
-        return HttpResponseRedirect(reverse("admin:django_dbos_workflow_changelist"))
+        logger.info('admin: deleted workflow', workflow_id=workflow_id, user=request.user.pk)
+        return HttpResponseRedirect(reverse('admin:django_dbos_workflow_changelist'))
 
     return render(
         request,
-        "admin/django_dbos/delete_confirmation.html",
+        'admin/django_dbos/delete_confirmation.html',
         {
-            "title": f"Delete workflow {workflow_id}",
-            "back_list_url": reverse("admin:django_dbos_workflow_changelist"),
-            "back_list_label": "DBOS workflows",
-            "object_kind": "workflow",
-            "object_id": workflow_id,
-            "warning": "permanently removes its execution history and steps from the system database.",
-            "back_url": reverse("admin:django_dbos_workflow_detail", args=[workflow_id]),
+            'title': f'Delete workflow {workflow_id}',
+            'back_list_url': reverse('admin:django_dbos_workflow_changelist'),
+            'back_list_label': 'DBOS workflows',
+            'object_kind': 'workflow',
+            'object_id': workflow_id,
+            'warning': 'permanently removes its execution history and steps from the system database.',
+            'back_url': reverse('admin:django_dbos_workflow_detail', args=[workflow_id]),
         },
     )
 
@@ -276,13 +276,13 @@ def workflow_delete(request: HttpRequest, workflow_id: str) -> HttpResponse:
 
 def _schedule_row(schedule: dict[str, Any]) -> dict[str, Any]:
     return {
-        "schedule_name": schedule.get("schedule_name"),
-        "workflow_name": schedule.get("workflow_name"),
-        "crontab": schedule.get("schedule"),
-        "status": schedule.get("status"),
-        "queue_name": schedule.get("queue_name"),
-        "cron_timezone": schedule.get("cron_timezone"),
-        "last_fired_at": _epoch_ms(schedule.get("last_fired_at")),
+        'schedule_name': schedule.get('schedule_name'),
+        'workflow_name': schedule.get('workflow_name'),
+        'crontab': schedule.get('schedule'),
+        'status': schedule.get('status'),
+        'queue_name': schedule.get('queue_name'),
+        'cron_timezone': schedule.get('cron_timezone'),
+        'last_fired_at': _epoch_ms(schedule.get('last_fired_at')),
     }
 
 
@@ -293,13 +293,13 @@ def schedule_list(request: HttpRequest) -> HttpResponse:
     rows = [_schedule_row(schedule) for schedule in DBOS.list_schedules()]
     return render(
         request,
-        "admin/django_dbos/schedule_list.html",
-        {"title": "DBOS schedules", "rows": rows},
+        'admin/django_dbos/schedule_list.html',
+        {'title': 'DBOS schedules', 'rows': rows},
     )
 
 
 def _redirect_to_schedules() -> HttpResponseRedirect:
-    return HttpResponseRedirect(reverse("admin:django_dbos_schedule_changelist"))
+    return HttpResponseRedirect(reverse('admin:django_dbos_schedule_changelist'))
 
 
 def _get_schedule_or_404(schedule_name: str) -> Any:
@@ -307,7 +307,7 @@ def _get_schedule_or_404(schedule_name: str) -> Any:
 
     schedule = DBOS.get_schedule(schedule_name)
     if schedule is None:
-        raise Http404(f"No schedule found with name {schedule_name!r}")
+        raise Http404(f'No schedule found with name {schedule_name!r}')
     return schedule
 
 
@@ -316,9 +316,9 @@ def schedule_pause(request: HttpRequest, schedule_name: str) -> HttpResponse:
     from dbos import DBOS
 
     _get_schedule_or_404(schedule_name)
-    if request.method == "POST":
+    if request.method == 'POST':
         DBOS.pause_schedule(schedule_name)
-        logger.info("admin: paused schedule", schedule_name=schedule_name, user=request.user.pk)
+        logger.info('admin: paused schedule', schedule_name=schedule_name, user=request.user.pk)
     return _redirect_to_schedules()
 
 
@@ -327,9 +327,9 @@ def schedule_resume(request: HttpRequest, schedule_name: str) -> HttpResponse:
     from dbos import DBOS
 
     _get_schedule_or_404(schedule_name)
-    if request.method == "POST":
+    if request.method == 'POST':
         DBOS.resume_schedule(schedule_name)
-        logger.info("admin: resumed schedule", schedule_name=schedule_name, user=request.user.pk)
+        logger.info('admin: resumed schedule', schedule_name=schedule_name, user=request.user.pk)
     return _redirect_to_schedules()
 
 
@@ -338,24 +338,24 @@ def schedule_delete(request: HttpRequest, schedule_name: str) -> HttpResponse:
     from dbos import DBOS
 
     _get_schedule_or_404(schedule_name)
-    if request.method == "POST":
+    if request.method == 'POST':
         DBOS.delete_schedule(schedule_name)
-        logger.info("admin: deleted schedule", schedule_name=schedule_name, user=request.user.pk)
+        logger.info('admin: deleted schedule', schedule_name=schedule_name, user=request.user.pk)
         return _redirect_to_schedules()
 
     return render(
         request,
-        "admin/django_dbos/delete_confirmation.html",
+        'admin/django_dbos/delete_confirmation.html',
         {
-            "title": f"Delete schedule {schedule_name}",
-            "back_list_url": reverse("admin:django_dbos_schedule_changelist"),
-            "back_list_label": "DBOS schedules",
-            "object_kind": "schedule",
-            "object_id": schedule_name,
-            "warning": "stops its cron firings (it is re-created on the next dbos_worker start if the task is still scheduled).",
+            'title': f'Delete schedule {schedule_name}',
+            'back_list_url': reverse('admin:django_dbos_schedule_changelist'),
+            'back_list_label': 'DBOS schedules',
+            'object_kind': 'schedule',
+            'object_id': schedule_name,
+            'warning': 'stops its cron firings (it is re-created on the next dbos_worker start if the task is still scheduled).',
         },
     )
 
 
 def _redirect_to_workflow(workflow_id: str) -> HttpResponseRedirect:
-    return HttpResponseRedirect(reverse("admin:django_dbos_workflow_detail", args=[workflow_id]))
+    return HttpResponseRedirect(reverse('admin:django_dbos_workflow_detail', args=[workflow_id]))

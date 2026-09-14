@@ -19,7 +19,7 @@ Two overrides are available, by order of precedence:
 
 ```python
 DJANGO_DBOS = {
-    "SYSTEM_DATABASE_URL": "postgresql+psycopg://user:pass@db.example.com:5432/dbos_myproject",
+    'SYSTEM_DATABASE_URL': 'postgresql+psycopg://user:pass@db.example.com:5432/dbos_myproject',
 }
 ```
 
@@ -49,12 +49,12 @@ Queues process task executions concurrently and are declared under
 
 ```python
 DJANGO_DBOS = {
-    "QUEUES": {
-        "default": None,  # no options
-        "emails": {
-            "worker_concurrency": 4,   # max concurrent executions per worker
-            "global_concurrency": 10,  # max concurrent executions across workers
-            "limiter": {"limit": 50, "period": 30},  # rate limit
+    'QUEUES': {
+        'default': None,  # no options
+        'emails': {
+            'worker_concurrency': 4,  # max concurrent executions per worker
+            'global_concurrency': 10,  # max concurrent executions across workers
+            'limiter': {'limit': 50, 'period': 30},  # rate limit
         },
     },
 }

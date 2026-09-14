@@ -24,17 +24,17 @@ from .logging import logger
 from .params_dataclass import DbosTaskParams
 from .tasks import DBOSTask
 
-REGISTRY_PREFIX = "django_dbos.tasks."
+REGISTRY_PREFIX = 'django_dbos.tasks.'
 
 #: Task module paths resolved via ``import_string`` come from a name stored in
 #: the system database (workflow status); reject anything that is not a plain
 #: dotted module path before importing it.
-_MODULE_PATH_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
+_MODULE_PATH_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$')
 
 
 def workflow_name_for_task(task: DBOSTask) -> str:
     """The DBOS workflow name for a task: its Django module path."""
-    return f"{REGISTRY_PREFIX}{task.module_path}"
+    return f'{REGISTRY_PREFIX}{task.module_path}'
 
 
 def task_from_workflow_name(workflow_name: str) -> Any:
@@ -57,7 +57,7 @@ def task_from_workflow_name(workflow_name: str) -> Any:
 
 def _step_options(params: DbosTaskParams) -> StepOptions:
     return StepOptions(
-        name="task_body",
+        name='task_body',
         retries_allowed=params.step_retries_allowed,
         max_attempts=params.step_max_attempts,
         interval_seconds=params.step_interval_seconds,
@@ -71,7 +71,7 @@ def _build_task_context(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str,
 
     from django.tasks import TaskContext, TaskResult, TaskResultStatus
 
-    workflow_id = DBOS.workflow_id or ""
+    workflow_id = DBOS.workflow_id or ''
     now = datetime.now(tz=UTC)
     result = TaskResult(
         task=task,
@@ -85,7 +85,7 @@ def _build_task_context(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str,
         kwargs=dict(kwargs),
         backend=task.backend,
         errors=[],
-        worker_ids=[""],
+        worker_ids=[''],
     )
     return TaskContext(task_result=result)
 
@@ -127,5 +127,5 @@ def register_task_workflow(task: DBOSTask) -> str:
                 return func(*args, **kwargs)
             return DBOS.run_step(options, func, *args, **kwargs)
 
-    logger.debug("registered DBOS workflow", workflow_name=name)
+    logger.debug('registered DBOS workflow', workflow_name=name)
     return name

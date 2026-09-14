@@ -27,7 +27,7 @@ SentryMonitorConfig = dict[str, Any]
 
 UNSET: Any = object()
 
-_SLUG_ALLOWED = set(string.ascii_lowercase + string.digits + "-_")
+_SLUG_ALLOWED = set(string.ascii_lowercase + string.digits + '-_')
 _MAX_SLUG_LENGTH = 50
 
 
@@ -39,15 +39,15 @@ def is_sentry_enabled() -> bool:
         return False
     try:
         return bool(sentry_sdk.get_client().is_active())
-    except Exception:  # noqa: BLE001 - never fail task execution on monitoring
+    except Exception:
         return False
 
 
 def monitor_slug(task_name: str) -> str:
     """Derive a valid Sentry monitor slug from a task name."""
-    slug = task_name.lower().replace(".", "-")
-    slug = "".join(char if char in _SLUG_ALLOWED else "-" for char in slug)
-    slug = re.sub(r"-{2,}", "-", slug).strip("-")
+    slug = task_name.lower().replace('.', '-')
+    slug = ''.join(char if char in _SLUG_ALLOWED else '-' for char in slug)
+    slug = re.sub(r'-{2,}', '-', slug).strip('-')
     return slug[:_MAX_SLUG_LENGTH]
 
 
@@ -63,15 +63,15 @@ def crontab_to_monitor_config(crontab: str) -> SentryMonitorConfig | None:
 
     fields = crontab.split()
     if len(fields) == 6:
-        if fields[0] != "0":
+        if fields[0] != '0':
             return None  # sub-minute schedule
         fields = fields[1:]
     elif len(fields) != 5:
         return None
 
     return {
-        "schedule": {"type": "crontab", "value": " ".join(fields)},
-        "timezone": str(timezone.get_default_timezone()) if getattr(settings, "USE_TZ", True) else "UTC",
+        'schedule': {'type': 'crontab', 'value': ' '.join(fields)},
+        'timezone': str(timezone.get_default_timezone()) if getattr(settings, 'USE_TZ', True) else 'UTC',
     }
 
 
@@ -93,7 +93,7 @@ def monitor_cron_task(
         monitor_config = crontab_to_monitor_config(crontab)
         if monitor_config is None:
             logger.debug(
-                "crontab cannot be represented as a Sentry monitor, skipping",
+                'crontab cannot be represented as a Sentry monitor, skipping',
                 task_name=task.name,
                 crontab=crontab,
             )

@@ -20,10 +20,10 @@ from django.conf import settings
 
 from .exceptions import ImproperlyConfiguredDbos
 
-SETTING_NAME = "DJANGO_DBOS"
-DEFAULT_SYSTEM_DB_PREFIX = "dbos_"
+SETTING_NAME = 'DJANGO_DBOS'
+DEFAULT_SYSTEM_DB_PREFIX = 'dbos_'
 
-DEFAULT_QUEUES = ("default",)
+DEFAULT_QUEUES = ('default',)
 
 
 def get_dbos_setting(key: str, default: Any = None) -> Any:
@@ -55,49 +55,49 @@ class DbosSettings:
 
 
 def _django_database_settings() -> dict[str, Any]:
-    default_db = settings.DATABASES["default"]
-    if default_db.get("ENGINE") == "django.db.backends.dummy" or "NAME" not in default_db:
+    default_db = settings.DATABASES['default']
+    if default_db.get('ENGINE') == 'django.db.backends.dummy' or 'NAME' not in default_db:
         raise ImproperlyConfiguredDbos(
-            "No default Django database is configured. django-dbos derives the DBOS "
-            "system database from it, or you can set "
+            'No default Django database is configured. django-dbos derives the DBOS '
+            'system database from it, or you can set '
             f"{SETTING_NAME}['SYSTEM_DATABASE_URL'] / DBOS_SYSTEM_DATABASE_URL."
         )
     return default_db
 
 
 def _sqlite_system_database_url(django_db: dict[str, Any]) -> str:
-    name = django_db["NAME"]
-    if name == ":memory:":
-        return "sqlite:///:memory:"
-    return f"sqlite:///{name}-dbos.sqlite"
+    name = django_db['NAME']
+    if name == ':memory:':
+        return 'sqlite:///:memory:'
+    return f'sqlite:///{name}-dbos.sqlite'
 
 
 def _postgres_url_from_django(django_db: dict[str, Any], db_name: str) -> str:
     from urllib.parse import quote
 
     # percent-encode the credentials (a password may contain '@', ':' or '/')
-    user = quote(django_db.get("USER") or "", safe="")
-    password = quote(django_db.get("PASSWORD") or "", safe="")
-    host = django_db.get("HOST") or "localhost"
-    port = django_db.get("PORT") or "5432"
-    return f"postgresql+psycopg://{user}:{password}@{host}:{port}/{db_name}"
+    user = quote(django_db.get('USER') or '', safe='')
+    password = quote(django_db.get('PASSWORD') or '', safe='')
+    host = django_db.get('HOST') or 'localhost'
+    port = django_db.get('PORT') or '5432'
+    return f'postgresql+psycopg://{user}:{password}@{host}:{port}/{db_name}'
 
 
 def _postgres_system_database_url(django_db: dict[str, Any]) -> str:
-    prefix = get_dbos_setting("SYSTEM_DB_PREFIX", DEFAULT_SYSTEM_DB_PREFIX)
-    return _postgres_url_from_django(django_db, f"{prefix}{django_db['NAME']}")
+    prefix = get_dbos_setting('SYSTEM_DB_PREFIX', DEFAULT_SYSTEM_DB_PREFIX)
+    return _postgres_url_from_django(django_db, f'{prefix}{django_db["NAME"]}')
 
 
 def derive_system_database_url(django_db: dict[str, Any]) -> str:
     """Derive the DBOS system database URL from a Django database config dict."""
-    engine = django_db.get("ENGINE") or ""
-    if "sqlite" in engine:
+    engine = django_db.get('ENGINE') or ''
+    if 'sqlite' in engine:
         return _sqlite_system_database_url(django_db)
-    if "postgres" in engine:
+    if 'postgres' in engine:
         return _postgres_system_database_url(django_db)
     raise ImproperlyConfiguredDbos(
         f"Unsupported database engine '{engine}' for deriving the DBOS system "
-        "database. Set "
+        'database. Set '
         f"{SETTING_NAME}['SYSTEM_DATABASE_URL'] or DBOS_SYSTEM_DATABASE_URL explicitly."
     )
 
@@ -109,7 +109,7 @@ def resolve_system_database_url() -> str:
     2. ``DBOS_SYSTEM_DATABASE_URL`` environment variable
     3. Derived from the default Django database connection
     """
-    url = get_dbos_setting("SYSTEM_DATABASE_URL") or os.environ.get("DBOS_SYSTEM_DATABASE_URL")
+    url = get_dbos_setting('SYSTEM_DATABASE_URL') or os.environ.get('DBOS_SYSTEM_DATABASE_URL')
     if url:
         return url
     return derive_system_database_url(_django_database_settings())
@@ -117,7 +117,7 @@ def resolve_system_database_url() -> str:
 
 def resolve_app_name() -> str:
     """Application name for DBOS, defaulting to the Django project name."""
-    return str(get_dbos_setting("NAME") or os.environ.get("DBOS_APPLICATION_NAME") or "django")
+    return str(get_dbos_setting('NAME') or os.environ.get('DBOS_APPLICATION_NAME') or 'django')
 
 
 def resolve_queues() -> tuple[QueueConfig, ...]:
@@ -127,7 +127,7 @@ def resolve_queues() -> tuple[QueueConfig, ...]:
     queue name to queue options. The Django tasks backend also creates queues
     on the fly for any queue listed in ``TASKS[alias]["QUEUES"]``.
     """
-    queues_setting = get_dbos_setting("QUEUES") or {}
+    queues_setting = get_dbos_setting('QUEUES') or {}
     if not isinstance(queues_setting, dict):
         raise ImproperlyConfiguredDbos(f"{SETTING_NAME}['QUEUES'] must be a mapping of queue name to options.")
     queues = tuple(QueueConfig(name=str(name), **(options or {})) for name, options in queues_setting.items()) or tuple(
@@ -145,7 +145,7 @@ def resolve_settings() -> DbosSettings:
     return DbosSettings(
         app_name=resolve_app_name(),
         system_database_url=resolve_system_database_url(),
-        application_version=get_dbos_setting("APPLICATION_VERSION"),
-        dbos_system_schema=get_dbos_setting("SYSTEM_DB_SCHEMA"),
+        application_version=get_dbos_setting('APPLICATION_VERSION'),
+        dbos_system_schema=get_dbos_setting('SYSTEM_DB_SCHEMA'),
         queues=queues,
     )

@@ -87,7 +87,7 @@ def get_dbos_context() -> DbosTaskContext:
     workflow_id = DBOS.workflow_id
     if not workflow_id:
         raise NoActiveDbosContext(
-            "get_dbos_context() must be called from within a running task "
-            "declared with @dbos_params(durable_operations=True)."
+            'get_dbos_context() must be called from within a running task '
+            'declared with @dbos_params(durable_operations=True).'
         )
     return DbosTaskContext(workflow_id=workflow_id)

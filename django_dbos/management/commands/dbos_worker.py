@@ -13,20 +13,20 @@ from django_dbos import dbos_setup, discovery
 
 
 class Command(BaseCommand):
-    help = "Run the DBOS worker: execute Django tasks durably and process cron schedules."
+    help = 'Run the DBOS worker: execute Django tasks durably and process cron schedules.'
 
     def add_arguments(self, parser: Any) -> None:
         parser.add_argument(
-            "--no-scheduler",
-            action="store_true",
-            help="Do not process cron schedules in this process.",
+            '--no-scheduler',
+            action='store_true',
+            help='Do not process cron schedules in this process.',
         )
 
     def handle(self, *args: Any, **options: Any) -> None:
         discovery.autodiscover_tasks()
         dbos_setup.ensure_launched()
 
-        if not options["no_scheduler"]:
+        if not options['no_scheduler']:
             from django_dbos import scheduling
 
             scheduling.register_cron_schedules()
@@ -44,15 +44,15 @@ class Command(BaseCommand):
         from django_dbos.heartbeat import HeartbeatThread
 
         heartbeat_thread = HeartbeatThread(
-            executor_id=DBOS.executor_id or "local",
-            has_metrics=importlib.util.find_spec("psutil") is not None,
+            executor_id=DBOS.executor_id or 'local',
+            has_metrics=importlib.util.find_spec('psutil') is not None,
         )
         heartbeat_thread.start()
 
-        self.stdout.write("DBOS worker started. Press Ctrl+C to stop.")
+        self.stdout.write('DBOS worker started. Press Ctrl+C to stop.')
         try:
             stop_event.wait()
         finally:
-            self.stdout.write("Shutting down DBOS worker...")
+            self.stdout.write('Shutting down DBOS worker...')
             heartbeat_thread.stop()
             dbos_setup.shutdown()

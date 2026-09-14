@@ -28,7 +28,7 @@ from .logging import logger
 from .sentry import UNSET, SentryMonitorConfig, monitor_cron_task
 from .tasks import DBOSTask
 
-SCHEDULE_PREFIX = "django_dbos.schedules."
+SCHEDULE_PREFIX = 'django_dbos.schedules.'
 
 
 @dataclass(frozen=True)
@@ -45,10 +45,10 @@ def normalize_crontab(crontab: str) -> str:
     """Normalize a 5-field crontab to DBOS' 6-field (leading seconds) form."""
     fields = crontab.split()
     if len(fields) == 5:
-        return f"0 {crontab}"
+        return f'0 {crontab}'
     if len(fields) == 6:
         return crontab
-    raise ImproperlyConfiguredDbos(f"Invalid crontab {crontab!r}: expected 5 fields (or 6 with leading seconds).")
+    raise ImproperlyConfiguredDbos(f'Invalid crontab {crontab!r}: expected 5 fields (or 6 with leading seconds).')
 
 
 def cron(
@@ -68,7 +68,7 @@ def cron(
     """
     normalized = normalize_crontab(crontab)
     if not croniter.is_valid(normalized, second_at_beginning=True):
-        raise ImproperlyConfiguredDbos(f"Invalid crontab {crontab!r}.")
+        raise ImproperlyConfiguredDbos(f'Invalid crontab {crontab!r}.')
 
     def wrapper(task: DBOSTask) -> DBOSTask:
         _validate_cron_task(task)
@@ -78,7 +78,7 @@ def cron(
             crontab=normalized,
             sentry_monitor_config=sentry_monitor_config,
         )
-        logger.debug("registered cron task", task_name=task.name, crontab=normalized)
+        logger.debug('registered cron task', task_name=task.name, crontab=normalized)
         return monitored
 
     return wrapper
@@ -99,13 +99,13 @@ def _validate_cron_task(task: DBOSTask) -> None:
         ):
             raise ImproperlyConfiguredDbos(
                 f"Task '{task.name}' scheduled with @cron must not require "
-                "arguments (found required parameter "
+                'arguments (found required parameter '
                 f"'{parameter.name}')."
             )
 
 
 def schedule_name_for_task(task: DBOSTask) -> str:
-    return f"{SCHEDULE_PREFIX}{task.module_path}"
+    return f'{SCHEDULE_PREFIX}{task.module_path}'
 
 
 def register_cron_schedules() -> None:
@@ -119,12 +119,12 @@ def register_cron_schedules() -> None:
 
         existing = DBOS.get_schedule(name)
         existing_schedule = (
-            existing.get("schedule") if isinstance(existing, dict) else getattr(existing, "schedule", None)
+            existing.get('schedule') if isinstance(existing, dict) else getattr(existing, 'schedule', None)
         )
         if existing is not None and existing_schedule == registration.crontab:
             continue
         if existing is not None:
-            logger.info("updating existing cron schedule", schedule_name=name, crontab=registration.crontab)
+            logger.info('updating existing cron schedule', schedule_name=name, crontab=registration.crontab)
             DBOS.delete_schedule(name)
         DBOS.create_schedule(
             schedule_name=name,
@@ -134,7 +134,7 @@ def register_cron_schedules() -> None:
             queue_name=registration.task.queue_name,
         )
         logger.info(
-            "created cron schedule",
+            'created cron schedule',
             schedule_name=name,
             crontab=registration.crontab,
             queue=registration.task.queue_name,
@@ -145,9 +145,9 @@ def _django_timezone() -> Any:
     from django.conf import settings
     from django.utils import timezone as dj_timezone
 
-    if getattr(settings, "USE_TZ", True):
+    if getattr(settings, 'USE_TZ', True):
         return dj_timezone.get_default_timezone()
-    return "UTC"
+    return 'UTC'
 
 
 def _register_scheduled_workflow(task: DBOSTask) -> Any:
@@ -199,5 +199,5 @@ def _get_workflow(name: str) -> Any:
 
     workflow = _get_or_create_dbos_registry().workflow_info_map.get(name)
     if workflow is None:  # pragma: no cover - registered just above
-        raise RuntimeError(f"Workflow {name} was not registered")
+        raise RuntimeError(f'Workflow {name} was not registered')
     return workflow

@@ -8,4 +8,4 @@ def test_package_exposes_version():
 
 
 def test_default_settings_module_loads(settings):
-    assert settings.TASKS["default"]["BACKEND"].endswith("ImmediateBackend")
+    assert settings.TASKS['default']['BACKEND'].endswith('ImmediateBackend')

@@ -22,17 +22,17 @@ from django.urls import URLPattern, path
 from .logging import logger
 from .settings import get_dbos_setting
 
-APP_LABEL = "django_dbos"
-ADMIN_URL_PREFIX = "dbos/"
-DEFAULT_ADMIN_SITES = ("django.contrib.admin.site",)
+APP_LABEL = 'django_dbos'
+ADMIN_URL_PREFIX = 'dbos/'
+DEFAULT_ADMIN_SITES = ('django.contrib.admin.site',)
 
 
 def is_admin_enabled() -> bool:
-    return bool(get_dbos_setting("ADMIN_ENABLED", True))
+    return bool(get_dbos_setting('ADMIN_ENABLED', True))
 
 
 def get_admin_site_paths() -> tuple[str, ...]:
-    sites = get_dbos_setting("ADMIN_SITE") or DEFAULT_ADMIN_SITES
+    sites = get_dbos_setting('ADMIN_SITE') or DEFAULT_ADMIN_SITES
     if isinstance(sites, str):
         sites = (sites,)
     return tuple(sites)
@@ -55,7 +55,7 @@ def get_admin_sites() -> list[Any]:
             # isinstance on the lazy object forces AdminConfig.setup(), which
             # fails when django.contrib.admin is not in INSTALLED_APPS.
             if not isinstance(site, AdminSite):
-                raise TypeError(f"{dotted_path!r} does not point to an AdminSite instance")
+                raise TypeError(f'{dotted_path!r} does not point to an AdminSite instance')
         except (ImportError, LookupError):
             if configured_paths == DEFAULT_ADMIN_SITES:
                 continue
@@ -68,7 +68,7 @@ def register_admin(site: Any) -> None:
     """Append django-dbos URLs to an AdminSite instance (idempotent)."""
     from . import admin_views
 
-    if getattr(site, "_django_dbos_registered", False):
+    if getattr(site, '_django_dbos_registered', False):
         return
 
     original_get_urls = site.get_urls
@@ -77,54 +77,54 @@ def register_admin(site: Any) -> None:
         urls = original_get_urls()
         dbos_urls = [
             path(
-                f"{ADMIN_URL_PREFIX}workflows/",
+                f'{ADMIN_URL_PREFIX}workflows/',
                 site.admin_view(admin_views.workflow_list),
-                name="django_dbos_workflow_changelist",
+                name='django_dbos_workflow_changelist',
             ),
             path(
-                f"{ADMIN_URL_PREFIX}workflows/<str:workflow_id>/",
+                f'{ADMIN_URL_PREFIX}workflows/<str:workflow_id>/',
                 site.admin_view(admin_views.workflow_detail),
-                name="django_dbos_workflow_detail",
+                name='django_dbos_workflow_detail',
             ),
             path(
-                f"{ADMIN_URL_PREFIX}workflows/<str:workflow_id>/cancel/",
+                f'{ADMIN_URL_PREFIX}workflows/<str:workflow_id>/cancel/',
                 site.admin_view(admin_views.workflow_cancel),
-                name="django_dbos_workflow_cancel",
+                name='django_dbos_workflow_cancel',
             ),
             path(
-                f"{ADMIN_URL_PREFIX}workflows/<str:workflow_id>/resume/",
+                f'{ADMIN_URL_PREFIX}workflows/<str:workflow_id>/resume/',
                 site.admin_view(admin_views.workflow_resume),
-                name="django_dbos_workflow_resume",
+                name='django_dbos_workflow_resume',
             ),
             path(
-                f"{ADMIN_URL_PREFIX}workflows/<str:workflow_id>/fork/",
+                f'{ADMIN_URL_PREFIX}workflows/<str:workflow_id>/fork/',
                 site.admin_view(admin_views.workflow_fork),
-                name="django_dbos_workflow_fork",
+                name='django_dbos_workflow_fork',
             ),
             path(
-                f"{ADMIN_URL_PREFIX}workflows/<str:workflow_id>/delete/",
+                f'{ADMIN_URL_PREFIX}workflows/<str:workflow_id>/delete/',
                 site.admin_view(admin_views.workflow_delete),
-                name="django_dbos_workflow_delete",
+                name='django_dbos_workflow_delete',
             ),
             path(
-                f"{ADMIN_URL_PREFIX}schedules/",
+                f'{ADMIN_URL_PREFIX}schedules/',
                 site.admin_view(admin_views.schedule_list),
-                name="django_dbos_schedule_changelist",
+                name='django_dbos_schedule_changelist',
             ),
             path(
-                f"{ADMIN_URL_PREFIX}schedules/<str:schedule_name>/pause/",
+                f'{ADMIN_URL_PREFIX}schedules/<str:schedule_name>/pause/',
                 site.admin_view(admin_views.schedule_pause),
-                name="django_dbos_schedule_pause",
+                name='django_dbos_schedule_pause',
             ),
             path(
-                f"{ADMIN_URL_PREFIX}schedules/<str:schedule_name>/resume/",
+                f'{ADMIN_URL_PREFIX}schedules/<str:schedule_name>/resume/',
                 site.admin_view(admin_views.schedule_resume),
-                name="django_dbos_schedule_resume",
+                name='django_dbos_schedule_resume',
             ),
             path(
-                f"{ADMIN_URL_PREFIX}schedules/<str:schedule_name>/delete/",
+                f'{ADMIN_URL_PREFIX}schedules/<str:schedule_name>/delete/',
                 site.admin_view(admin_views.schedule_delete),
-                name="django_dbos_schedule_delete",
+                name='django_dbos_schedule_delete',
             ),
         ]
         # Prepend: the admin's own generic patterns (app_label/model_name)
@@ -133,7 +133,7 @@ def register_admin(site: Any) -> None:
 
     site.get_urls = get_urls
     site._django_dbos_registered = True
-    logger.debug("registered django-dbos admin views", admin_site=site.name)
+    logger.debug('registered django-dbos admin views', admin_site=site.name)
 
 
 def register_admin_sites() -> None:

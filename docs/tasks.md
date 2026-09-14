@@ -6,9 +6,9 @@ tasks are plain module-level functions decorated with `@task`.
 ```python
 from django.tasks import task
 
+
 @task
-def send_welcome_email(user_id: int) -> None:
-    ...
+def send_welcome_email(user_id: int) -> None: ...
 ```
 
 Enqueue it anywhere (views, forms, other tasks...):
@@ -24,7 +24,7 @@ you can poll it from anywhere:
 
 ```python
 result.refresh()
-result.status        # TaskResultStatus.READY / RUNNING / SUCCESSFUL / FAILED
+result.status  # TaskResultStatus.READY / RUNNING / SUCCESSFUL / FAILED
 result.return_value  # only available when SUCCESSFUL
 ```
 
@@ -55,11 +55,12 @@ DBOS-specific options are attached with `@dbos_params`:
 ```python
 from django_dbos import dbos_params
 
+
 @dbos_params(
     step_retries_allowed=True,  # retry the task function on failure
     step_max_attempts=5,
     step_backoff_rate=2.0,
-    deduplication_id="nightly-cleanup",  # reject duplicate enqueues
+    deduplication_id='nightly-cleanup',  # reject duplicate enqueues
     workflow_timeout=3600,  # seconds
     max_recovery_attempts=10,  # DBOS recovery after worker crashes
 )
@@ -95,6 +96,7 @@ long-running, multi-stage tasks you can opt into DBOS' durable primitives with
 
 ```python
 from django_dbos import dbos_params, get_dbos_context
+
 
 @dbos_params(durable_operations=True)
 @task

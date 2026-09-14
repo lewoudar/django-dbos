@@ -32,16 +32,16 @@ _launched = False
 def _build_dbos_config() -> dict[str, Any]:
     resolved = settings_module.resolve_settings()
     config: dict[str, Any] = {
-        "name": resolved.app_name,
-        "system_database_url": resolved.system_database_url,
+        'name': resolved.app_name,
+        'system_database_url': resolved.system_database_url,
     }
     if resolved.application_version:
-        config["application_version"] = resolved.application_version
+        config['application_version'] = resolved.application_version
     if resolved.dbos_system_schema:
-        config["dbos_system_schema"] = resolved.dbos_system_schema
-    scheduler_polling_interval = settings_module.get_dbos_setting("SCHEDULER_POLLING_INTERVAL_SEC")
+        config['dbos_system_schema'] = resolved.dbos_system_schema
+    scheduler_polling_interval = settings_module.get_dbos_setting('SCHEDULER_POLLING_INTERVAL_SEC')
     if scheduler_polling_interval is not None:
-        config["scheduler_polling_interval_sec"] = float(scheduler_polling_interval)
+        config['scheduler_polling_interval_sec'] = float(scheduler_polling_interval)
     return config
 
 
@@ -56,13 +56,13 @@ def _register_queues() -> None:
     for queue in settings_module.resolve_queues():
         kwargs: dict[str, Any] = {}
         if queue.worker_concurrency is not None:
-            kwargs["worker_concurrency"] = queue.worker_concurrency
+            kwargs['worker_concurrency'] = queue.worker_concurrency
         if queue.global_concurrency is not None:
-            kwargs["global_concurrency"] = queue.global_concurrency
+            kwargs['global_concurrency'] = queue.global_concurrency
         if queue.limiter is not None:
-            kwargs["limiter"] = queue.limiter
+            kwargs['limiter'] = queue.limiter
         if queue.polling_interval_sec is not None:
-            kwargs["polling_interval_sec"] = queue.polling_interval_sec
+            kwargs['polling_interval_sec'] = queue.polling_interval_sec
         Queue(queue.name, **kwargs)
 
 
@@ -74,7 +74,7 @@ _DSN_WITH_PASSWORD_RE = re.compile(r"([a-z][a-z0-9+.-]*://[^\s:/@\"']+):([^\s@\"
 
 def _scrub_credentials(message: str) -> str:
     """Mask passwords in any DSN found in an error message."""
-    return _DSN_WITH_PASSWORD_RE.sub(r"\1:***@", message)
+    return _DSN_WITH_PASSWORD_RE.sub(r'\1:***@', message)
 
 
 def ensure_initialized() -> None:

@@ -12,7 +12,7 @@ from typing import Any
 
 from .params_dataclass import DbosTaskParams
 
-FUNC_PARAMS_ATTRIBUTE = "_django_dbos_params"
+FUNC_PARAMS_ATTRIBUTE = '_django_dbos_params'
 _UNSET = object()
 
 
@@ -56,7 +56,7 @@ def dbos_params(
             return replace(task, dbos_params=params)
         # Bare function, or a Task from another backend: keep the params on
         # the function; DBOSTask picks them up when the DBOS backend is used.
-        setattr(task.func if hasattr(task, "func") else task, FUNC_PARAMS_ATTRIBUTE, params)
+        setattr(task.func if hasattr(task, 'func') else task, FUNC_PARAMS_ATTRIBUTE, params)
         return task
 
     if _task is not _UNSET:

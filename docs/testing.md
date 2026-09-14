@@ -11,9 +11,10 @@ The simplest way to test a task body is to bypass the backend entirely:
 ```python
 from django_dbos.test import run_task, arun_task
 
+
 def test_send_email():
-    result = run_task(send_email, "kevin@example.com")
-    assert result == "sent to kevin@example.com"
+    result = run_task(send_email, 'kevin@example.com')
+    assert result == 'sent to kevin@example.com'
 ```
 
 `run_task` executes the function synchronously in-process (async task functions
@@ -27,9 +28,9 @@ returns a standard `TaskResult`, so you can assert on status and return value:
 
 ```python
 def test_send_email(dbos_inline):
-    result = send_email.enqueue("kevin@example.com")
+    result = send_email.enqueue('kevin@example.com')
     assert result.status == TaskResultStatus.SUCCESSFUL
-    assert result.return_value == "sent to kevin@example.com"
+    assert result.return_value == 'sent to kevin@example.com'
 ```
 
 Features the inline mode cannot reproduce (deferred tasks, durable
@@ -65,8 +66,10 @@ on log output:
 ```python
 from structlog.testing import capture_logs
 
+
 def test_enqueue_logs():
     with capture_logs() as logs:
-        send_email.enqueue("kevin@example.com")
-    assert any(event == "enqueued task" for event in [log["event"] for log in logs])
+        send_email.enqueue('kevin@example.com')
+    assert any(event == 'enqueued task' for event in [log['event'] for log in logs])
 ```
+

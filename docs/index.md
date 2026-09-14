@@ -6,9 +6,10 @@ durable background tasks, cron scheduling and optional Sentry monitoring.
 ```python
 from django.tasks import task
 
+
 @task
-def send_welcome_email(user_id: int):
-    ...
+def send_welcome_email(user_id: int): ...
+
 
 result = send_welcome_email.enqueue(user_id)  # durable, survives crashes
 ```
@@ -36,13 +37,13 @@ Add the app and register the backend in your settings:
 ```python
 INSTALLED_APPS = [
     ...,
-    "django_dbos",
+    'django_dbos',
 ]
 
 TASKS = {
-    "default": {
-        "BACKEND": "django_dbos.backends.DBOSBackend",
-        "QUEUES": ["default", "emails"],
+    'default': {
+        'BACKEND': 'django_dbos.backends.DBOSBackend',
+        'QUEUES': ['default', 'emails'],
     },
 }
 ```

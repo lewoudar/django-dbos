@@ -22,4 +22,4 @@ class DBOSTask(Task):
         # applied *under* @task (i.e. on the bare function).
         func_params: DbosTaskParams | None = getattr(self.func, FUNC_PARAMS_ATTRIBUTE, None)
         if func_params is not None and self.dbos_params == DbosTaskParams():
-            object.__setattr__(self, "dbos_params", func_params)
+            object.__setattr__(self, 'dbos_params', func_params)

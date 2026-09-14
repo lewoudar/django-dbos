@@ -6,7 +6,8 @@ Stack `@cron` on top of `@task` to run it on a schedule:
 from django.tasks import task
 from django_dbos import cron
 
-@cron("*/5 * * * *")  # every 5 minutes
+
+@cron('*/5 * * * *')  # every 5 minutes
 @task
 def cleanup_expired_sessions(): ...
 ```

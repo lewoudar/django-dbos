@@ -27,21 +27,21 @@ import pytest
 
 
 def pytest_addoption(parser: Any) -> None:
-    group = parser.getgroup("django-dbos")
+    group = parser.getgroup('django-dbos')
     group.addoption(
-        "--dbos-inline-strict",
-        action="store_true",
+        '--dbos-inline-strict',
+        action='store_true',
         default=False,
         help="Make django-dbos' dbos_inline fixture fail on features it cannot "
-        "reproduce (deferred tasks, durable operations).",
+        'reproduce (deferred tasks, durable operations).',
     )
     group.addoption(
-        "--dbos-system-db",
-        choices=["auto", "sqlite", "postgres"],
-        default="auto",
+        '--dbos-system-db',
+        choices=['auto', 'sqlite', 'postgres'],
+        default='auto',
         help="System database used by the dbos_system fixture: 'postgres' "
         "spins a testcontainers container, 'auto' uses it when possible and "
-        "falls back to a SQLite file.",
+        'falls back to a SQLite file.',
     )
 
 
@@ -65,9 +65,9 @@ def _inline_result(task: Any, args: tuple[Any, ...], kwargs: dict[str, Any], ret
         kwargs=dict(kwargs),
         backend=task.backend,
         errors=[],
-        worker_ids=["inline"],
+        worker_ids=['inline'],
     )
-    object.__setattr__(result, "_return_value", return_value)
+    object.__setattr__(result, '_return_value', return_value)
     return result
 
 
@@ -80,14 +80,14 @@ def _inline_enqueue(self: Any, task: Any, args: Any, kwargs: Any) -> Any:
     if task.run_after is not None and strict:
         raise DjangoDbosError(
             f"Task '{task.name}' is deferred (run_after) and cannot be "
-            "executed inline. Test the task body with run_task() or use "
-            "the dbos_system fixture."
+            'executed inline. Test the task body with run_task() or use '
+            'the dbos_system fixture.'
         )
 
     if task.dbos_params.durable_operations and strict:
         raise DjangoDbosError(
             f"Task '{task.name}' uses durable operations, which the inline "
-            "mode cannot reproduce. Use the dbos_system fixture."
+            'mode cannot reproduce. Use the dbos_system fixture.'
         )
 
     if task.takes_context:
@@ -119,10 +119,10 @@ def dbos_inline(monkeypatch: Any, request: Any) -> Any:
     """Make DBOS-backed tasks execute synchronously, without a system database."""
     from django_dbos.backends import DBOSBackend
 
-    strict = bool(request.config.getoption("--dbos-inline-strict"))
-    monkeypatch.setattr(DBOSBackend, "_inline_strict", strict, raising=False)
-    monkeypatch.setattr(DBOSBackend, "enqueue", _inline_enqueue)
-    monkeypatch.setattr(DBOSBackend, "get_result", _lookup_result)
+    strict = bool(request.config.getoption('--dbos-inline-strict'))
+    monkeypatch.setattr(DBOSBackend, '_inline_strict', strict, raising=False)
+    monkeypatch.setattr(DBOSBackend, 'enqueue', _inline_enqueue)
+    monkeypatch.setattr(DBOSBackend, 'get_result', _lookup_result)
     _results.clear()
 
     yield
@@ -133,7 +133,7 @@ def dbos_inline(monkeypatch: Any, request: Any) -> Any:
 # --- Real DBOS system database -------------------------------------------
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def dbos_system(request: Any, tmp_path_factory: Any) -> Any:
     """Launch DBOS on a system database for the whole test session.
 
@@ -144,29 +144,29 @@ def dbos_system(request: Any, tmp_path_factory: Any) -> Any:
     """
     import os
 
-    mode = request.config.getoption("--dbos-system-db")
+    mode = request.config.getoption('--dbos-system-db')
     container = None
-    previous_url = os.environ.get("DBOS_SYSTEM_DATABASE_URL")
+    previous_url = os.environ.get('DBOS_SYSTEM_DATABASE_URL')
 
-    if mode in ("postgres", "auto"):
+    if mode in ('postgres', 'auto'):
         try:
             from testcontainers.community.postgres import PostgresContainer
 
-            container = PostgresContainer("postgres:17")
+            container = PostgresContainer('postgres:17')
             container.start()
             system_database_url = container.get_connection_url().replace(
-                "postgresql+psycopg2://", "postgresql+psycopg://"
+                'postgresql+psycopg2://', 'postgresql+psycopg://'
             )
-        except Exception as exc:  # noqa: BLE001 - docker may be unavailable
-            if mode == "postgres":
-                pytest.skip(f"Docker/Postgres unavailable: {exc}")
+        except Exception as exc:
+            if mode == 'postgres':
+                pytest.skip(f'Docker/Postgres unavailable: {exc}')
             container = None
-            system_database_url = f"sqlite:///{tmp_path_factory.mktemp('dbos') / 'systemdb.sqlite'}"
-            print(f"\nPostgres unavailable ({exc}); using SQLite system database.")
+            system_database_url = f'sqlite:///{tmp_path_factory.mktemp("dbos") / "systemdb.sqlite"}'
+            print(f'\nPostgres unavailable ({exc}); using SQLite system database.')
     else:
-        system_database_url = f"sqlite:///{tmp_path_factory.mktemp('dbos') / 'systemdb.sqlite'}"
+        system_database_url = f'sqlite:///{tmp_path_factory.mktemp("dbos") / "systemdb.sqlite"}'
 
-    os.environ["DBOS_SYSTEM_DATABASE_URL"] = system_database_url
+    os.environ['DBOS_SYSTEM_DATABASE_URL'] = system_database_url
 
     from django_dbos import dbos_setup
 
@@ -174,8 +174,8 @@ def dbos_system(request: Any, tmp_path_factory: Any) -> Any:
     yield system_database_url
     dbos_setup.shutdown()
     if previous_url is None:
-        del os.environ["DBOS_SYSTEM_DATABASE_URL"]
+        del os.environ['DBOS_SYSTEM_DATABASE_URL']
     else:
-        os.environ["DBOS_SYSTEM_DATABASE_URL"] = previous_url
+        os.environ['DBOS_SYSTEM_DATABASE_URL'] = previous_url
     if container is not None:
         container.stop()

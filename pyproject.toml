@@ -40,6 +40,7 @@ metrics = ["psutil>=7.0"]
 [dependency-groups]
 dev = [
     "commitizen>=4.8",
+    "deptry>=0.23",
     "django-extensions>=4.1",
     "nox>=2025.5",
     "prek>=0.2",
@@ -50,6 +51,7 @@ dev = [
 test = [
     "model-bakery>=1.20",
     "pytest>=8.4",
+    "pytest-cov>=7.0",
     "pytest-django>=4.11",
     "pytest-mock>=3.14",
     "sentry-sdk>=2.19",
@@ -78,6 +80,9 @@ exclude-newer = "7 days"
 line-length = 120
 target-version = "py312"
 
+[tool.ruff.format]
+quote-style = "single"
+
 [tool.ruff.lint]
 extend-select = [
     "UP",  # pyupgrade
@@ -102,10 +107,33 @@ markers = [
     "integration: tests that require a running Postgres via testcontainers",
 ]
 
+[tool.coverage.run]
+source = ["django_dbos"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 85
+exclude_also = [
+    "if TYPE_CHECKING:",
+]
+
 [tool.commitizen]
 name = "cz_conventional_commits"
 tag_format = "v$version"
 version_scheme = "pep440"
-version_provider = "pep621"
+version_provider = "uv"
 update_changelog_on_bump = true
 changelog_file = "CHANGELOG.md"
+template = "changelog_template.md.j2"
+change_type_map = { feat = "Added", fix = "Fixed", refactor = "Changed", perf = "Changed", docs = "Changed" }
+change_type_order = ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"]
+
+[tool.deptry]
+known_first_party = ["django_dbos"]
+
+[tool.deptry.per_rule_ignores]
+# The shipped pytest plugin legitimately imports pytest and testcontainers:
+# these are test-group dependencies required at runtime for anyone using the
+# fixtures (declared via the pytest11 entry point).
+DEP004 = ["pytest", "testcontainers"]

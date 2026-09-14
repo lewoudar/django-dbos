@@ -11,6 +11,14 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+  - repo: https://github.com/osprey-oss/deptry.git
+    rev: 0c39226d761685125c5ff71ca81282d6751c9540 # 0.25.1
+    hooks:
+      - id: deptry
+        # The upstream hook hardcodes `deptry .` and would flag the test/dev
+        # tooling; scan only the shipped package.
+        entry: deptry django_dbos
+        pass_filenames: false
   - repo: https://github.com/zizmorcore/zizmor-pre-commit
     rev: v1.14.0
     hooks:

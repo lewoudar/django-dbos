@@ -16,22 +16,22 @@ def _under_runserver_reloader_parent() -> bool:
     Both the parent and the child import the app config; only the child
     actually serves requests (``RUN_MAIN``), so only it should initialize DBOS.
     """
-    if "runserver" not in sys.argv:
+    if 'runserver' not in sys.argv:
         return False
-    return os.environ.get("RUN_MAIN") != "true"
+    return os.environ.get('RUN_MAIN') != 'true'
 
 
 class DjangoDbosConfig(AppConfig):
-    name = "django_dbos"
-    verbose_name = "Django DBOS"
-    default_auto_field = "django.db.models.BigAutoField"
+    name = 'django_dbos'
+    verbose_name = 'Django DBOS'
+    default_auto_field = 'django.db.models.BigAutoField'
 
     def ready(self) -> None:
         from . import admin, dbos_setup
 
         admin.register_admin_sites()
 
-        if not settings_module.get_dbos_setting("AUTO_INIT", True):
+        if not settings_module.get_dbos_setting('AUTO_INIT', True):
             return
         if _under_runserver_reloader_parent():
             return
