@@ -1,18 +1,23 @@
 [project]
-site_url = "https://www.example.com/"
-site_name = "Documentation"
-# site_description = "Your project description"
+site_url = "https://lewoudar.github.io/django-dbos/"
+site_name = "django-dbos"
+site_description = "DBOS-backed backend for Django's tasks framework: durable background tasks, cron scheduling and optional Sentry monitoring."
 # site_author = "Your name"
 
-# copyright = "Copyright &copy; 2026 Your name"
+copyright = "Copyright &copy; 2026 Kevin Tewouda"
 
-# repo_url = "https://github.com/user/repo"
-# repo_name = "user/repo"
+repo_url = "https://github.com/lewoudar/django-dbos"
+repo_name = "lewoudar/django-dbos"
 # edit_uri = "edit/main/docs/"
 
 nav = [
-  { "Get started" = "index.md" },
-  { "Markdown in 5min" = "markdown.md" },
+  { "Home" = "index.md" },
+  { "Configuration" = "configuration.md" },
+  { "Tasks" = "tasks.md" },
+  { "Cron scheduling" = "cron.md" },
+  { "Admin" = "admin.md" },
+  { "Worker capacity" = "status.md" },
+  { "Testing" = "testing.md" },
 ]
 
 # extra_css = ["stylesheets/extra.css"]
