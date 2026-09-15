@@ -51,6 +51,7 @@ class DbosSettings:
     system_database_url: str
     application_version: str | None = None
     dbos_system_schema: str | None = None
+    executor_id: str | None = None
     queues: tuple[QueueConfig, ...] = field(default_factory=tuple)
 
 
@@ -120,6 +121,19 @@ def resolve_app_name() -> str:
     return str(get_dbos_setting('NAME') or os.environ.get('DBOS_APPLICATION_NAME') or 'django')
 
 
+def resolve_executor_id() -> str | None:
+    """Identity of this worker process for DBOS (``executor_id``).
+
+    Resolved from ``DJANGO_DBOS["EXECUTOR_ID"]``, then the ``DBOS__VMID``
+    environment variable DBOS itself honours; ``None`` leaves DBOS' default
+    (``"local"``). Workflow rows, recovery on restart and worker heartbeats
+    are all keyed by it, so give each worker instance a *stable* identity
+    (e.g. ``FLY_MACHINE_ID`` on fly.io, the pod name on Kubernetes).
+    """
+    executor_id = get_dbos_setting('EXECUTOR_ID') or os.environ.get('DBOS__VMID')
+    return str(executor_id) if executor_id else None
+
+
 def resolve_queues() -> tuple[QueueConfig, ...]:
     """Resolve declared DBOS queues.
 
@@ -147,5 +161,6 @@ def resolve_settings() -> DbosSettings:
         system_database_url=resolve_system_database_url(),
         application_version=get_dbos_setting('APPLICATION_VERSION'),
         dbos_system_schema=get_dbos_setting('SYSTEM_DB_SCHEMA'),
+        executor_id=resolve_executor_id(),
         queues=queues,
     )

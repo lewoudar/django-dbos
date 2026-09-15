@@ -38,7 +38,7 @@ DJANGO_DBOS = {
 | `SYSTEM_DB_PREFIX` | `"dbos_"` | Prefix of the derived system database name. |
 | `SYSTEM_DB_SCHEMA` | `"dbos"` | Schema holding DBOS system tables (PostgreSQL). |
 | `QUEUES` | `{"default": None}` | Declared queues and their options (see below). |
-| `AUTO_INIT` | `True` | Initialize DBOS on app ready (disable to control it yourself). |
+| `EXECUTOR_ID` | `DBOS__VMID` env, else `"local"` | Identity of a worker instance (see [Executor identity](#executor-identity)). |
 | `SCHEDULER_POLLING_INTERVAL_SEC` | `30.0` | How often the scheduler thread looks for new schedules. |
 
 ## Queues
@@ -90,3 +90,23 @@ which is why django-dbos ships a migration.
 Use `--no-scheduler` to run a worker that does not manage cron schedules
 (useful when running several workers behind a load balancer and you want a
 dedicated scheduler).
+
+### Executor identity
+
+DBOS records an `executor_id` on every workflow a worker runs, and a
+restarting worker recovers the interrupted workflows *of its own id*. By
+default every worker is `"local"`, which works but makes them
+indistinguishable in reports. Give each worker instance a **stable**
+identity — stable across restarts of the same instance, distinct between
+instances:
+
+```python
+import os
+
+DJANGO_DBOS = {
+    'EXECUTOR_ID': os.environ.get('FLY_MACHINE_ID'),  # fly.io; the pod name on Kubernetes, ...
+}
+```
+
+`None` falls back to the `DBOS__VMID` environment variable DBOS itself reads,
+then to `"local"`.
