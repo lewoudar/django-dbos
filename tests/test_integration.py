@@ -11,6 +11,7 @@ from django.tasks import TaskResultStatus
 from django.utils import timezone
 
 from django_dbos.scheduling import register_cron_schedules
+from django_dbos.tasks_registry import workflow_name_for_task
 
 from . import tasks as tasks_module
 from .conftest import wait_for_result
@@ -22,6 +23,8 @@ from .tasks import (
     flaky_calls,
     flaky_with_retries,
     send_email,
+    slow_cron_task,
+    slow_task,
 )
 
 pytestmark = pytest.mark.integration
@@ -90,3 +93,25 @@ def test_cron_schedule_created_and_fires(dbos_environment):
     while time.monotonic() < deadline and not tasks_module.cron_runs:
         time.sleep(0.5)
     assert tasks_module.cron_runs, 'cron task did not fire within 15s'
+
+
+def test_workflow_timeout_cancels_an_enqueued_task(dbos_environment):
+    result = wait_for_result(slow_task.enqueue(), TaskResultStatus.FAILED, timeout=15)
+    status = DBOS.get_workflow_status(result.id)
+    assert status is not None
+    assert str(status.status) == 'CANCELLED'
+
+
+def test_workflow_timeout_applies_to_cron_firings(dbos_environment):
+    register_cron_schedules()
+    # Each firing runs the task's regular workflow as a child: the timeout
+    # cancels that child, under the same name enqueued executions use.
+    child_name = workflow_name_for_task(slow_cron_task)
+
+    deadline = time.monotonic() + 25
+    cancelled: list = []
+    while time.monotonic() < deadline and not cancelled:
+        cancelled = DBOS.list_workflows(name=child_name, status='CANCELLED', load_input=False, load_output=False)
+        time.sleep(0.5)
+    assert cancelled, 'no cron firing was cancelled by its workflow_timeout within 25s'
+    assert all(status.schedule_name is None for status in cancelled)  # the child, not the schedule's parent

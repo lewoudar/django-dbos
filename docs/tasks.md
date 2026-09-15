@@ -92,7 +92,7 @@ def cleanup(): ...
 | `step_backoff_rate` | `2.0` | Multiplier applied to the interval after each failure. |
 | `deduplication_id` | `None` | While a workflow with this ID is enqueued or running, further enqueues raise an error. |
 | `queue_partition_key` | `None` | Partition key for partitioned queues. |
-| `workflow_timeout` | `None` | Max wall-clock duration of the whole execution, in seconds. |
+| `workflow_timeout` | `None` | Max wall-clock duration of the whole execution, in seconds, counted from the moment a worker starts it (time spent waiting in the queue or in `run_after` does not count). The task is cancelled at the deadline and its result reports `FAILED`. |
 | `max_recovery_attempts` | DBOS default | Recovery attempts after a worker crash. |
 | `durable_operations` | `False` | Enable durable primitives inside the task (see below). |
 

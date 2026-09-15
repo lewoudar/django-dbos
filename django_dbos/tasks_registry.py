@@ -171,6 +171,12 @@ def register_task_workflow(task: DBOSTask) -> str:
     return name
 
 
+def task_workflow(task: DBOSTask) -> Any:
+    """The registered DBOS workflow function executing ``task`` (registering it if needed)."""
+    name = register_task_workflow(task)
+    return _get_or_create_dbos_registry().workflow_info_map[name]
+
+
 def register_all_task_workflows() -> None:
     """Register a DBOS workflow for every task declared in this process.
 

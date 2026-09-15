@@ -1,6 +1,7 @@
 """Tasks used by the test suite (module-level, as required by django.tasks)."""
 
 import asyncio
+import time
 
 from django.tasks import task
 
@@ -73,3 +74,16 @@ def scheduled_cleanup() -> str:
 @cron('*/5 * * * *')
 @task(backend='dbos')
 def cron_task() -> None: ...
+
+
+@dbos_params(workflow_timeout=1)
+@task(backend='dbos')
+def slow_task() -> None:
+    time.sleep(2)
+
+
+@cron('*/5 * * * * *')  # every 5 seconds: each firing keeps sleeping 2 s once cancelled
+@dbos_params(workflow_timeout=1)
+@task(backend='dbos')
+def slow_cron_task() -> None:
+    time.sleep(2)

@@ -17,9 +17,18 @@ leading seconds field is also accepted (DBOS supports sub-minute schedules).
 
 Schedules are managed by DBOS, not by the Django process: the worker registers
 them in the system database (idempotently, on `dbos_worker` startup) and DBOS
-fires them even across restarts and deployments. Scheduled executions go
-through the task's queue and benefit from the same durability and retries as
-regular tasks.
+fires them even across restarts and deployments. Each firing runs the task's
+regular workflow (the one `.enqueue()` uses) as a child on the task's queue,
+so scheduled and enqueued executions share a workflow name in the admin and
+in `dbos_status`, and every `@dbos_params` option — step retries,
+`workflow_timeout`, `max_recovery_attempts` — applies to both:
+
+```python
+@cron('0 3 * * *')
+@dbos_params(workflow_timeout=3600, step_retries_allowed=True)
+@task
+def nightly_report(): ...
+```
 
 !!! note
     Scheduled tasks must not require arguments. django-dbos validates this when

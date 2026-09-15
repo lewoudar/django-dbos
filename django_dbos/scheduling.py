@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from croniter import croniter
-from dbos import DBOS
+from dbos import DBOS, SetWorkflowTimeout
 
 from .exceptions import ImproperlyConfiguredDbos
 from .logging import logger
@@ -151,26 +151,39 @@ def _django_timezone() -> Any:
 
 
 def _register_scheduled_workflow(task: DBOSTask) -> Any:
-    """Register the workflow executed on each cron firing: the task body."""
+    """Register the workflow fired by the schedule.
+
+    It is a thin parent: each firing runs the task's regular workflow (the one
+    enqueues use, ``django_dbos.tasks.<module path>``) as a child, so cron and
+    enqueued executions share a workflow name — and the task's DBOS options
+    (``workflow_timeout``, ``max_recovery_attempts``, step retries) apply to
+    both. ``SetWorkflowTimeout`` is how DBOS scopes a timeout to a child
+    started from a workflow; schedules themselves carry none.
+    """
     from dbos._dbos import _get_or_create_dbos_registry
 
-    from .tasks_registry import aexecute_task_body, execute_task_body
+    from .tasks_registry import task_workflow
 
     name = schedule_name_for_task(task)
     if name in _get_or_create_dbos_registry().workflow_info_map:
         return _get_workflow(name)
 
+    child = task_workflow(task)
+    timeout = task.dbos_params.workflow_timeout
+
     if inspect.iscoroutinefunction(task.func):
 
         @DBOS.workflow(name=name)
         async def scheduled_workflow(scheduled_time: Any, context: Any) -> Any:
-            return await aexecute_task_body(task, (), {})
+            with SetWorkflowTimeout(timeout):
+                return await child()
 
     else:
 
         @DBOS.workflow(name=name)
         def scheduled_workflow(scheduled_time: Any, context: Any) -> Any:
-            return execute_task_body(task, (), {})
+            with SetWorkflowTimeout(timeout):
+                return child()
 
     return _get_workflow(name)
 
