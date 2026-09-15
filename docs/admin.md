@@ -1,8 +1,9 @@
 # Admin
 
 django-dbos registers custom pages in the Django admin to inspect and operate
-on DBOS workflows — no models, no migrations: the pages read the DBOS system
-database through the DBOS Python API.
+on DBOS workflows. The pages read the DBOS system database through a
+`DBOSClient`: the web process never launches DBOS, so it never executes a
+task. A read-only **Worker heartbeats** model lists the live workers.
 
 !!! note
     Access requires the Django admin (`django.contrib.admin` in

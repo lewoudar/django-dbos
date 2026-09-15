@@ -47,6 +47,20 @@ def _enqueue_sample_workflow() -> Any:
 
 
 class TestWorkflowPages:
+    def test_pages_never_launch_dbos(self, admin_client, dbos_environment, mocker):
+        # The admin reads the system database through the client; launching
+        # DBOS would turn the web process into a worker.
+        ensure_launched = mocker.patch('django_dbos.dbos_setup.ensure_launched')
+        ensure_initialized = mocker.patch('django_dbos.dbos_setup.ensure_initialized')
+        result = _enqueue_sample_workflow()
+
+        assert admin_client.get('/admin/dbos/workflows/').status_code == 200
+        assert admin_client.get(f'/admin/dbos/workflows/{result.id}/').status_code == 200
+        assert admin_client.get('/admin/dbos/schedules/').status_code == 200
+
+        ensure_launched.assert_not_called()
+        ensure_initialized.assert_not_called()
+
     def test_workflow_list_shows_enqueued_task(self, admin_client, dbos_environment):
         result = _enqueue_sample_workflow()
         response = admin_client.get('/admin/dbos/workflows/')

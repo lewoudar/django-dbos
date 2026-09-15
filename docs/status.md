@@ -21,7 +21,9 @@ No workflow exhausted its recovery attempts.
 
 ## What it measures
 
-Everything comes from the DBOS system database — no agent, nothing to deploy:
+Queue and executor figures come from the DBOS system database, read through
+a `DBOSClient` (the command never launches DBOS: it can run anywhere, a cron
+job or a web instance included):
 
 - **Backlog** per queue: workflows enqueued and waiting (ENQUEUED/PENDING), and
   the age of the oldest waiting workflow.

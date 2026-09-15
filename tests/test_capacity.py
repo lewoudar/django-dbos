@@ -84,6 +84,13 @@ class TestAdviseQueue:
 @pytest.mark.integration
 @pytest.mark.django_db
 class TestCollect:
+    def test_collect_never_launches_dbos(self, dbos_environment, mocker):
+        # The report reads the system database through the client: launching
+        # DBOS would turn the calling process into a worker.
+        ensure_launched = mocker.patch('django_dbos.dbos_setup.ensure_launched')
+        capacity.collect()
+        ensure_launched.assert_not_called()
+
     def test_collect_reports_delayed_workflows(self, dbos_environment):
         deferred = add.using(run_after=timezone.now() + timedelta(hours=1))
         deferred.enqueue(1, 2)

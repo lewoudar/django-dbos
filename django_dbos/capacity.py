@@ -1,12 +1,13 @@
 """Worker capacity diagnostics for django-dbos.
 
-Everything here comes from the DBOS system database: queue backlogs, waiting
+Everything here comes from the DBOS system database (read through the
+process-wide ``DBOSClient``, never by launching DBOS): queue backlogs, waiting
 times and per-executor load — plus worker heartbeats pushed by the workers
 themselves into the Django database (see ``heartbeat.py``).
 
 The heuristics are deliberately simple (see ``advise_queue``); for real
-capacity planning, expose these numbers to a monitoring system (Prometheus,
-etc.).
+capacity planning, feed :func:`collect` to a monitoring system (Prometheus,
+etc.) or an autoscaling script.
 """
 
 from __future__ import annotations
@@ -14,9 +15,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from dbos import DBOS
-
-from .dbos_setup import ensure_launched
+from .client import get_client
 from .heartbeat import read_heartbeats
 
 #: A backlog older than this (its oldest enqueued workflow) means the queue is
@@ -30,15 +29,12 @@ ACTIVE_STATUSES = ('ENQUEUED', 'PENDING', 'DELAYED', 'RUNNING')
 
 
 def _sys_db() -> Any:
-    """The DBOS SystemDatabase (launched).
+    """The client's SystemDatabase.
 
-    Accesses the private SDK instance because the workflow aggregates are not
-    (yet) exposed on the public ``DBOS`` class.
+    Accesses the private attribute because the workflow aggregates are not
+    (yet) exposed on the public ``DBOSClient`` class.
     """
-    ensure_launched()
-    from dbos._dbos import _get_dbos_instance
-
-    return _get_dbos_instance()._sys_db
+    return get_client()._sys_db
 
 
 def _active_status_aggregates() -> list[dict[str, Any]]:
@@ -66,7 +62,7 @@ def _recovery_exceeded_count() -> int:
 
 def _queue_capacities() -> dict[str, dict[str, Any]]:
     capacities: dict[str, dict[str, Any]] = {}
-    for queue in DBOS.list_queues():
+    for queue in get_client().list_queues():
         capacities[queue.name] = {
             'worker_concurrency': queue.worker_concurrency,
             'global_concurrency': queue.concurrency,

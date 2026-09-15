@@ -1,7 +1,8 @@
 """Admin views for django-dbos: workflows, steps, schedules and actions.
 
-These are custom admin pages (not ModelAdmin): they read from the DBOS Python
-API against the system database, with the DBOS singleton launched.
+These are custom admin pages (not ModelAdmin): they read and act on the DBOS
+system database through the process-wide ``DBOSClient`` — the web process
+never launches DBOS itself, so it never executes workflows.
 """
 
 from __future__ import annotations
@@ -10,12 +11,13 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
+from dbos._error import DBOSNonExistentWorkflowError
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
 
-from .dbos_setup import ensure_launched
+from .client import get_client
 from .exceptions import ImproperlyConfiguredDbos
 from .logging import logger
 
@@ -37,7 +39,7 @@ WORKFLOW_STATUSES = list(STATUS_BADGES)
 
 
 def _dbos_view(view: Any) -> Any:
-    """Wrap an admin view: require the superuser and ensure DBOS is launched.
+    """Wrap an admin view: require the superuser and a configured DBOS client.
 
     ``site.admin_view`` already enforces staff-only access; these pages also
     expose destructive operations and every workflow's data, so they are
@@ -48,7 +50,7 @@ def _dbos_view(view: Any) -> Any:
         if not request.user.is_active or not request.user.is_superuser:
             raise PermissionDenied('django-dbos admin pages are restricted to superusers.')
         try:
-            ensure_launched()
+            get_client()
         except ImproperlyConfiguredDbos as exc:
             return render(
                 request,
@@ -71,9 +73,11 @@ def _pretty(value: Any) -> str | None:
         return str(value)
 
 
-def _epoch_ms(value: int | None) -> datetime | None:
+def _epoch_ms(value: int | str | None) -> datetime | str | None:
     if value is None:
         return None
+    if isinstance(value, str):  # schedules store timestamps as ISO strings
+        return value
     return datetime.fromtimestamp(value / 1000, tz=UTC)
 
 
@@ -107,8 +111,6 @@ def _page_number(value: str | None) -> int:
 
 @_dbos_view
 def workflow_list(request: HttpRequest) -> HttpResponse:
-    from dbos import DBOS
-
     status_filter = request.GET.get('status') or None
     queue_filter = request.GET.get('queue') or None
     name_filter = request.GET.get('name') or None
@@ -116,7 +118,7 @@ def workflow_list(request: HttpRequest) -> HttpResponse:
     page = _page_number(request.GET.get('page'))
     offset = (page - 1) * PAGE_SIZE
 
-    workflows = DBOS.list_workflows(
+    workflows = get_client().list_workflows(
         status=status_filter,
         queue_name=queue_filter,
         name=name_filter,
@@ -151,23 +153,19 @@ def workflow_list(request: HttpRequest) -> HttpResponse:
 
 
 def _get_workflow_or_404(workflow_id: str) -> Any:
-    from dbos import DBOS
-
-    status = DBOS.get_workflow_status(workflow_id)
-    if status is None:
-        raise Http404(f'No workflow found with id {workflow_id!r}')
-    return status
+    try:
+        return get_client().retrieve_workflow(workflow_id).get_status()
+    except DBOSNonExistentWorkflowError:
+        raise Http404(f'No workflow found with id {workflow_id!r}') from None
 
 
 @_dbos_view
 def workflow_detail(request: HttpRequest, workflow_id: str) -> HttpResponse:
-    from dbos import DBOS
-
     status = _get_workflow_or_404(workflow_id)
     django_status = status.status.value if hasattr(status.status, 'value') else str(status.status)
 
     steps = []
-    for step in DBOS.list_workflow_steps(workflow_id, load_output=True):
+    for step in get_client().list_workflow_steps(workflow_id, load_output=True):
         duration_ms = None
         if step.get('started_at_epoch_ms') is not None and step.get('completed_at_epoch_ms') is not None:
             duration_ms = step['completed_at_epoch_ms'] - step['started_at_epoch_ms']
@@ -212,47 +210,39 @@ def workflow_detail(request: HttpRequest, workflow_id: str) -> HttpResponse:
 
 @_dbos_view
 def workflow_cancel(request: HttpRequest, workflow_id: str) -> HttpResponse:
-    from dbos import DBOS
-
     if request.method != 'POST':
         return HttpResponseRedirect(reverse('admin:django_dbos_workflow_detail', args=[workflow_id]))
     _get_workflow_or_404(workflow_id)
-    DBOS.cancel_workflow(workflow_id)
+    get_client().cancel_workflow(workflow_id)
     logger.info('admin: cancelled workflow', workflow_id=workflow_id, user=request.user.pk)
     return _redirect_to_workflow(workflow_id)
 
 
 @_dbos_view
 def workflow_resume(request: HttpRequest, workflow_id: str) -> HttpResponse:
-    from dbos import DBOS
-
     if request.method != 'POST':
         return HttpResponseRedirect(reverse('admin:django_dbos_workflow_detail', args=[workflow_id]))
     _get_workflow_or_404(workflow_id)
-    DBOS.resume_workflow(workflow_id)
+    get_client().resume_workflow(workflow_id)
     logger.info('admin: resumed workflow', workflow_id=workflow_id, user=request.user.pk)
     return _redirect_to_workflow(workflow_id)
 
 
 @_dbos_view
 def workflow_fork(request: HttpRequest, workflow_id: str) -> HttpResponse:
-    from dbos import DBOS
-
     if request.method != 'POST':
         return HttpResponseRedirect(reverse('admin:django_dbos_workflow_detail', args=[workflow_id]))
     _get_workflow_or_404(workflow_id)
-    handle = DBOS.fork_workflow(workflow_id, 0)
+    handle = get_client().fork_workflow(workflow_id, 0)
     logger.info('admin: forked workflow', workflow_id=workflow_id, fork=handle.workflow_id, user=request.user.pk)
     return _redirect_to_workflow(handle.workflow_id)
 
 
 @_dbos_view
 def workflow_delete(request: HttpRequest, workflow_id: str) -> HttpResponse:
-    from dbos import DBOS
-
     _get_workflow_or_404(workflow_id)
     if request.method == 'POST':
-        DBOS.delete_workflow(workflow_id)
+        get_client().delete_workflow(workflow_id)
         logger.info('admin: deleted workflow', workflow_id=workflow_id, user=request.user.pk)
         return HttpResponseRedirect(reverse('admin:django_dbos_workflow_changelist'))
 
@@ -288,9 +278,7 @@ def _schedule_row(schedule: dict[str, Any]) -> dict[str, Any]:
 
 @_dbos_view
 def schedule_list(request: HttpRequest) -> HttpResponse:
-    from dbos import DBOS
-
-    rows = [_schedule_row(schedule) for schedule in DBOS.list_schedules()]
+    rows = [_schedule_row(schedule) for schedule in get_client().list_schedules()]
     return render(
         request,
         'admin/django_dbos/schedule_list.html',
@@ -303,9 +291,7 @@ def _redirect_to_schedules() -> HttpResponseRedirect:
 
 
 def _get_schedule_or_404(schedule_name: str) -> Any:
-    from dbos import DBOS
-
-    schedule = DBOS.get_schedule(schedule_name)
+    schedule = get_client().get_schedule(schedule_name)
     if schedule is None:
         raise Http404(f'No schedule found with name {schedule_name!r}')
     return schedule
@@ -313,33 +299,27 @@ def _get_schedule_or_404(schedule_name: str) -> Any:
 
 @_dbos_view
 def schedule_pause(request: HttpRequest, schedule_name: str) -> HttpResponse:
-    from dbos import DBOS
-
     _get_schedule_or_404(schedule_name)
     if request.method == 'POST':
-        DBOS.pause_schedule(schedule_name)
+        get_client().pause_schedule(schedule_name)
         logger.info('admin: paused schedule', schedule_name=schedule_name, user=request.user.pk)
     return _redirect_to_schedules()
 
 
 @_dbos_view
 def schedule_resume(request: HttpRequest, schedule_name: str) -> HttpResponse:
-    from dbos import DBOS
-
     _get_schedule_or_404(schedule_name)
     if request.method == 'POST':
-        DBOS.resume_schedule(schedule_name)
+        get_client().resume_schedule(schedule_name)
         logger.info('admin: resumed schedule', schedule_name=schedule_name, user=request.user.pk)
     return _redirect_to_schedules()
 
 
 @_dbos_view
 def schedule_delete(request: HttpRequest, schedule_name: str) -> HttpResponse:
-    from dbos import DBOS
-
     _get_schedule_or_404(schedule_name)
     if request.method == 'POST':
-        DBOS.delete_schedule(schedule_name)
+        get_client().delete_schedule(schedule_name)
         logger.info('admin: deleted schedule', schedule_name=schedule_name, user=request.user.pk)
         return _redirect_to_schedules()
 

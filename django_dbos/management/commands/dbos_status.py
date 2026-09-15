@@ -7,7 +7,7 @@ from typing import Any
 
 from django.core.management.base import BaseCommand
 
-from django_dbos import capacity, discovery
+from django_dbos import capacity
 
 _ADVICE_STYLES = {'SCALE_UP': 'ERROR', 'SCALE_DOWN': 'WARNING', 'OK': 'SUCCESS'}
 
@@ -31,8 +31,6 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args: Any, **options: Any) -> None:
-        discovery.autodiscover_tasks()
-
         queue_filter = [name.strip() for name in options['queues'].split(',') if name.strip()] or None
         report = capacity.collect(queues=queue_filter)
 
