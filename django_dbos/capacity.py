@@ -2,7 +2,7 @@
 
 Everything here comes from the DBOS system database: queue backlogs, waiting
 times and per-executor load — plus worker heartbeats pushed by the workers
-themselves through Django's cache (see ``heartbeat.py``).
+themselves into the Django database (see ``heartbeat.py``).
 
 The heuristics are deliberately simple (see ``advise_queue``); for real
 capacity planning, expose these numbers to a monitoring system (Prometheus,
@@ -78,10 +78,11 @@ def collect(queues: list[str] | None = None) -> dict[str, Any]:
     """Collect worker capacity metrics from the DBOS system database.
 
     Returns a dict with per-queue load (backlog, waiting age, running, declared
-    concurrency, advice), per-executor running counts and the number of
-    workflows that exhausted their recovery attempts. Pass ``queues`` to
-    restrict the report to specific queue names. All declared queues (see
-    ``DJANGO_DBOS["QUEUES"]``) always appear in the report, even when idle.
+    concurrency, advice), per-executor running counts, the live worker
+    heartbeats and the number of workflows that exhausted their recovery
+    attempts. Pass ``queues`` to restrict the report to specific queue names.
+    All declared queues (see ``DJANGO_DBOS["QUEUES"]``) always appear in the
+    report, even when idle.
     """
     from .settings import resolve_queues
 
@@ -118,7 +119,8 @@ def collect(queues: list[str] | None = None) -> dict[str, Any]:
         _ingest_aggregate_row(row, queue_metrics, executors, now)
         queue_metrics['advice'] = advise_queue(queue_metrics)
 
-    executor_ids = set(executors) | _recent_executor_ids()
+    workers = read_heartbeats()
+    executor_ids = set(executors) | _recent_executor_ids() | {worker['executor_id'] for worker in workers}
     # Executors that ran recently but have nothing active right now still
     # belong to the report: their missing heartbeat is the signal.
     executors_report = {
@@ -127,7 +129,7 @@ def collect(queues: list[str] | None = None) -> dict[str, Any]:
     return {
         'queues': queues_metrics,
         'executors': executors_report,
-        'worker_heartbeats': read_heartbeats(executor_ids),
+        'workers': workers,
         'max_recovery_attempts_exceeded': _recovery_exceeded_count(),
     }
 

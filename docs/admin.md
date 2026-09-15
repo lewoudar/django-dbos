@@ -58,9 +58,10 @@ DJANGO_DBOS = {
     rejected (403). On a deployment where superusers are not fully trusted,
     set `ADMIN_ENABLED` to `False`.
 
-!!! note
-    The pages require the DBOS singleton to be launched: opening them runs
-    `ensure_launched()`, which starts DBOS' background threads in the web
-    process. In a split deployment (web + workers), consider pointing the
-    admin at a deployment where this is acceptable, or serve it read-only
-    behind your usual access controls.
+## Worker heartbeats
+
+**Home › Django DBOS › Worker heartbeats** lists every worker process that
+reported recently: executor id, host, pid, served queues, CPU/RSS (with the
+`[metrics]` extra) and last-seen time. Rows are written by the workers
+themselves (see [Worker capacity](status.md)); the page is read-only and
+superuser-only, like the DBOS pages.

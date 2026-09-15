@@ -1,34 +1,40 @@
-"""Worker heartbeats: live worker metrics through Django's cache framework.
+"""Worker heartbeats: liveness and load of worker processes, in the Django database.
 
-Workers periodically push a heartbeat (process metrics via psutil when the
-``[metrics]`` extra is installed) to a cache key keyed by executor id. Diagnostics
-(the ``dbos_status`` command, the admin) read these keys back.
+Each ``dbos_worker`` periodically upserts a :class:`~django_dbos.models.WorkerHeartbeat`
+row (process metrics via psutil when the ``[metrics]`` extra is installed)
+and deletes it on clean shutdown. Diagnostics (``dbos_status``, the admin)
+read the rows back: a row whose ``last_seen_at`` is older than
+:data:`STALE_AFTER_SECONDS` belongs to a worker that died without cleaning up.
 
-This mirrors Conductor's push model, using Django's cache as the channel: with
-a shared cache (Redis, db) the heartbeats are visible from any process; with
-``LocMemCache`` each worker only sees its own (the section then degrades
-gracefully). The cache TTL makes dead workers disappear by itself — a missing
-heartbeat means a stale worker.
+This mirrors DBOS Conductor's push model with the Django database as the
+channel — it works wherever the ORM does, from any process, without a
+shared cache. Rows are keyed per process (``executor_id@hostname:pid``), so
+workers sharing an ``executor_id`` (DBOS' default ``"local"``) stay apart.
 """
 
 from __future__ import annotations
 
+import os
+import socket
 import threading
+from datetime import datetime, timedelta
 from typing import Any
 
-from django.core.cache import cache
+from django.db import DatabaseError, close_old_connections
+from django.utils import timezone
 
 from .logging import logger
 
 HEARTBEAT_INTERVAL_SECONDS = 10.0
-HEARTBEAT_TTL_SECONDS = 30.0
-HEARTBEAT_KEY_PREFIX = 'django_dbos:worker_heartbeat:'
+#: A heartbeat older than this means the worker died without cleaning up.
+STALE_AFTER_SECONDS = 30.0
+#: Stale rows older than this are purged by the next heartbeat write.
+PURGE_AFTER_SECONDS = 24 * 3600.0
 
-_sentinel = object()
 
-
-def _cache_key(executor_id: str) -> str:
-    return f'{HEARTBEAT_KEY_PREFIX}{executor_id}'
+def worker_id(executor_id: str) -> str:
+    """Unique identity of this process: ``executor_id@hostname:pid``."""
+    return f'{executor_id}@{socket.gethostname()}:{os.getpid()}'
 
 
 def _local_metrics() -> dict[str, Any] | None:
@@ -42,55 +48,123 @@ def _local_metrics() -> dict[str, Any] | None:
     return {
         'cpu_percent': process.cpu_percent(interval=None),
         'memory_rss_mb': round(process.memory_info().rss / 1024 / 1024, 1),
-        'pid': process.pid,
     }
 
 
-def write_heartbeat(executor_id: str, has_metrics: bool) -> bool:
-    """Push this worker's heartbeat to the shared cache.
+def write_heartbeat(
+    executor_id: str,
+    *,
+    queues: list[str] | tuple[str, ...] = (),
+    has_metrics: bool = False,
+    started_at: datetime | None = None,
+) -> bool:
+    """Upsert this worker's heartbeat row. Returns False when the database write failed."""
+    from .models import WorkerHeartbeat
 
-    Returns False when the cache is not shared/available (LocMemCache can only
-    be read back by the writing process).
-    """
-    payload: dict[str, Any] = {'executor_id': executor_id, 'has_metrics': has_metrics}
+    now = timezone.now()
+    values: dict[str, Any] = {
+        'executor_id': executor_id,
+        'hostname': socket.gethostname(),
+        'pid': os.getpid(),
+        'queues': list(queues),
+        'has_metrics': has_metrics,
+        'cpu_percent': None,
+        'memory_rss_mb': None,
+        'last_seen_at': now,
+    }
     if has_metrics:
         metrics = _local_metrics()
         if metrics is not None:
-            payload |= metrics
+            values |= metrics
     try:
-        cache.set(_cache_key(executor_id), payload, timeout=HEARTBEAT_TTL_SECONDS)
+        WorkerHeartbeat.objects.update_or_create(
+            worker_id=worker_id(executor_id),
+            defaults=values,
+            create_defaults={**values, 'started_at': started_at or now},
+        )
+        WorkerHeartbeat.objects.filter(last_seen_at__lt=now - timedelta(seconds=PURGE_AFTER_SECONDS)).delete()
         return True
-    except Exception as exc:
+    except DatabaseError as exc:
         logger.warning('could not write worker heartbeat', error=str(exc))
         return False
+    finally:
+        close_old_connections()
 
 
-def read_heartbeats(executor_ids: Any) -> dict[str, Any]:
-    """Read heartbeats for the given executor ids (missing ones are omitted)."""
-    heartbeats: dict[str, Any] = {}
-    for executor_id in executor_ids:
-        payload = cache.get(_cache_key(executor_id), _sentinel)
-        if payload is not _sentinel:
-            heartbeats[executor_id] = payload
-    return heartbeats
+def delete_heartbeat(executor_id: str) -> None:
+    """Remove this worker's row (clean shutdown)."""
+    from .models import WorkerHeartbeat
+
+    try:
+        WorkerHeartbeat.objects.filter(worker_id=worker_id(executor_id)).delete()
+    except DatabaseError as exc:
+        logger.warning('could not delete worker heartbeat', error=str(exc))
+    finally:
+        close_old_connections()
+
+
+def _serialize(heartbeat: Any, now: datetime) -> dict[str, Any]:
+    age = (now - heartbeat.last_seen_at).total_seconds()
+    return {
+        'worker_id': heartbeat.worker_id,
+        'executor_id': heartbeat.executor_id,
+        'hostname': heartbeat.hostname,
+        'pid': heartbeat.pid,
+        'queues': list(heartbeat.queues or []),
+        'has_metrics': heartbeat.has_metrics,
+        'cpu_percent': heartbeat.cpu_percent,
+        'memory_rss_mb': heartbeat.memory_rss_mb,
+        'started_at': heartbeat.started_at,
+        'last_seen_at': heartbeat.last_seen_at,
+        'alive': age <= STALE_AFTER_SECONDS,
+    }
+
+
+def read_heartbeats(*, include_stale: bool = False) -> list[dict[str, Any]]:
+    """Heartbeats of the workers, as plain dicts (alive ones only by default).
+
+    Returns an empty list (with a warning) when the table is missing, i.e.
+    the ``django_dbos`` migrations have not been applied yet.
+    """
+    from .models import WorkerHeartbeat
+
+    now = timezone.now()
+    try:
+        queryset = WorkerHeartbeat.objects.all()
+        if not include_stale:
+            queryset = queryset.filter(last_seen_at__gte=now - timedelta(seconds=STALE_AFTER_SECONDS))
+        return [_serialize(heartbeat, now) for heartbeat in queryset]
+    except DatabaseError as exc:
+        logger.warning(
+            'could not read worker heartbeats (are the django_dbos migrations applied?)',
+            error=str(exc),
+        )
+        return []
 
 
 class HeartbeatThread(threading.Thread):
     """Background thread pushing this worker's heartbeat until stopped."""
 
-    def __init__(self, executor_id: str, has_metrics: bool) -> None:
+    def __init__(self, executor_id: str, *, queues: tuple[str, ...] = (), has_metrics: bool = False) -> None:
         super().__init__(name='django-dbos-heartbeat', daemon=True)
         self._executor_id = executor_id
+        self._queues = queues
         self._has_metrics = has_metrics
+        self._started_at = timezone.now()
         self._stop_event = threading.Event()
 
     def run(self) -> None:
         logger.info('worker heartbeat thread started', executor_id=self._executor_id)
-        while not self._stop_event.wait(timeout=0.0):
-            write_heartbeat(self._executor_id, self._has_metrics)
-            self._stop_event.wait(timeout=HEARTBEAT_INTERVAL_SECONDS)
-        # Final write so the key outlives the worker shutdown log noise.
-        write_heartbeat(self._executor_id, self._has_metrics)
+        while True:
+            write_heartbeat(
+                self._executor_id,
+                queues=self._queues,
+                has_metrics=self._has_metrics,
+                started_at=self._started_at,
+            )
+            if self._stop_event.wait(timeout=HEARTBEAT_INTERVAL_SECONDS):
+                break
+        delete_heartbeat(self._executor_id)
 
     def stop(self) -> None:
         self._stop_event.set()

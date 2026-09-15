@@ -10,6 +10,7 @@ from typing import Any
 from django.core.management.base import BaseCommand
 
 from django_dbos import dbos_setup, discovery
+from django_dbos import settings as settings_module
 
 
 class Command(BaseCommand):
@@ -23,6 +24,8 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args: Any, **options: Any) -> None:
+        # Tasks must be imported before launch: every known task is registered
+        # as a DBOS workflow so this process can execute what others enqueue.
         discovery.autodiscover_tasks()
         dbos_setup.ensure_launched()
 
@@ -45,6 +48,7 @@ class Command(BaseCommand):
 
         heartbeat_thread = HeartbeatThread(
             executor_id=DBOS.executor_id or 'local',
+            queues=tuple(queue.name for queue in settings_module.resolve_queues()),
             has_metrics=importlib.util.find_spec('psutil') is not None,
         )
         heartbeat_thread.start()

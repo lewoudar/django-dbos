@@ -14,10 +14,7 @@ Queue "default"  [OK]
   Declared concurrency: worker=4 global=None
 
 Workers:
-  3f2a...: pid 4212, CPU 12.0%, RSS 184.5 MB
-
-Executors:
-  3f2a...: running=3 enqueued=2
+  3f2a...: worker-1 pid 4212, queues default,emails, CPU 12.0%, RSS 184.5 MB
 
 No workflow exhausted its recovery attempts.
 ```
@@ -51,21 +48,29 @@ output (below) with your monitoring system.
 
 ## Workers (heartbeats)
 
-Running workers push a heartbeat (process metrics through Django's cache) —
-this is the same push model as DBOS Conductor, with your cache as the channel:
+The system database tells you who *worked* recently, not who is *alive*: an
+idle worker leaves no trace there, yet it is exactly the one you want to
+know about before scaling down. Running workers therefore push a heartbeat
+row into the Django database (the `WorkerHeartbeat` model, hence the
+`django_dbos` migration) — the same push model as DBOS Conductor, with your
+database as the channel. Any process with the ORM can read it: this command,
+the admin, an autoscaling script.
 
 ```bash
 uv add django-dbos[metrics]   # optional: adds CPU/memory to the heartbeat
 ```
 
-Workers report their pid, CPU and memory every 10 seconds; the heartbeat
-expires after 30 seconds, so a dead worker disappears (or shows up as
-`NO HEARTBEAT`) by itself.
+Workers report their host, pid, served queues (and CPU/memory) every 10
+seconds and delete their row on clean shutdown. A row not refreshed for 30
+seconds is considered stale (`alive: false` in the JSON output, hidden from
+the human output): the worker died without cleaning up. An executor id seen
+on workflows but without any live heartbeat is flagged `NO HEARTBEAT`.
 
-- With a **shared cache** (Redis, database cache), heartbeats are visible from
-  any process: the command and the admin can report on every worker.
-- With **LocMemCache**, each worker only sees its own heartbeat — the section
-  degrades to "NO HEARTBEAT" for the others.
+Several worker processes may share an `executor_id` (DBOS' default is
+`"local"` for all of them); heartbeats are keyed per process
+(`executor_id@hostname:pid`), so they are always told apart. See
+[Executor identity](configuration.md#executor-identity) to name your
+instances.
 
 !!! warning
     CPU/memory metrics only cover the worker process itself. Machine-level
@@ -82,7 +87,10 @@ python manage.py dbos_status --json
 python manage.py dbos_status --queues=emails,reports
 ```
 
-!!! note
-    The command loads tasks from installed apps and launches the DBOS
-    singleton (it reads the system database). Run it from any machine that
-    can reach the system database — it does not need to be a worker itself.
+## From Python
+
+The command is a thin wrapper around `django_dbos.capacity.collect()`, which
+returns the same structure as `--json` (`queues`, `executors`, `workers`,
+`max_recovery_attempts_exceeded`). Call it from a Prometheus exporter, a
+health endpoint or your own autoscaling logic; `advise_queue()` holds the
+(deliberately simple) heuristic if you want to reuse or replace it.

@@ -68,25 +68,26 @@ class Command(BaseCommand):
             self.stdout.write('No workflow exhausted its recovery attempts.')
 
     def _print_workers(self, report: dict[str, Any]) -> None:
-        heartbeats = report.get('worker_heartbeats') or {}
-        executor_ids = set(report.get('executors') or {}) | set(heartbeats)
+        workers_by_executor: dict[str, list[dict[str, Any]]] = {}
+        for worker in report.get('workers') or []:
+            workers_by_executor.setdefault(worker['executor_id'], []).append(worker)
+        executor_ids = set(report.get('executors') or {}) | set(workers_by_executor)
         self.stdout.write('\nWorkers:')
         if not executor_ids:
             self.stdout.write('  (none)')
             return
         for executor_id in sorted(executor_ids):
-            heartbeat = heartbeats.get(executor_id)
-            if heartbeat is None:
-                self.stdout.write(
-                    f'  {executor_id}: NO HEARTBEAT (worker down, no shared cache, or psutil extra missing)'
-                )
+            workers = workers_by_executor.get(executor_id)
+            if not workers:
+                self.stdout.write(f'  {executor_id}: NO HEARTBEAT (worker down, or django_dbos migrations not applied)')
                 continue
-            parts = []
-            if heartbeat.get('pid') is not None:
-                parts.append(f'pid {heartbeat["pid"]}')
-            if heartbeat.get('has_metrics'):
-                parts.append(f'CPU {heartbeat.get("cpu_percent")}%')
-                parts.append(f'RSS {heartbeat.get("memory_rss_mb")} MB')
-            else:
-                parts.append('install django-dbos[metrics] for CPU/memory')
-            self.stdout.write(f'  {executor_id}: {", ".join(parts)}')
+            for worker in sorted(workers, key=lambda item: (item['hostname'], item['pid'])):
+                parts = [f'{worker["hostname"]} pid {worker["pid"]}']
+                if worker.get('queues'):
+                    parts.append(f'queues {",".join(worker["queues"])}')
+                if worker.get('has_metrics'):
+                    parts.append(f'CPU {worker.get("cpu_percent")}%')
+                    parts.append(f'RSS {worker.get("memory_rss_mb")} MB')
+                else:
+                    parts.append('install django-dbos[metrics] for CPU/memory')
+                self.stdout.write(f'  {executor_id}: {", ".join(parts)}')

@@ -225,6 +225,30 @@ class TestAdminGating:
         assert '/admin/login' in response['Location']
 
 
+class TestWorkerHeartbeatAdmin:
+    def test_superuser_sees_live_workers(self, admin_client):
+        from django_dbos.heartbeat import write_heartbeat
+
+        write_heartbeat('machine-1', queues=('default',))
+        response = admin_client.get('/admin/django_dbos/workerheartbeat/')
+        assert response.status_code == 200
+        assert_text(response, 'machine-1')
+
+    def test_heartbeats_are_read_only(self, admin_client):
+        response = admin_client.get('/admin/django_dbos/workerheartbeat/add/')
+        assert response.status_code == 403
+
+    def test_staff_without_superuser_gets_403(self, db):
+        staff = User.objects.create_user(username='viewer', password='hunter2', is_staff=True)
+        client = Client()
+        client.force_login(staff)
+        try:
+            response = client.get('/admin/django_dbos/workerheartbeat/')
+            assert response.status_code == 403
+        finally:
+            User.objects.filter(pk=staff.pk).delete()
+
+
 class TestAdminSiteResolution:
     def test_admin_site_accepts_a_single_string(self, settings):
         settings.DJANGO_DBOS = {'ADMIN_SITE': 'django.contrib.admin.site'}

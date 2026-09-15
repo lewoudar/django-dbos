@@ -1,8 +1,8 @@
 """Registration of django-dbos pages in the Django admin.
 
-Custom admin views (no models): workflow list/detail, schedules, and
-operational actions, all backed by the DBOS Python API against the system
-database.
+Custom admin views: workflow list/detail, schedules, and operational actions,
+all backed by a ``DBOSClient`` against the system database — plus a read-only
+``ModelAdmin`` for worker heartbeats.
 
 Registration is gated by ``DJANGO_DBOS["ADMIN_ENABLED"]`` (default ``True``)
 and targets the admin sites listed in ``DJANGO_DBOS["ADMIN_SITE"]`` (dotted
@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.contrib import admin as django_admin
 from django.urls import URLPattern, path
 
 from .logging import logger
@@ -64,12 +65,36 @@ def get_admin_sites() -> list[Any]:
     return resolved
 
 
+class WorkerHeartbeatAdmin(django_admin.ModelAdmin):
+    """Read-only view of the live workers (superusers only, like the DBOS pages)."""
+
+    list_display = ('worker_id', 'executor_id', 'hostname', 'pid', 'cpu_percent', 'memory_rss_mb', 'last_seen_at')
+    list_filter = ('executor_id',)
+    ordering = ('executor_id', 'hostname', 'pid')
+
+    def has_add_permission(self, request: Any) -> bool:
+        return False
+
+    def has_change_permission(self, request: Any, obj: Any = None) -> bool:
+        return False
+
+    def has_delete_permission(self, request: Any, obj: Any = None) -> bool:
+        return bool(request.user.is_superuser)
+
+    def has_view_permission(self, request: Any, obj: Any = None) -> bool:
+        return bool(request.user.is_superuser)
+
+
 def register_admin(site: Any) -> None:
     """Append django-dbos URLs to an AdminSite instance (idempotent)."""
     from . import admin_views
+    from .models import WorkerHeartbeat
 
     if getattr(site, '_django_dbos_registered', False):
         return
+
+    if not site.is_registered(WorkerHeartbeat):
+        site.register(WorkerHeartbeat, WorkerHeartbeatAdmin)
 
     original_get_urls = site.get_urls
 

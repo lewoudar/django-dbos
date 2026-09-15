@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
+import socket
 import sys
 import types
 from datetime import timedelta
 from typing import Any
 
 import pytest
-from dbos import DBOS
 from django.core.management import call_command
 from django.utils import timezone
 
@@ -81,6 +82,7 @@ class TestAdviseQueue:
 
 
 @pytest.mark.integration
+@pytest.mark.django_db
 class TestCollect:
     def test_collect_reports_delayed_workflows(self, dbos_environment):
         deferred = add.using(run_after=timezone.now() + timedelta(hours=1))
@@ -100,10 +102,13 @@ class TestCollect:
         assert list(report['queues']) == ['emails']
 
     def test_worker_heartbeat_visible_in_report(self, dbos_environment):
-        write_heartbeat(DBOS.executor_id or 'local', has_metrics=False)
+        write_heartbeat('some-worker', queues=('default',), has_metrics=False)
         report = capacity.collect()
-        assert (DBOS.executor_id or 'local') in report['worker_heartbeats']
-        assert report['worker_heartbeats'][DBOS.executor_id or 'local']['has_metrics'] is False
+        (worker,) = report['workers']
+        assert worker['executor_id'] == 'some-worker'
+        assert worker['has_metrics'] is False
+        # A worker with a heartbeat but no workflow yet is still an executor.
+        assert 'some-worker' in report['executors']
 
     def test_command_json_output(self, dbos_environment: Any, capsys: Any) -> None:
         call_command('dbos_status', '--json')
@@ -113,7 +118,7 @@ class TestCollect:
         assert set(payload) == {
             'queues',
             'executors',
-            'worker_heartbeats',
+            'workers',
             'max_recovery_attempts_exceeded',
         }
         assert set(payload['queues']) == {'default', 'emails'}
@@ -131,28 +136,32 @@ class TestCollect:
         fake_psutil.Process = lambda: types.SimpleNamespace(
             cpu_percent=lambda interval=None: 42.0,
             memory_info=lambda: types.SimpleNamespace(rss=1024 * 1024 * 1024),
-            pid=7,
         )
         monkeypatch.setitem(sys.modules, 'psutil', fake_psutil)
         mocker.patch('django_dbos.capacity._recent_executor_ids', return_value={'live-worker'})
 
-        write_heartbeat('live-worker', has_metrics=True)
+        write_heartbeat('live-worker', queues=('default',), has_metrics=True)
         call_command('dbos_status')
         output = capsys.readouterr().out
-        assert 'live-worker: pid 7, CPU 42.0%, RSS 1024.0 MB' in output
+        assert (
+            f'live-worker: {socket.gethostname()} pid {os.getpid()}, queues default, CPU 42.0%, RSS 1024.0 MB' in output
+        )
 
     def test_human_output_reports_live_worker_without_metrics(self, dbos_environment: Any, capsys: Any, mocker) -> None:
         mocker.patch('django_dbos.capacity._recent_executor_ids', return_value={'plain-worker'})
         write_heartbeat('plain-worker', has_metrics=False)
         call_command('dbos_status')
         output = capsys.readouterr().out
-        assert 'plain-worker: install django-dbos[metrics] for CPU/memory' in output
+        assert (
+            f'plain-worker: {socket.gethostname()} pid {os.getpid()}, install django-dbos[metrics] for CPU/memory'
+            in output
+        )
 
     def test_human_output_flags_executor_without_heartbeat(self, dbos_environment: Any, capsys: Any, mocker) -> None:
         mocker.patch('django_dbos.capacity._recent_executor_ids', return_value={'ghost-worker'})
         call_command('dbos_status')
         output = capsys.readouterr().out
-        assert 'ghost-worker: NO HEARTBEAT (worker down, no shared cache, or psutil extra missing)' in output
+        assert 'ghost-worker: NO HEARTBEAT (worker down, or django_dbos migrations not applied)' in output
 
     def test_human_output_with_no_worker_at_all(self, dbos_environment: Any, capsys: Any, mocker) -> None:
         # Nothing active, nothing recent, no heartbeat: the section is empty.
