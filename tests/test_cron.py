@@ -5,10 +5,12 @@ from __future__ import annotations
 import importlib
 
 import pytest
+from dbos import DBOS
+from django.utils import timezone as dj_timezone
 
 import django_dbos.scheduling as cron_module
 from django_dbos.exceptions import ImproperlyConfiguredDbos
-from django_dbos.scheduling import normalize_crontab, schedule_name_for_task
+from django_dbos.scheduling import _register_scheduled_workflow, normalize_crontab, schedule_name_for_task
 from tests.tasks import cron_task
 
 
@@ -61,8 +63,6 @@ class TestCronDecorator:
 class TestDjangoTimezone:
     def test_uses_default_timezone_when_use_tz(self, settings):
         settings.USE_TZ = True
-        from django.utils import timezone as dj_timezone
-
         assert cron_module._django_timezone() == dj_timezone.get_default_timezone()
 
     def test_falls_back_to_utc_without_use_tz(self, settings):
@@ -75,10 +75,6 @@ class TestRegisterCronSchedules:
     @pytest.fixture
     def stale_schedule(self, dbos_environment):
         """Create the cron_task schedule with values that differ from the code, return a factory."""
-        from dbos import DBOS
-
-        from django_dbos.scheduling import _register_scheduled_workflow
-
         name = schedule_name_for_task(cron_task)
         scheduled_workflow = _register_scheduled_workflow(cron_task)
 
@@ -100,8 +96,6 @@ class TestRegisterCronSchedules:
         ],
     )
     def test_recreates_a_schedule_whose_definition_changed(self, stale_schedule, stale):
-        from dbos import DBOS
-
         name = stale_schedule(**stale)
 
         cron_module.cron('*/5 * * * *')(cron_task)
@@ -123,23 +117,17 @@ class TestRegisterCronSchedules:
         delete.assert_not_called()
 
     def test_deletes_orphan_schedules(self, stale_schedule):
-        from dbos import DBOS
-
         name = stale_schedule()  # cron_task is scheduled in the database...
         cron_module.register_cron_schedules()  # ...but no task carries @cron in this process
 
         assert DBOS.get_schedule(name) is None
 
     def test_ignores_schedules_of_other_applications(self, dbos_environment, mocker):
-        from dbos import DBOS
-
-        from tests.tasks import cron_task as task
-
         foreign = 'someone_else.nightly'
         if DBOS.get_schedule(foreign) is None:
             DBOS.create_schedule(
                 schedule_name=foreign,
-                workflow_fn=cron_module._register_scheduled_workflow(task),
+                workflow_fn=_register_scheduled_workflow(cron_task),
                 schedule='0 0 1 1 *',
                 queue_name='default',
             )

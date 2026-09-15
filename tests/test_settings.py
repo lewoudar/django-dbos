@@ -1,8 +1,10 @@
 """Tests for the DJANGO_DBOS setting resolution."""
 
 import pytest
+from dbos import DBOSPortableJSONSerializer
 
 from django_dbos import settings as dbos_settings
+from django_dbos.checks import check_dbos_settings
 from django_dbos.dbos_setup import _scrub_credentials
 from django_dbos.exceptions import ImproperlyConfiguredDbos
 
@@ -169,8 +171,6 @@ class TestQueueOptionsValidation:
         assert reports.worker_concurrency == 1
 
     def test_reported_by_the_system_check(self, settings):
-        from django_dbos.checks import check_dbos_settings
-
         settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://db', 'QUEUES': {'emails': {'nope': 1}}}
         errors = check_dbos_settings()
         assert [error.id for error in errors] == ['django_dbos.E001']
@@ -190,14 +190,10 @@ class TestSerializerResolution:
         ],
     )
     def test_class_or_path_is_instantiated(self, settings, value):
-        from dbos import DBOSPortableJSONSerializer
-
         settings.DJANGO_DBOS = {'SERIALIZER': DBOSPortableJSONSerializer if value == 'class' else value}
         assert isinstance(dbos_settings.resolve_serializer(), DBOSPortableJSONSerializer)
 
     def test_instance_is_used_as_is(self, settings):
-        from dbos import DBOSPortableJSONSerializer
-
         instance = DBOSPortableJSONSerializer()
         settings.DJANGO_DBOS = {'SERIALIZER': instance}
         assert dbos_settings.resolve_serializer() is instance

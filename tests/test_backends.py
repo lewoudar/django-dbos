@@ -1,15 +1,18 @@
 """Tests for the DBOS task backend: helpers (unit) and behavior (integration)."""
 
 import asyncio
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
 from django.tasks import TaskResultStatus
 from django.tasks.exceptions import TaskResultDoesNotExist
+from django.utils import timezone
 
 from django_dbos import dbos_params
 from django_dbos.backends import _delay_seconds, _django_to_dbos_priority
 from django_dbos.exceptions import QueueNotDeclared
+from django_dbos.tasks_registry import workflow_name_for_task
 
 from .conftest import wait_for_result
 from .tasks import add, async_add, context_task, failing_task
@@ -43,10 +46,6 @@ class TestHelpers:
 
 class TestEnqueueOptions:
     def test_options_carry_every_dbos_param(self):
-        from django.utils import timezone
-
-        from django_dbos.tasks_registry import workflow_name_for_task
-
         task = dbos_params(deduplication_id='dedup', queue_partition_key='tenant-1', workflow_timeout=90)(add)
         task = task.using(priority=50, run_after=timezone.now() + timedelta(seconds=30))
         options = add.get_backend()._enqueue_options(task)
@@ -96,8 +95,6 @@ class TestBackendBehavior:
             **settings.TASKS,
             'dbos': {**settings.TASKS['dbos'], 'QUEUES': [*settings.TASKS['dbos']['QUEUES'], 'ghost_queue']},
         }
-        from dataclasses import replace
-
         rogue = replace(add, queue_name='ghost_queue')
         with pytest.raises(QueueNotDeclared):
             rogue.enqueue()

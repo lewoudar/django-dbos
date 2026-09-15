@@ -1,6 +1,7 @@
 """Tests for the process-wide DBOSClient (non-worker processes)."""
 
 import pytest
+from dbos import DBOSPortableJSONSerializer
 
 from django_dbos import client
 from django_dbos.exceptions import ImproperlyConfiguredDbos
@@ -35,8 +36,6 @@ class TestGetClient:
         )
 
     def test_serializer_is_forwarded(self, settings, monkeypatch, mocker):
-        from dbos import DBOSPortableJSONSerializer
-
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
         serializer = DBOSPortableJSONSerializer()
         settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://db', 'SERIALIZER': serializer}

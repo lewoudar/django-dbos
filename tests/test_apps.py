@@ -1,6 +1,9 @@
 """Tests for the Django app config: ready() registers the admin pages and nothing DBOS-related."""
 
 from django.apps import apps
+from django.core.checks import registry
+
+from django_dbos.checks import check_dbos_settings, check_system_database_engine
 
 
 class TestReady:
@@ -18,10 +21,6 @@ class TestReady:
         get_client.assert_not_called()
 
     def test_system_checks_are_registered(self):
-        from django.core.checks import registry
-
-        from django_dbos.checks import check_dbos_settings, check_system_database_engine
-
         registered = set(registry.registry.registered_checks)
         assert check_dbos_settings in registered
         assert check_system_database_engine in registered

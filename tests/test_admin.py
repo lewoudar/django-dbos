@@ -21,6 +21,7 @@ from django_dbos.admin import (
     register_admin,
     register_admin_sites,
 )
+from django_dbos.heartbeat import write_heartbeat
 from django_dbos.scheduling import register_cron_schedules
 
 from .conftest import wait_for_result
@@ -241,8 +242,6 @@ class TestAdminGating:
 
 class TestWorkerHeartbeatAdmin:
     def test_superuser_sees_live_workers(self, admin_client):
-        from django_dbos.heartbeat import write_heartbeat
-
         write_heartbeat('machine-1', queues=('default',))
         response = admin_client.get('/admin/django_dbos/workerheartbeat/')
         assert response.status_code == 200

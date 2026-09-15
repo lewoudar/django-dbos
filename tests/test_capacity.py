@@ -17,7 +17,8 @@ from django.utils import timezone
 
 from django_dbos import capacity
 from django_dbos.capacity import QUEUE_WAIT_THRESHOLD_SECONDS, advise_queue
-from django_dbos.heartbeat import write_heartbeat
+from django_dbos.heartbeat import STALE_AFTER_SECONDS, write_heartbeat
+from django_dbos.models import WorkerHeartbeat
 
 from .tasks import add
 
@@ -174,13 +175,6 @@ class TestCollect:
         assert 'ghost-worker: NO HEARTBEAT (worker down, or django_dbos migrations not applied)' in output
 
     def test_human_output_flags_stale_heartbeat(self, dbos_environment: Any) -> None:
-        from datetime import timedelta
-
-        from django.utils import timezone
-
-        from django_dbos.heartbeat import STALE_AFTER_SECONDS
-        from django_dbos.models import WorkerHeartbeat
-
         write_heartbeat('dead-worker')
         WorkerHeartbeat.objects.update(last_seen_at=timezone.now() - timedelta(seconds=STALE_AFTER_SECONDS + 1))
         output = _status()

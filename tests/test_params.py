@@ -3,6 +3,7 @@
 from django.tasks import task as django_task
 
 from django_dbos import dbos_params
+from django_dbos.params import FUNC_PARAMS_ATTRIBUTE
 from django_dbos.params_dataclass import DbosTaskParams
 
 from .tests_helpers import make_dbos_task
@@ -48,8 +49,6 @@ class TestDbosParams:
         assert foreign_task.func._django_dbos_params.workflow_timeout == 30
 
     def test_bare_function_round_trip(self):
-        from django_dbos.params import FUNC_PARAMS_ATTRIBUTE
-
         dbos_params(step_max_attempts=5)(bare_function)
         params: DbosTaskParams = getattr(bare_function, FUNC_PARAMS_ATTRIBUTE)
         assert params.step_max_attempts == 5
