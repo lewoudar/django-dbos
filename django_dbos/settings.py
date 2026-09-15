@@ -167,6 +167,25 @@ def resolve_serializer() -> Any:
     return value
 
 
+_QUEUE_OPTIONS = tuple(name for name in QueueConfig.__dataclass_fields__ if name != 'name')
+
+
+def _queue_config(name: str, options: Any) -> QueueConfig:
+    if options is None:
+        return QueueConfig(name=name)
+    if not isinstance(options, dict):
+        raise ImproperlyConfiguredDbos(
+            f"{SETTING_NAME}['QUEUES']['{name}'] must be a mapping of options (or None), got {type(options).__name__}."
+        )
+    unknown = sorted(set(options) - set(_QUEUE_OPTIONS))
+    if unknown:
+        raise ImproperlyConfiguredDbos(
+            f"{SETTING_NAME}['QUEUES']['{name}']: unknown option(s) {', '.join(unknown)}. "
+            f'Valid options: {", ".join(_QUEUE_OPTIONS)}.'
+        )
+    return QueueConfig(name=name, **options)
+
+
 def resolve_queues() -> tuple[QueueConfig, ...]:
     """Resolve declared DBOS queues.
 
@@ -177,7 +196,7 @@ def resolve_queues() -> tuple[QueueConfig, ...]:
     queues_setting = get_dbos_setting('QUEUES') or {}
     if not isinstance(queues_setting, dict):
         raise ImproperlyConfiguredDbos(f"{SETTING_NAME}['QUEUES'] must be a mapping of queue name to options.")
-    queues = tuple(QueueConfig(name=str(name), **(options or {})) for name, options in queues_setting.items()) or tuple(
+    queues = tuple(_queue_config(str(name), options) for name, options in queues_setting.items()) or tuple(
         QueueConfig(name=name) for name in DEFAULT_QUEUES
     )
     names = [queue.name for queue in queues]

@@ -147,6 +147,36 @@ class TestCredentialScrubbing:
         assert _scrub_credentials(message) == message
 
 
+class TestQueueOptionsValidation:
+    def test_unknown_option_is_reported_with_the_valid_ones(self, settings):
+        settings.DJANGO_DBOS = {'QUEUES': {'emails': {'worker_concurency': 2}}}
+        with pytest.raises(ImproperlyConfiguredDbos) as excinfo:
+            dbos_settings.resolve_queues()
+        message = str(excinfo.value)
+        assert "QUEUES']['emails']" in message
+        assert 'worker_concurency' in message
+        assert 'worker_concurrency' in message and 'limiter' in message
+
+    def test_non_mapping_options_are_rejected(self, settings):
+        settings.DJANGO_DBOS = {'QUEUES': {'emails': 4}}
+        with pytest.raises(ImproperlyConfiguredDbos, match=r"QUEUES'\]\['emails'\] must be a mapping"):
+            dbos_settings.resolve_queues()
+
+    def test_none_means_no_options(self, settings):
+        settings.DJANGO_DBOS = {'QUEUES': {'emails': None, 'reports': {'worker_concurrency': 1}}}
+        emails, reports = dbos_settings.resolve_queues()
+        assert emails.worker_concurrency is None
+        assert reports.worker_concurrency == 1
+
+    def test_reported_by_the_system_check(self, settings):
+        from django_dbos.checks import check_dbos_settings
+
+        settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://db', 'QUEUES': {'emails': {'nope': 1}}}
+        errors = check_dbos_settings()
+        assert [error.id for error in errors] == ['django_dbos.E001']
+        assert 'nope' in errors[0].msg
+
+
 class TestSerializerResolution:
     def test_unset_keeps_dbos_default(self, settings):
         settings.DJANGO_DBOS = {}
