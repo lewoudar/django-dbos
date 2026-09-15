@@ -61,6 +61,19 @@ they are exercised by the plugin tests.
   zizmor).
 - Python ≥ 3.12, Django ≥ 6.0.
 
+## Process model (do not regress)
+
+- Only `dbos_worker` (and the `dbos_system` test fixture) may call
+  `dbos_setup.ensure_launched()`: `DBOS.launch()` starts queue/scheduler/
+  recovery threads, i.e. it turns the process into a worker. Everything else
+  (backend enqueue/get_result, admin views, `capacity.collect`) goes through
+  `client.get_client()` (a `DBOSClient`, system database only).
+- The worker registers every known task (`tasks.known_tasks()`, filled by
+  `DBOSTask.__post_init__`) as a workflow *before* launch; clients enqueue by
+  workflow name and never hold workflow code.
+- Worker heartbeats live in the `WorkerHeartbeat` model (Django database),
+  not in the cache; the package ships a migration.
+
 ## Pitfalls learned the hard way
 
 - **Never patch `django.conf.settings` attributes directly** (lazy object +

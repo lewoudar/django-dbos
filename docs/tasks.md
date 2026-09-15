@@ -30,13 +30,15 @@ result.return_value  # only available when SUCCESSFUL
 
 ## Deferred tasks
 
-Use `.using(run_after=...)` to run a task later (an aware `datetime` or a
-`timedelta`):
+Use `.using(run_after=...)` to run a task later (an aware `datetime`, as
+required by Django):
 
 ```python
 from datetime import timedelta
 
-send_report.using(run_after=timedelta(hours=1)).enqueue()
+from django.utils import timezone
+
+send_report.using(run_after=timezone.now() + timedelta(hours=1)).enqueue()
 ```
 
 ## Priorities
