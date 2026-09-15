@@ -158,7 +158,7 @@ def dbos_system(request: Any, tmp_path_factory: Any) -> Any:
             system_database_url = container.get_connection_url().replace(
                 'postgresql+psycopg2://', 'postgresql+psycopg://'
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - Docker/testcontainers errors are not typed
             if mode == 'postgres':
                 pytest.skip(f'Docker/Postgres unavailable: {exc}')
             container = None

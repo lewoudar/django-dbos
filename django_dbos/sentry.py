@@ -39,7 +39,7 @@ def is_sentry_enabled() -> bool:
         return False
     try:
         return bool(sentry_sdk.get_client().is_active())
-    except Exception:
+    except Exception:  # noqa: BLE001 - any SDK failure means "not monitored", never a crash
         return False
 
 
