@@ -39,7 +39,29 @@ DJANGO_DBOS = {
 | `SYSTEM_DB_SCHEMA` | `"dbos"` | Schema holding DBOS system tables (PostgreSQL). |
 | `QUEUES` | `{"default": None}` | Declared queues and their options (see below). |
 | `EXECUTOR_ID` | `DBOS__VMID` env, else `"local"` | Identity of a worker instance (see [Executor identity](#executor-identity)). |
+| `SERIALIZER` | DBOS default (pickle) | How task arguments, results and errors are stored (see [Serialization](#serialization)). |
 | `SCHEDULER_POLLING_INTERVAL_SEC` | `30.0` | How often the scheduler thread looks for new schedules. |
+
+## Serialization
+
+Task arguments, results and errors are stored in the system database with
+DBOS' serializer, which is **pickle** by default. Pickle accepts any Python
+object but is not safe against untrusted data: anyone able to write to the
+system database can run code in your workers and in every process reading
+results. Treat the system database as a trusted store — or switch to
+DBOS' portable JSON serializer when your task arguments and results are
+plain data (JSON scalars, lists, dicts, datetimes, ...):
+
+```python
+DJANGO_DBOS = {
+    'SERIALIZER': 'dbos.DBOSPortableJSONSerializer',
+}
+```
+
+`SERIALIZER` accepts a dotted path, a `dbos.Serializer` subclass or an
+instance (a custom serializer implements `serialize()` / `deserialize()`).
+Workers and web processes must use the same one, and switching it while
+workflows are in flight makes their stored data unreadable.
 
 ## Queues
 

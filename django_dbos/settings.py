@@ -52,6 +52,7 @@ class DbosSettings:
     application_version: str | None = None
     dbos_system_schema: str | None = None
     executor_id: str | None = None
+    serializer: Any = None
     queues: tuple[QueueConfig, ...] = field(default_factory=tuple)
 
 
@@ -134,6 +135,38 @@ def resolve_executor_id() -> str | None:
     return str(executor_id) if executor_id else None
 
 
+def resolve_serializer() -> Any:
+    """The DBOS serializer for task arguments, results and errors, or ``None``.
+
+    ``DJANGO_DBOS["SERIALIZER"]`` is a ``dbos.Serializer`` instance, a class
+    (instantiated without arguments) or the dotted path of either. ``None``
+    keeps DBOS' default, which is **pickle**: anyone who can write to the
+    system database can then run code in the workers and in every process
+    reading results. ``dbos.DBOSPortableJSONSerializer`` is the safe
+    alternative when task arguments and results are plain data.
+
+    The worker and every client must use the same serializer.
+    """
+    from dbos import Serializer
+    from django.utils.module_loading import import_string
+
+    value = get_dbos_setting('SERIALIZER')
+    if value is None:
+        return None
+    if isinstance(value, str):
+        try:
+            value = import_string(value)
+        except ImportError as exc:
+            raise ImproperlyConfiguredDbos(f"{SETTING_NAME}['SERIALIZER']: {exc}") from exc
+    if isinstance(value, type):
+        value = value()
+    if not isinstance(value, Serializer):
+        raise ImproperlyConfiguredDbos(
+            f"{SETTING_NAME}['SERIALIZER'] must be a dbos.Serializer instance, subclass or dotted path."
+        )
+    return value
+
+
 def resolve_queues() -> tuple[QueueConfig, ...]:
     """Resolve declared DBOS queues.
 
@@ -162,5 +195,6 @@ def resolve_settings() -> DbosSettings:
         application_version=get_dbos_setting('APPLICATION_VERSION'),
         dbos_system_schema=get_dbos_setting('SYSTEM_DB_SCHEMA'),
         executor_id=resolve_executor_id(),
+        serializer=resolve_serializer(),
         queues=queues,
     )

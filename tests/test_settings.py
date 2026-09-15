@@ -145,3 +145,42 @@ class TestCredentialScrubbing:
     def test_message_without_dsn_unchanged(self):
         message = 'No credentials in here, just text.'
         assert _scrub_credentials(message) == message
+
+
+class TestSerializerResolution:
+    def test_unset_keeps_dbos_default(self, settings):
+        settings.DJANGO_DBOS = {}
+        assert dbos_settings.resolve_serializer() is None
+
+    @pytest.mark.parametrize(
+        'value',
+        [
+            pytest.param('dbos.DBOSPortableJSONSerializer', id='dotted-path-to-class'),
+            pytest.param('dbos.DBOSPortableJSONSerializer', id='class'),
+        ],
+    )
+    def test_class_or_path_is_instantiated(self, settings, value):
+        from dbos import DBOSPortableJSONSerializer
+
+        settings.DJANGO_DBOS = {'SERIALIZER': DBOSPortableJSONSerializer if value == 'class' else value}
+        assert isinstance(dbos_settings.resolve_serializer(), DBOSPortableJSONSerializer)
+
+    def test_instance_is_used_as_is(self, settings):
+        from dbos import DBOSPortableJSONSerializer
+
+        instance = DBOSPortableJSONSerializer()
+        settings.DJANGO_DBOS = {'SERIALIZER': instance}
+        assert dbos_settings.resolve_serializer() is instance
+
+    @pytest.mark.parametrize(
+        'value',
+        [
+            pytest.param('nowhere.NoSerializer', id='unknown-path'),
+            pytest.param('json.dumps', id='not-a-serializer'),
+            pytest.param(object(), id='random-object'),
+        ],
+    )
+    def test_invalid_values_are_rejected(self, settings, value):
+        settings.DJANGO_DBOS = {'SERIALIZER': value}
+        with pytest.raises(ImproperlyConfiguredDbos, match='SERIALIZER'):
+            dbos_settings.resolve_serializer()

@@ -18,7 +18,7 @@ launching DBOS' background threads — which would turn it into a worker.
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from . import settings as settings_module
 from .dbos_setup import _scrub_credentials
@@ -51,11 +51,15 @@ def _create_client() -> DBOSClient:
 
     try:
         resolved = settings_module.resolve_settings()
+        kwargs: dict[str, Any] = {}
+        if resolved.serializer is not None:
+            kwargs['serializer'] = resolved.serializer
         return DBOSClient(
             system_database_url=resolved.system_database_url,
             dbos_system_schema=resolved.dbos_system_schema or 'dbos',
             application_name=resolved.app_name,
             lazy=True,
+            **kwargs,
         )
     except ImproperlyConfiguredDbos:
         raise

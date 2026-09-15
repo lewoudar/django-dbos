@@ -34,6 +34,18 @@ class TestGetClient:
             lazy=True,
         )
 
+    def test_serializer_is_forwarded(self, settings, monkeypatch, mocker):
+        from dbos import DBOSPortableJSONSerializer
+
+        monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
+        serializer = DBOSPortableJSONSerializer()
+        settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://db', 'SERIALIZER': serializer}
+        client_cls = mocker.patch('dbos.DBOSClient')
+
+        client.get_client()
+
+        assert client_cls.call_args.kwargs['serializer'] is serializer
+
     def test_client_never_launches_dbos(self, settings, monkeypatch, mocker):
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
         settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://db'}
