@@ -63,10 +63,9 @@ TASKS = {
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Do not spin up a DBOS singleton on app ready in the test suite; tests that
-# need it call dbos_setup helpers explicitly.
+# Tests that need a launched DBOS (the worker side) use the dbos_system
+# fixture; everything else goes through the DBOSClient like a web process.
 DJANGO_DBOS = {
-    'AUTO_INIT': False,
     # Explicit for clarity: the admin pages are registered by default and
     # restricted to superusers.
     'ADMIN_ENABLED': True,

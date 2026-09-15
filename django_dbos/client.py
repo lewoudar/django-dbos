@@ -1,0 +1,72 @@
+"""Access to the DBOS system database from processes that are not workers.
+
+DBOS distinguishes two kinds of processes:
+
+- the *application* (``DBOS`` singleton + ``DBOS.launch()``): registers
+  workflow functions, dequeues and executes them, runs the scheduler and the
+  recovery of interrupted workflows. In django-dbos, that is ``dbos_worker``.
+- *clients* (``dbos.DBOSClient``): talk to the system database only — enqueue
+  workflows by name, read statuses, cancel/resume/fork, manage schedules.
+  They never run workflow code.
+
+Everything outside the worker (web processes enqueuing tasks and reading
+results, the admin pages, ``dbos_status``) goes through the process-wide
+client returned by :func:`get_client`. That keeps a web process from
+launching DBOS' background threads — which would turn it into a worker.
+"""
+
+from __future__ import annotations
+
+import threading
+from typing import TYPE_CHECKING
+
+from . import settings as settings_module
+from .dbos_setup import _scrub_credentials
+from .exceptions import ImproperlyConfiguredDbos
+
+if TYPE_CHECKING:
+    from dbos import DBOSClient
+
+_client_lock = threading.Lock()
+_client: DBOSClient | None = None
+
+
+def get_client() -> DBOSClient:
+    """The process-wide :class:`dbos.DBOSClient`, created on first use.
+
+    The client connects lazily: a misconfigured or unreachable system database
+    surfaces on the first operation, not at import or ``ready()`` time.
+    """
+    global _client
+    if _client is not None:
+        return _client
+    with _client_lock:
+        if _client is None:
+            _client = _create_client()
+        return _client
+
+
+def _create_client() -> DBOSClient:
+    from dbos import DBOSClient
+
+    try:
+        resolved = settings_module.resolve_settings()
+        return DBOSClient(
+            system_database_url=resolved.system_database_url,
+            dbos_system_schema=resolved.dbos_system_schema or 'dbos',
+            application_name=resolved.app_name,
+            lazy=True,
+        )
+    except ImproperlyConfiguredDbos:
+        raise
+    except Exception as exc:
+        raise ImproperlyConfiguredDbos(_scrub_credentials(str(exc))) from exc
+
+
+def close_client() -> None:
+    """Dispose of the process-wide client (tests, configuration changes)."""
+    global _client
+    with _client_lock:
+        if _client is not None:
+            _client.destroy()
+            _client = None

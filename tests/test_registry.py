@@ -2,7 +2,10 @@
 
 import pytest
 
-from django_dbos.tasks_registry import task_from_workflow_name
+from django_dbos.tasks import known_tasks
+from django_dbos.tasks_registry import register_all_task_workflows, task_from_workflow_name, workflow_name_for_task
+
+from . import tasks as tasks_module
 
 MALICIOUS_WORKFLOW_NAMES = [
     # Attribute traversal towards arbitrary modules.
@@ -16,7 +19,7 @@ MALICIOUS_WORKFLOW_NAMES = [
 ]
 
 
-class TaskFromWorkflowNameTest:
+class TestTaskFromWorkflowName:
     def test_resolves_valid_task(self):
         task = task_from_workflow_name('django_dbos.tasks.tests.tasks.add')
         assert task is not None
@@ -30,3 +33,35 @@ class TaskFromWorkflowNameTest:
         # The name comes from the system database: it must never resolve to
         # anything outside the registered task workflows.
         assert task_from_workflow_name(name) is None
+
+
+class TestKnownTasks:
+    def test_declared_tasks_are_known(self):
+        # @task evaluates at import: every task of tests.tasks is known once imported.
+        module_paths = {task.module_path for task in known_tasks()}
+        assert {'tests.tasks.add', 'tests.tasks.send_email', 'tests.tasks.durable_onboarding'} <= module_paths
+
+    def test_last_declaration_wins(self):
+        # @dbos_params above @task replaces the instance: the registry follows.
+        (registered,) = [task for task in known_tasks() if task.module_path == 'tests.tasks.flaky_with_retries']
+        assert registered is tasks_module.flaky_with_retries
+        assert registered.dbos_params.step_retries_allowed is True
+
+    def test_using_does_not_shadow_the_declared_task(self):
+        tasks_module.add.using(priority=10)  # transient copy, same function and params
+        (registered,) = [task for task in known_tasks() if task.module_path == 'tests.tasks.add']
+        assert registered.func is tasks_module.add.func
+        assert registered.dbos_params == tasks_module.add.dbos_params
+
+
+class TestRegisterAllTaskWorkflows:
+    def test_registers_every_known_task(self, mocker):
+        seen: list = []
+        mocker.patch('django_dbos.tasks_registry.register_task_workflow', side_effect=seen.append)
+
+        register_all_task_workflows()
+
+        assert {workflow_name_for_task(task) for task in seen} >= {
+            'django_dbos.tasks.tests.tasks.add',
+            'django_dbos.tasks.tests.tasks.async_add',
+        }

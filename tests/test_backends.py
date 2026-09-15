@@ -5,7 +5,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from django.tasks import TaskResultStatus
+from django.tasks.exceptions import TaskResultDoesNotExist
 
+from django_dbos import dbos_params
 from django_dbos.backends import _delay_seconds, _django_to_dbos_priority
 from django_dbos.exceptions import QueueNotDeclared
 
@@ -39,9 +41,51 @@ class TestHelpers:
         assert _django_to_dbos_priority(django_priority) == expected
 
 
+class TestEnqueueOptions:
+    def test_options_carry_every_dbos_param(self):
+        from django.utils import timezone
+
+        from django_dbos.tasks_registry import workflow_name_for_task
+
+        task = dbos_params(deduplication_id='dedup', queue_partition_key='tenant-1', workflow_timeout=90)(add)
+        task = task.using(priority=50, run_after=timezone.now() + timedelta(seconds=30))
+        options = add.get_backend()._enqueue_options(task)
+
+        assert options['workflow_name'] == workflow_name_for_task(add)
+        assert options['queue_name'] == 'default'
+        assert options['priority'] == 51
+        assert 0 < options['delay_seconds'] <= 30
+        assert options['deduplication_id'] == 'dedup'
+        assert options['queue_partition_key'] == 'tenant-1'
+        assert options['workflow_timeout'] == 90
+
+    def test_options_omit_unset_params(self):
+        options = add.get_backend()._enqueue_options(add)
+        assert set(options) == {'workflow_name', 'queue_name', 'priority'}
+
+
 class TestBackendBehavior:
+    def test_enqueue_goes_through_the_client_not_dbos(self, dbos_environment, mocker):
+        # A web process must never initialize or launch DBOS to enqueue.
+        ensure_initialized = mocker.patch('django_dbos.dbos_setup.ensure_initialized')
+        ensure_launched = mocker.patch('django_dbos.dbos_setup.ensure_launched')
+        enqueue_workflow = mocker.patch('dbos.DBOS.enqueue_workflow')
+
+        result = wait_for_result(add.enqueue(1, 1), TaskResultStatus.SUCCESSFUL)
+
+        assert result.return_value == 2
+        ensure_initialized.assert_not_called()
+        ensure_launched.assert_not_called()
+        enqueue_workflow.assert_not_called()
+
     def test_get_result_unknown_id_raises(self, dbos_environment):
-        with pytest.raises(Exception):  # noqa: B017 - TaskResultDoesNotExist
+        with pytest.raises(TaskResultDoesNotExist):
+            add.get_result('00000000-0000-0000-0000-000000000000')
+
+    def test_get_result_database_errors_are_not_masked(self, dbos_environment, mocker):
+        mocker.patch('django_dbos.client.get_client', side_effect=RuntimeError('db unreachable'))
+        mocker.patch('django_dbos.backends.get_client', side_effect=RuntimeError('db unreachable'))
+        with pytest.raises(RuntimeError, match='db unreachable'):
             add.get_result('00000000-0000-0000-0000-000000000000')
 
     def test_undeclared_queue_is_rejected(self, dbos_environment, settings):

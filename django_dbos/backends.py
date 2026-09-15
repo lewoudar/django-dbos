@@ -4,20 +4,22 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from dbos import DBOS, SetEnqueueOptions
-from dbos._dbos import _get_or_create_dbos_registry
+from dbos._error import DBOSNonExistentWorkflowError
 from django.tasks import TaskResult, TaskResultStatus
 from django.tasks.backends.base import BaseTaskBackend
 from django.tasks.base import TaskError
 from django.tasks.exceptions import TaskResultDoesNotExist
 
-from . import dbos_setup
+from .client import get_client
 from .exceptions import QueueNotDeclared
 from .logging import logger
 from .tasks import DBOSTask
-from .tasks_registry import register_task_workflow, task_from_workflow_name
+from .tasks_registry import task_from_workflow_name, workflow_name_for_task
+
+if TYPE_CHECKING:
+    from dbos import EnqueueOptions
 
 #: DBOS queue priorities run 1 (highest) .. 2**31-1 (lowest). Django priorities
 #: run -100 (lowest) .. 100 (highest). Offset so the Django scale fits in the
@@ -53,10 +55,11 @@ def _delay_seconds(run_after: datetime | timedelta | None) -> float | None:
 class DBOSBackend(BaseTaskBackend):
     """Execute Django tasks durably on DBOS.
 
-    Tasks are enqueued as DBOS workflows on database-backed queues; a separate
-    worker process (``manage.py dbos_worker``) executes them. Results are
-    stored in the DBOS system database and exposed through the standard
-    ``TaskResult`` API.
+    Tasks are enqueued as DBOS workflows on database-backed queues, through a
+    ``DBOSClient`` that only talks to the system database; a separate worker
+    process (``manage.py dbos_worker``) executes them. Results are read back
+    from the system database and exposed through the standard ``TaskResult``
+    API.
     """
 
     task_class = DBOSTask
@@ -66,61 +69,64 @@ class DBOSBackend(BaseTaskBackend):
     supports_priority = True
 
     def enqueue(self, task: DBOSTask, args: Any, kwargs: Any) -> TaskResult:
-        dbos_setup.ensure_initialized()
         self.validate_task(task)
+        self._validate_queue(task)
 
-        workflow = self._workflow_for_task(task)
-        with self._enqueue_options(task):
-            handle = DBOS.enqueue_workflow(task.queue_name, workflow, *args, **kwargs)
-
-        logger.debug(
-            'enqueued task',
-            task_name=task.name,
-            queue=task.queue_name,
-            workflow_id=handle.workflow_id,
-        )
-        return self._fresh_result(handle.workflow_id)
+        handle = get_client().enqueue(self._enqueue_options(task), *args, **kwargs)
+        self._log_enqueued(task, handle.workflow_id)
+        try:
+            status = handle.get_status()
+        except DBOSNonExistentWorkflowError as exc:
+            raise TaskResultDoesNotExist(handle.workflow_id) from exc
+        return _normalize_fresh_result(_build_task_result(handle.workflow_id, status))
 
     async def aenqueue(self, task: DBOSTask, args: Any, kwargs: Any) -> TaskResult:
-        dbos_setup.ensure_initialized()
         self.validate_task(task)
+        self._validate_queue(task)
 
-        workflow = self._workflow_for_task(task)
-        with self._enqueue_options(task):
-            handle = await DBOS.enqueue_workflow_async(task.queue_name, workflow, *args, **kwargs)
-
-        logger.debug(
-            'enqueued task',
-            task_name=task.name,
-            queue=task.queue_name,
-            workflow_id=handle.workflow_id,
-        )
-        return await self._fresh_result_async(handle.workflow_id)
+        handle = await get_client().enqueue_async(self._enqueue_options(task), *args, **kwargs)
+        self._log_enqueued(task, handle.workflow_id)
+        try:
+            status = await handle.get_status()
+        except DBOSNonExistentWorkflowError as exc:
+            raise TaskResultDoesNotExist(handle.workflow_id) from exc
+        return _normalize_fresh_result(_build_task_result(handle.workflow_id, status))
 
     def get_result(self, result_id: str) -> TaskResult:
-        dbos_setup.ensure_initialized()
         try:
-            status = DBOS.retrieve_workflow(result_id).get_status()
-        except Exception as exc:  # dbos raises DBOSNonExistentWorkflowError
+            status = get_client().retrieve_workflow(result_id).get_status()
+        except DBOSNonExistentWorkflowError as exc:
+            raise TaskResultDoesNotExist(result_id) from exc
+        return _build_task_result(result_id, status)
+
+    async def aget_result(self, result_id: str) -> TaskResult:
+        try:
+            handle = await get_client().retrieve_workflow_async(result_id)
+            status = await handle.get_status()
+        except DBOSNonExistentWorkflowError as exc:
             raise TaskResultDoesNotExist(result_id) from exc
         return _build_task_result(result_id, status)
 
     # Internal helpers
 
-    def _workflow_for_task(self, task: DBOSTask) -> Any:
-        self._validate_queue(task)
-        workflow_name = register_task_workflow(task)
-        return _get_workflow(workflow_name)
-
-    def _enqueue_options(self, task: DBOSTask) -> SetEnqueueOptions:
-        """Context options applied to the next enqueue in this thread/async context."""
+    def _enqueue_options(self, task: DBOSTask) -> EnqueueOptions:
+        """The DBOS enqueue options for a task: workflow name, queue, priority, delay, params."""
         params = task.dbos_params
-        return SetEnqueueOptions(
-            priority=_django_to_dbos_priority(task.priority),
-            delay_seconds=_delay_seconds(task.run_after),
-            **({'deduplication_id': params.deduplication_id} if params.deduplication_id is not None else {}),
-            **({'queue_partition_key': params.queue_partition_key} if params.queue_partition_key is not None else {}),
-        )
+        options: dict[str, Any] = {
+            'workflow_name': workflow_name_for_task(task),
+            'queue_name': task.queue_name,
+            'priority': _django_to_dbos_priority(task.priority),
+        }
+        delay_seconds = _delay_seconds(task.run_after)
+        if delay_seconds is not None:
+            options['delay_seconds'] = delay_seconds
+        if params.deduplication_id is not None:
+            options['deduplication_id'] = params.deduplication_id
+        if params.queue_partition_key is not None:
+            options['queue_partition_key'] = params.queue_partition_key
+        if params.workflow_timeout is not None:
+            options['workflow_timeout'] = params.workflow_timeout
+        return options  # type: ignore[return-value]
 
     def _validate_queue(self, task: DBOSTask) -> None:
         from . import settings as settings_module
@@ -133,27 +139,9 @@ class DBOSBackend(BaseTaskBackend):
                 'can process it.'
             )
 
-    def _fresh_result(self, workflow_id: str) -> TaskResult:
-        try:
-            status = DBOS.retrieve_workflow(workflow_id).get_status()
-        except Exception as exc:
-            raise TaskResultDoesNotExist(workflow_id) from exc
-        return _normalize_fresh_result(_build_task_result(workflow_id, status))
-
-    async def _fresh_result_async(self, workflow_id: str) -> TaskResult:
-        # Async variant: the synchronous retrieve_workflow() refuses to run
-        # inside a running event loop.
-        status = await DBOS.get_workflow_status_async(workflow_id)
-        if status is None:
-            raise TaskResultDoesNotExist(workflow_id)
-        return _normalize_fresh_result(_build_task_result(workflow_id, status))
-
-
-def _get_workflow(workflow_name: str) -> Any:
-    workflow = _get_or_create_dbos_registry().workflow_info_map.get(workflow_name)
-    if workflow is None:  # pragma: no cover - register_task_workflow just ran
-        raise RuntimeError(f'Workflow {workflow_name} was not registered')
-    return workflow
+    @staticmethod
+    def _log_enqueued(task: DBOSTask, workflow_id: str) -> None:
+        logger.debug('enqueued task', task_name=task.name, queue=task.queue_name, workflow_id=workflow_id)
 
 
 def _normalize_fresh_result(result: TaskResult) -> TaskResult:

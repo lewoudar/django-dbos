@@ -14,7 +14,8 @@ Fixtures:
   SQLite file by default, a PostgreSQL container when
   ``--dbos-system-db=postgres`` is passed (requires Docker and
   ``testcontainers[postgres]``). Use it when you need real semantics:
-  step retries, durable sleeps, schedules.
+  step retries, durable sleeps, schedules. Enqueues go through the same
+  ``DBOSClient`` path as production; the launched DBOS executes them.
 """
 
 from __future__ import annotations
@@ -168,10 +169,14 @@ def dbos_system(request: Any, tmp_path_factory: Any) -> Any:
 
     os.environ['DBOS_SYSTEM_DATABASE_URL'] = system_database_url
 
-    from django_dbos import dbos_setup
+    from django_dbos import client, dbos_setup
 
+    # The DBOSClient (enqueue/get_result) must target this session's system
+    # database: drop any client built before the URL was set.
+    client.close_client()
     dbos_setup.ensure_launched()
     yield system_database_url
+    client.close_client()
     dbos_setup.shutdown()
     if previous_url is None:
         del os.environ['DBOS_SYSTEM_DATABASE_URL']

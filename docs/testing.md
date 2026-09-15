@@ -42,7 +42,8 @@ semantics.
 
 When you need real semantics (step retries, durable sleeps, schedules, crash
 recovery), use `dbos_system`: the fixture launches DBOS in-process on a system
-database — the current test process acts as the worker.
+database — the current test process acts as the worker, while enqueues and
+result lookups go through the same `DBOSClient` path as in production.
 
 ```python
 def test_durable_sleep(dbos_system):

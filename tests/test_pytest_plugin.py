@@ -20,7 +20,6 @@ TASKS = {
     "default": {"BACKEND": "django_dbos.backends.DBOSBackend", "QUEUES": ["default"]},
 }
 USE_TZ = True
-DJANGO_DBOS = {"AUTO_INIT": False}
 """
 
 TASKS_MODULE = """

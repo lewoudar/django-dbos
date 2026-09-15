@@ -48,14 +48,19 @@ TASKS = {
 }
 ```
 
-Then run the worker:
+Apply the migrations (django-dbos ships one small table, for worker
+heartbeats) and start a worker:
 
 ```bash
+python manage.py migrate
 python manage.py dbos_worker
 ```
 
-That's it — every task enqueued through this backend is now durable.
-See [Configuration](configuration.md) for the database setup and the available options.
+That's it — every task enqueued through this backend is now durable. Your
+web processes only talk to the DBOS system database (they never execute
+tasks); the worker creates that database on its first start, so start it
+once before enqueuing. See [Configuration](configuration.md) for the database
+setup and the available options.
 
 ## License
 

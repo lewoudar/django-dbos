@@ -1,4 +1,4 @@
-"""Tests for dbos_setup helpers: config building and queue registration."""
+"""Tests for dbos_setup helpers: config building, queue registration and launch ordering."""
 
 from django_dbos import dbos_setup
 
@@ -57,3 +57,21 @@ class TestRegisterQueues:
         settings.DJANGO_DBOS = {}
         dbos_setup._register_queues()
         queue_cls.assert_called_once_with('default')
+
+
+class TestEnsureLaunched:
+    def test_registers_known_tasks_before_launch(self, mocker):
+        # The worker must know every task before it starts dequeuing.
+        mocker.patch.object(dbos_setup, '_initialized', True)
+        mocker.patch.object(dbos_setup, '_launched', False)
+        calls: list[str] = []
+        mocker.patch(
+            'django_dbos.tasks_registry.register_all_task_workflows',
+            side_effect=lambda: calls.append('register'),
+        )
+        mocker.patch.object(dbos_setup.DBOS, 'launch', side_effect=lambda: calls.append('launch'))
+
+        dbos_setup.ensure_launched()
+
+        assert calls == ['register', 'launch']
+        assert dbos_setup._launched is True

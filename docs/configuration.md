@@ -60,6 +60,19 @@ DJANGO_DBOS = {
 }
 ```
 
+## Processes
+
+django-dbos follows DBOS' own split between an *application* and its *clients*:
+
+| Process | What it does with DBOS |
+| --- | --- |
+| Web (gunicorn, uvicorn, `runserver`), shell, other commands | A `DBOSClient` against the system database: enqueue tasks, read results, admin pages, `dbos_status`. Never executes a task. |
+| `dbos_worker` | The DBOS application: registers every task as a workflow, launches the queue workers, the scheduler and crash recovery, executes tasks. |
+
+The client is created on first use and never runs schema migrations: **start a
+worker once before enqueuing** — it creates the system database and its
+tables on launch.
+
 ## Launching workers
 
 Tasks are executed by the `dbos_worker` management command:
@@ -69,8 +82,10 @@ python manage.py dbos_worker
 ```
 
 The worker loads tasks from every installed app's `tasks` (or `dbos_tasks`)
-module, launches DBOS' queue workers and the cron scheduler, and shuts down
-gracefully on `SIGTERM`/`SIGINT`.
+module, registers them as DBOS workflows, launches DBOS' queue workers and the
+cron scheduler, and shuts down gracefully on `SIGTERM`/`SIGINT`. It also
+pushes a heartbeat to the Django database (see [Worker capacity](status.md)),
+which is why django-dbos ships a migration.
 
 Use `--no-scheduler` to run a worker that does not manage cron schedules
 (useful when running several workers behind a load balancer and you want a

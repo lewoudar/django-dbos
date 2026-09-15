@@ -1,16 +1,19 @@
-"""Management of the DBOS singleton from a Django process.
+"""Management of the DBOS singleton in a worker process.
 
 DBOS uses a process-wide singleton (``dbos.DBOS``). This module wraps its
-creation, launch and teardown so Django entry points (``AppConfig.ready()``,
-management commands, tests) can share one idempotent lifecycle:
+creation, launch and teardown so the worker entry points (the ``dbos_worker``
+command, the ``dbos_system`` test fixture) share one idempotent lifecycle:
 
 - :func:`ensure_initialized` builds the singleton from the ``DJANGO_DBOS``
-  setting. It does not start background workers: enqueuing tasks is possible
-  right after, the tasks just wait in the system database.
-- :func:`ensure_launched` additionally starts queue/scheduler threads, i.e.
-  everything a worker process needs.
+  setting and declares the queues.
+- :func:`ensure_launched` registers every known task as a DBOS workflow and
+  starts the queue/scheduler/recovery threads: from then on this process
+  executes tasks.
 - :func:`shutdown` tears the singleton down (used on worker shutdown and
   between tests).
+
+Processes that only enqueue tasks or inspect the system database (web,
+admin, ``dbos_status``) never call these: they use ``client.get_client()``.
 """
 
 from __future__ import annotations
@@ -93,12 +96,20 @@ def ensure_initialized() -> None:
 
 
 def ensure_launched() -> None:
-    """Ensure the DBOS singleton exists and its background services run."""
+    """Ensure the DBOS singleton exists and its background services run.
+
+    Every task declared so far is registered as a workflow first: once
+    launched, this process dequeues workflows enqueued by any process and can
+    only execute the ones it knows.
+    """
     global _launched
     ensure_initialized()
     with _instance_lock:
         if _launched:
             return
+        from .tasks_registry import register_all_task_workflows
+
+        register_all_task_workflows()
         DBOS.launch()
         _launched = True
 

@@ -5,9 +5,11 @@ task function as a single checkpointed step. This gives DBOS-level durability
 (the enqueue survives crashes) plus optional step retries, while keeping the
 user-facing API exactly Django's ``@task``.
 
-Workflows are registered lazily on first enqueue and named after the task
-function's module path, which lets :meth:`DBOSBackend.get_result` find the
-original task back from a workflow status.
+Workflows are named after the task function's module path, which lets
+:meth:`DBOSBackend.get_result` find the original task back from a workflow
+status. Only the worker registers them (:func:`register_all_task_workflows`,
+before ``DBOS.launch()``): other processes enqueue by name through
+``DBOSClient`` and never hold workflow code.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from dbos._dbos import _get_or_create_dbos_registry
 
 from .logging import logger
 from .params_dataclass import DbosTaskParams
-from .tasks import DBOSTask
+from .tasks import DBOSTask, known_tasks
 
 REGISTRY_PREFIX = 'django_dbos.tasks.'
 
@@ -129,3 +131,13 @@ def register_task_workflow(task: DBOSTask) -> str:
 
     logger.debug('registered DBOS workflow', workflow_name=name)
     return name
+
+
+def register_all_task_workflows() -> None:
+    """Register a DBOS workflow for every task declared in this process.
+
+    Called by the worker after task autodiscovery: a workflow enqueued by
+    another process can only be executed here if its function is registered.
+    """
+    for task in known_tasks():
+        register_task_workflow(task)
