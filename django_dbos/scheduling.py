@@ -154,42 +154,23 @@ def _register_scheduled_workflow(task: DBOSTask) -> Any:
     """Register the workflow executed on each cron firing: the task body."""
     from dbos._dbos import _get_or_create_dbos_registry
 
-    from .tasks_registry import _step_options
+    from .tasks_registry import aexecute_task_body, execute_task_body
 
     name = schedule_name_for_task(task)
     if name in _get_or_create_dbos_registry().workflow_info_map:
         return _get_workflow(name)
 
-    options = _step_options(task.dbos_params)
-    takes_context = task.takes_context
-    durable_operations = task.dbos_params.durable_operations
-    func = task.func
-
-    if inspect.iscoroutinefunction(func):
+    if inspect.iscoroutinefunction(task.func):
 
         @DBOS.workflow(name=name)
         async def scheduled_workflow(scheduled_time: Any, context: Any) -> Any:
-            args = ()
-            if takes_context:
-                from .tasks_registry import _build_task_context
-
-                args = (_build_task_context(task, (), {}),)
-            if durable_operations:
-                return await func(*args)
-            return await DBOS.run_step_async(options, func, *args)
+            return await aexecute_task_body(task, (), {})
 
     else:
 
         @DBOS.workflow(name=name)
         def scheduled_workflow(scheduled_time: Any, context: Any) -> Any:
-            args = ()
-            if takes_context:
-                from .tasks_registry import _build_task_context
-
-                args = (_build_task_context(task, (), {}),)
-            if durable_operations:
-                return func(*args)
-            return DBOS.run_step(options, func, *args)
+            return execute_task_body(task, (), {})
 
     return _get_workflow(name)
 

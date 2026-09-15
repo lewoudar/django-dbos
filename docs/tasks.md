@@ -28,6 +28,14 @@ result.status  # TaskResultStatus.READY / RUNNING / SUCCESSFUL / FAILED
 result.return_value  # only available when SUCCESSFUL
 ```
 
+## Database connections
+
+Task functions use the ORM as usual. They run in the worker's long-lived
+threads, outside any request cycle, so django-dbos recycles Django's
+connections around each execution the way a request would
+(`close_old_connections()` before and after): `CONN_MAX_AGE` is honoured and
+a connection dropped by the database is never reused by the next task.
+
 ## Deferred tasks
 
 Use `.using(run_after=...)` to run a task later (an aware `datetime`, as

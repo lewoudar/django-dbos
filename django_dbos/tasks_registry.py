@@ -5,6 +5,11 @@ task function as a single checkpointed step. This gives DBOS-level durability
 (the enqueue survives crashes) plus optional step retries, while keeping the
 user-facing API exactly Django's ``@task``.
 
+The task function runs in DBOS' long-lived executor threads, outside any
+request cycle: Django's ORM connections are recycled around each execution
+(``close_old_connections``), exactly as a request would, so ``CONN_MAX_AGE``
+is honoured and a connection dropped by the database is not reused.
+
 Workflows are named after the task function's module path, which lets
 :meth:`DBOSBackend.get_result` find the original task back from a workflow
 status. Only the worker registers them (:func:`register_all_task_workflows`,
@@ -19,8 +24,10 @@ import re
 from datetime import UTC
 from typing import Any
 
+from asgiref.sync import sync_to_async
 from dbos import DBOS, StepOptions
 from dbos._dbos import _get_or_create_dbos_registry
+from django.db import close_old_connections
 
 from .logging import logger
 from .params_dataclass import DbosTaskParams
@@ -92,6 +99,51 @@ def _build_task_context(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str,
     return TaskContext(task_result=result)
 
 
+def _call_with_fresh_connections(func: Any, *args: Any, **kwargs: Any) -> Any:
+    """Run ``func`` with Django connections recycled before and after."""
+    close_old_connections()
+    try:
+        return func(*args, **kwargs)
+    finally:
+        close_old_connections()
+
+
+async def _acall_with_fresh_connections(func: Any, *args: Any, **kwargs: Any) -> Any:
+    # Same thread-sensitive bridge Django's ASGI handler uses.
+    aclose_old_connections = sync_to_async(close_old_connections, thread_sensitive=True)
+    await aclose_old_connections()
+    try:
+        return await func(*args, **kwargs)
+    finally:
+        await aclose_old_connections()
+
+
+def execute_task_body(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    """Run a (sync) task function inside the current DBOS workflow.
+
+    Prepends the ``TaskContext`` when the task takes one, then runs the
+    function either as a single checkpointed step (default) or at workflow
+    level (``durable_operations``: the task checkpoints its own operations
+    through ``get_dbos_context()``).
+    """
+    if task.takes_context:
+        args = (_build_task_context(task, args, kwargs), *args)
+    if task.dbos_params.durable_operations:
+        return _call_with_fresh_connections(task.func, *args, **kwargs)
+    return DBOS.run_step(_step_options(task.dbos_params), _call_with_fresh_connections, task.func, *args, **kwargs)
+
+
+async def aexecute_task_body(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    """Async variant of :func:`execute_task_body`."""
+    if task.takes_context:
+        args = (_build_task_context(task, args, kwargs), *args)
+    if task.dbos_params.durable_operations:
+        return await _acall_with_fresh_connections(task.func, *args, **kwargs)
+    return await DBOS.run_step_async(
+        _step_options(task.dbos_params), _acall_with_fresh_connections, task.func, *args, **kwargs
+    )
+
+
 def register_task_workflow(task: DBOSTask) -> str:
     """Register (or reuse) the DBOS workflow executing this task.
 
@@ -101,33 +153,19 @@ def register_task_workflow(task: DBOSTask) -> str:
     if name in _get_or_create_dbos_registry().workflow_info_map:
         return name
 
-    options = _step_options(task.dbos_params)
-    takes_context = task.takes_context
     max_recovery_attempts = task.dbos_params.max_recovery_attempts
-    durable_operations = task.dbos_params.durable_operations
-    func = task.func
 
-    if inspect.iscoroutinefunction(func):
+    if inspect.iscoroutinefunction(task.func):
 
         @DBOS.workflow(name=name, max_recovery_attempts=max_recovery_attempts)
         async def workflow(*args: Any, **kwargs: Any) -> Any:
-            if takes_context:
-                args = (_build_task_context(task, args, kwargs), *args)
-            if durable_operations:
-                # Runs at workflow level: the task uses get_dbos_context() to
-                # checkpoint its own operations.
-                return await func(*args, **kwargs)
-            return await DBOS.run_step_async(options, func, *args, **kwargs)
+            return await aexecute_task_body(task, args, kwargs)
 
     else:
 
         @DBOS.workflow(name=name, max_recovery_attempts=max_recovery_attempts)
         def workflow(*args: Any, **kwargs: Any) -> Any:
-            if takes_context:
-                args = (_build_task_context(task, args, kwargs), *args)
-            if durable_operations:
-                return func(*args, **kwargs)
-            return DBOS.run_step(options, func, *args, **kwargs)
+            return execute_task_body(task, args, kwargs)
 
     logger.debug('registered DBOS workflow', workflow_name=name)
     return name

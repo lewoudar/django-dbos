@@ -451,6 +451,7 @@ name = "django-dbos"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "asgiref" },
     { name = "croniter" },
     { name = "dbos" },
     { name = "django" },
@@ -492,6 +493,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
+    { name = "asgiref", specifier = ">=3.8" },
     { name = "croniter", specifier = ">=6.0" },
     { name = "dbos", specifier = ">=1.6" },
     { name = "django", specifier = ">=6.0" },
