@@ -36,6 +36,11 @@ def nightly_report(): ...
 
 Run `dbos_worker` without `--no-scheduler` so it registers and fires schedules.
 
+The code is the source of truth for schedules: on startup the worker creates
+the missing ones, re-creates those whose crontab, timezone or queue changed,
+and deletes the django-dbos schedules whose task no longer carries `@cron`.
+Re-creating a schedule resets a pause made from the admin.
+
 ## Timezone
 
 The crontab is evaluated in Django's default timezone

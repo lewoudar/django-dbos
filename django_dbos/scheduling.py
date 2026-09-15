@@ -109,36 +109,46 @@ def schedule_name_for_task(task: DBOSTask) -> str:
 
 
 def register_cron_schedules() -> None:
-    """Create (or update) the DBOS schedule for every registered cron task.
+    """Reconcile the DBOS schedules with the ``@cron`` tasks of this process.
 
-    Called by the ``dbos_worker`` command after DBOS launch.
+    Called by the ``dbos_worker`` command after DBOS launch. The code is the
+    source of truth: a schedule is created for every cron task, re-created
+    when its crontab, timezone or queue changed, and deleted when its task no
+    longer carries ``@cron`` (an orphan would keep firing a workflow no worker
+    registers). Re-creating a schedule also resets a pause made in the admin.
     """
+    cron_timezone = str(_django_timezone())
     for registration in _registry.values():
         name = schedule_name_for_task(registration.task)
         scheduled_workflow = _register_scheduled_workflow(registration.task)
+        wanted = {
+            'schedule': registration.crontab,
+            'cron_timezone': cron_timezone,
+            'queue_name': registration.task.queue_name,
+        }
 
         existing = DBOS.get_schedule(name)
-        existing_schedule = (
-            existing.get('schedule') if isinstance(existing, dict) else getattr(existing, 'schedule', None)
-        )
-        if existing is not None and existing_schedule == registration.crontab:
-            continue
         if existing is not None:
-            logger.info('updating existing cron schedule', schedule_name=name, crontab=registration.crontab)
+            current = {key: existing.get(key) for key in wanted}
+            if current == wanted:
+                continue
+            logger.info('updating existing cron schedule', schedule_name=name, previous=current, **wanted)
             DBOS.delete_schedule(name)
-        DBOS.create_schedule(
-            schedule_name=name,
-            workflow_fn=scheduled_workflow,
-            schedule=registration.crontab,
-            cron_timezone=str(_django_timezone()),
-            queue_name=registration.task.queue_name,
-        )
-        logger.info(
-            'created cron schedule',
-            schedule_name=name,
-            crontab=registration.crontab,
-            queue=registration.task.queue_name,
-        )
+        DBOS.create_schedule(schedule_name=name, workflow_fn=scheduled_workflow, **wanted)
+        logger.info('created cron schedule', schedule_name=name, **wanted)
+
+    _delete_orphan_schedules()
+
+
+def _delete_orphan_schedules() -> None:
+    """Delete django-dbos schedules whose task no longer carries ``@cron``."""
+    wanted = {schedule_name_for_task(registration.task) for registration in _registry.values()}
+    for schedule in DBOS.list_schedules(schedule_name_prefix=SCHEDULE_PREFIX):
+        name = schedule['schedule_name']
+        if name in wanted:
+            continue
+        DBOS.delete_schedule(name)
+        logger.info('deleted orphan cron schedule', schedule_name=name, crontab=schedule.get('schedule'))
 
 
 def _django_timezone() -> Any:

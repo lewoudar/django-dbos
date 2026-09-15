@@ -70,23 +70,39 @@ class TestDjangoTimezone:
         assert cron_module._django_timezone() == 'UTC'
 
 
+@pytest.mark.integration
 class TestRegisterCronSchedules:
-    @pytest.mark.integration
-    def test_updates_an_existing_schedule_with_a_changed_crontab(self, dbos_environment):
+    @pytest.fixture
+    def stale_schedule(self, dbos_environment):
+        """Create the cron_task schedule with values that differ from the code, return a factory."""
         from dbos import DBOS
 
         from django_dbos.scheduling import _register_scheduled_workflow
 
         name = schedule_name_for_task(cron_task)
-        if DBOS.get_schedule(name) is not None:  # may exist from other tests
-            DBOS.delete_schedule(name)
         scheduled_workflow = _register_scheduled_workflow(cron_task)
-        DBOS.create_schedule(
-            schedule_name=name,
-            workflow_fn=scheduled_workflow,
-            schedule='0 0 1 1 *',  # different from the task's crontab
-            queue_name='default',
-        )
+
+        def create(**overrides):
+            if DBOS.get_schedule(name) is not None:  # may exist from other tests
+                DBOS.delete_schedule(name)
+            values = {'schedule': '0 */5 * * * *', 'cron_timezone': 'UTC', 'queue_name': 'default', **overrides}
+            DBOS.create_schedule(schedule_name=name, workflow_fn=scheduled_workflow, **values)
+            return name
+
+        return create
+
+    @pytest.mark.parametrize(
+        'stale',
+        [
+            pytest.param({'schedule': '0 0 1 1 *'}, id='crontab'),
+            pytest.param({'cron_timezone': 'Europe/Paris'}, id='timezone'),
+            pytest.param({'queue_name': 'emails'}, id='queue'),
+        ],
+    )
+    def test_recreates_a_schedule_whose_definition_changed(self, stale_schedule, stale):
+        from dbos import DBOS
+
+        name = stale_schedule(**stale)
 
         cron_module.cron('*/5 * * * *')(cron_task)
         cron_module.register_cron_schedules()
@@ -94,3 +110,41 @@ class TestRegisterCronSchedules:
         schedule = DBOS.get_schedule(name)
         assert schedule is not None
         assert schedule['schedule'] == '0 */5 * * * *'
+        assert schedule['cron_timezone'] == 'UTC'
+        assert schedule['queue_name'] == 'default'
+
+    def test_leaves_an_up_to_date_schedule_alone(self, stale_schedule, mocker):
+        stale_schedule()
+        delete = mocker.spy(cron_module.DBOS, 'delete_schedule')
+
+        cron_module.cron('*/5 * * * *')(cron_task)
+        cron_module.register_cron_schedules()
+
+        delete.assert_not_called()
+
+    def test_deletes_orphan_schedules(self, stale_schedule):
+        from dbos import DBOS
+
+        name = stale_schedule()  # cron_task is scheduled in the database...
+        cron_module.register_cron_schedules()  # ...but no task carries @cron in this process
+
+        assert DBOS.get_schedule(name) is None
+
+    def test_ignores_schedules_of_other_applications(self, dbos_environment, mocker):
+        from dbos import DBOS
+
+        from tests.tasks import cron_task as task
+
+        foreign = 'someone_else.nightly'
+        if DBOS.get_schedule(foreign) is None:
+            DBOS.create_schedule(
+                schedule_name=foreign,
+                workflow_fn=cron_module._register_scheduled_workflow(task),
+                schedule='0 0 1 1 *',
+                queue_name='default',
+            )
+        try:
+            cron_module.register_cron_schedules()
+            assert DBOS.get_schedule(foreign) is not None
+        finally:
+            DBOS.delete_schedule(foreign)
