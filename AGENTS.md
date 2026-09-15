@@ -93,5 +93,5 @@ they are exercised by the plugin tests.
   or the admin's generic patterns swallow them; URL names are bare (`django_dbos_workflow_changelist`), the `admin:`
   namespace is added by the
   inclusion.
-- `dbos_status --json` may interleave DBOS/structlog logs on stdout: parse
-  from the first `{`.
+- DBOS/structlog log on stdout: in tests, capture a command's output with
+  `call_command(..., stdout=StringIO())` rather than `capsys`.

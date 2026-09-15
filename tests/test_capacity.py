@@ -8,6 +8,7 @@ import socket
 import sys
 import types
 from datetime import timedelta
+from io import StringIO
 from typing import Any
 
 import pytest
@@ -78,6 +79,13 @@ class TestAdviseQueue:
         assert advise_queue(_metrics(**overrides)) == expected
 
 
+def _status(*args: str) -> str:
+    """Run dbos_status and return its own output (DBOS logs would interleave on stdout)."""
+    out = StringIO()
+    call_command('dbos_status', *args, stdout=out)
+    return out.getvalue()
+
+
 # --- Integration (real system database) ---
 
 
@@ -117,11 +125,9 @@ class TestCollect:
         # A worker with a heartbeat but no workflow yet is still an executor.
         assert 'some-worker' in report['executors']
 
-    def test_command_json_output(self, dbos_environment: Any, capsys: Any) -> None:
-        call_command('dbos_status', '--json')
-        output = capsys.readouterr().out
-        # DBOS/structlog may log to stdout: parse from the first JSON object.
-        payload = json.loads(output[output.index('{') :])
+    def test_command_json_output(self, dbos_environment: Any) -> None:
+        output = _status('--json')
+        payload = json.loads(output)
         assert set(payload) == {
             'queues',
             'executors',
@@ -130,14 +136,13 @@ class TestCollect:
         }
         assert set(payload['queues']) == {'default', 'emails'}
 
-    def test_command_human_output(self, dbos_environment: Any, capsys: Any) -> None:
-        call_command('dbos_status')
-        output = capsys.readouterr().out
+    def test_command_human_output(self, dbos_environment: Any) -> None:
+        output = _status()
         assert 'Queue "default"' in output
         assert 'Workers:' in output
 
     def test_human_output_reports_live_worker_with_metrics(
-        self, dbos_environment: Any, capsys: Any, monkeypatch: pytest.MonkeyPatch, mocker
+        self, dbos_environment: Any, monkeypatch: pytest.MonkeyPatch, mocker
     ) -> None:
         fake_psutil = types.ModuleType('psutil')
         fake_psutil.Process = lambda: types.SimpleNamespace(
@@ -148,45 +153,39 @@ class TestCollect:
         mocker.patch('django_dbos.capacity._recent_executor_ids', return_value={'live-worker'})
 
         write_heartbeat('live-worker', queues=('default',), has_metrics=True)
-        call_command('dbos_status')
-        output = capsys.readouterr().out
+        output = _status()
         assert (
             f'live-worker: {socket.gethostname()} pid {os.getpid()}, queues default, CPU 42.0%, RSS 1024.0 MB' in output
         )
 
-    def test_human_output_reports_live_worker_without_metrics(self, dbos_environment: Any, capsys: Any, mocker) -> None:
+    def test_human_output_reports_live_worker_without_metrics(self, dbos_environment: Any, mocker) -> None:
         mocker.patch('django_dbos.capacity._recent_executor_ids', return_value={'plain-worker'})
         write_heartbeat('plain-worker', has_metrics=False)
-        call_command('dbos_status')
-        output = capsys.readouterr().out
+        output = _status()
         assert (
             f'plain-worker: {socket.gethostname()} pid {os.getpid()}, install django-dbos[metrics] for CPU/memory'
             in output
         )
 
-    def test_human_output_flags_executor_without_heartbeat(self, dbos_environment: Any, capsys: Any, mocker) -> None:
+    def test_human_output_flags_executor_without_heartbeat(self, dbos_environment: Any, mocker) -> None:
         mocker.patch('django_dbos.capacity._recent_executor_ids', return_value={'ghost-worker'})
-        call_command('dbos_status')
-        output = capsys.readouterr().out
+        output = _status()
         assert 'ghost-worker: NO HEARTBEAT (worker down, or django_dbos migrations not applied)' in output
 
-    def test_human_output_with_no_worker_at_all(self, dbos_environment: Any, capsys: Any, mocker) -> None:
+    def test_human_output_with_no_worker_at_all(self, dbos_environment: Any, mocker) -> None:
         # Nothing active, nothing recent, no heartbeat: the section is empty.
         mocker.patch('django_dbos.capacity._active_status_aggregates', return_value=[])
         mocker.patch('django_dbos.capacity._recent_executor_ids', return_value=set())
-        call_command('dbos_status')
-        output = capsys.readouterr().out
+        output = _status()
         assert 'Workers:' in output
         assert '(none)' in output
 
-    def test_human_output_with_queue_filter(self, dbos_environment: Any, capsys: Any) -> None:
-        call_command('dbos_status', '--queues', 'emails')
-        output = capsys.readouterr().out
+    def test_human_output_with_queue_filter(self, dbos_environment: Any) -> None:
+        output = _status('--queues', 'emails')
         assert 'Queue "emails"' in output
         assert 'Queue "default"' not in output
 
-    def test_json_output_with_queue_filter(self, dbos_environment: Any, capsys: Any) -> None:
-        call_command('dbos_status', '--json', '--queues', 'emails')
-        output = capsys.readouterr().out
-        payload = json.loads(output[output.index('{') :])
+    def test_json_output_with_queue_filter(self, dbos_environment: Any) -> None:
+        output = _status('--json', '--queues', 'emails')
+        payload = json.loads(output)
         assert set(payload['queues']) == {'emails'}
