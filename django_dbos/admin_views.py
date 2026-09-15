@@ -11,7 +11,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from dbos._error import DBOSNonExistentWorkflowError
+from dbos import error as dbos_error
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
@@ -155,7 +155,7 @@ def workflow_list(request: HttpRequest) -> HttpResponse:
 def _get_workflow_or_404(workflow_id: str) -> Any:
     try:
         return get_client().retrieve_workflow(workflow_id).get_status()
-    except DBOSNonExistentWorkflowError:
+    except dbos_error.DBOSNonExistentWorkflowError:
         raise Http404(f'No workflow found with id {workflow_id!r}') from None
 
 

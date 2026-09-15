@@ -23,7 +23,8 @@ No workflow exhausted its recovery attempts.
 
 Queue and executor figures come from the DBOS system database, read through
 a `DBOSClient` (the command never launches DBOS: it can run anywhere, a cron
-job or a web instance included):
+job or a web instance included). Only the *active* workflows — waiting or
+running, i.e. the backlog itself — are listed and aggregated:
 
 - **Backlog** per queue: workflows enqueued and waiting (ENQUEUED/PENDING), and
   the age of the oldest waiting workflow.
@@ -64,9 +65,9 @@ uv add django-dbos[metrics]   # optional: adds CPU/memory to the heartbeat
 
 Workers report their host, pid, served queues (and CPU/memory) every 10
 seconds and delete their row on clean shutdown. A row not refreshed for 30
-seconds is considered stale (`alive: false` in the JSON output, hidden from
+seconds is considered stale (`alive: false` in the JSON output, `STALE` in
 the human output): the worker died without cleaning up. An executor id seen
-on workflows but without any live heartbeat is flagged `NO HEARTBEAT`.
+on active workflows without any heartbeat row is flagged `NO HEARTBEAT`.
 
 Several worker processes may share an `executor_id` (DBOS' default is
 `"local"` for all of them); heartbeats are keyed per process

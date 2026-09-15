@@ -6,7 +6,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from dbos._error import DBOSNonExistentWorkflowError
+from dbos import error as dbos_error
 from django.tasks import TaskResult, TaskResultStatus
 from django.tasks.backends.base import BaseTaskBackend
 from django.tasks.base import TaskError
@@ -76,7 +76,7 @@ class DBOSBackend(BaseTaskBackend):
         self._log_enqueued(task, handle.workflow_id)
         try:
             status = handle.get_status()
-        except DBOSNonExistentWorkflowError as exc:
+        except dbos_error.DBOSNonExistentWorkflowError as exc:
             raise TaskResultDoesNotExist(handle.workflow_id) from exc
         return _normalize_fresh_result(_build_task_result(handle.workflow_id, status))
 
@@ -88,14 +88,14 @@ class DBOSBackend(BaseTaskBackend):
         self._log_enqueued(task, handle.workflow_id)
         try:
             status = await handle.get_status()
-        except DBOSNonExistentWorkflowError as exc:
+        except dbos_error.DBOSNonExistentWorkflowError as exc:
             raise TaskResultDoesNotExist(handle.workflow_id) from exc
         return _normalize_fresh_result(_build_task_result(handle.workflow_id, status))
 
     def get_result(self, result_id: str) -> TaskResult:
         try:
             status = get_client().retrieve_workflow(result_id).get_status()
-        except DBOSNonExistentWorkflowError as exc:
+        except dbos_error.DBOSNonExistentWorkflowError as exc:
             raise TaskResultDoesNotExist(result_id) from exc
         return _build_task_result(result_id, status)
 
@@ -103,7 +103,7 @@ class DBOSBackend(BaseTaskBackend):
         try:
             handle = await get_client().retrieve_workflow_async(result_id)
             status = await handle.get_status()
-        except DBOSNonExistentWorkflowError as exc:
+        except dbos_error.DBOSNonExistentWorkflowError as exc:
             raise TaskResultDoesNotExist(result_id) from exc
         return _build_task_result(result_id, status)
 

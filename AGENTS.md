@@ -82,10 +82,13 @@ they are exercised by the plugin tests.
   `checks.py`) or override via the `settings` fixture for plain settings.
   Overriding `DATABASES` through the fixture also raises a `UserWarning`
   (fatal with `filterwarnings = ["error"]`).
-- The DBOS SDK singleton: registry access via `_get_or_create_dbos_registry()`,
-  system db via `_get_dbos_instance()._sys_db`; `DBOS.get_schedule` returns a **dict**; the synchronous
-  `retrieve_workflow()` refuses to run inside a
-  running event loop — use `get_workflow_status_async` in async paths.
+- No private SDK import (`dbos._*`): workflow functions are kept in
+  `tasks_registry._workflows`, errors come from the public `dbos.error`
+  alias (`from dbos import error as dbos_error` — `from dbos.error import`
+  fails, it is an attribute, not a module), capacity lists active workflows
+  through `DBOSClient.list_workflows`. `DBOS.get_schedule` returns a
+  **dict**; the synchronous `retrieve_workflow()` refuses to run inside a
+  running event loop — use the `*_async` variants in async paths.
 - `django.tasks` validates task construction (module-level function, declared
   queue) at decoration time: build "rogue" tasks inside tests with
   `dataclasses.replace` after overriding `TASKS`, not at module import.

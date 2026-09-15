@@ -150,16 +150,13 @@ class TestCollect:
             memory_info=lambda: types.SimpleNamespace(rss=1024 * 1024 * 1024),
         )
         monkeypatch.setitem(sys.modules, 'psutil', fake_psutil)
-        mocker.patch('django_dbos.capacity._recent_executor_ids', return_value={'live-worker'})
-
         write_heartbeat('live-worker', queues=('default',), has_metrics=True)
         output = _status()
         assert (
             f'live-worker: {socket.gethostname()} pid {os.getpid()}, queues default, CPU 42.0%, RSS 1024.0 MB' in output
         )
 
-    def test_human_output_reports_live_worker_without_metrics(self, dbos_environment: Any, mocker) -> None:
-        mocker.patch('django_dbos.capacity._recent_executor_ids', return_value={'plain-worker'})
+    def test_human_output_reports_live_worker_without_metrics(self, dbos_environment: Any) -> None:
         write_heartbeat('plain-worker', has_metrics=False)
         output = _status()
         assert (
@@ -168,14 +165,30 @@ class TestCollect:
         )
 
     def test_human_output_flags_executor_without_heartbeat(self, dbos_environment: Any, mocker) -> None:
-        mocker.patch('django_dbos.capacity._recent_executor_ids', return_value={'ghost-worker'})
+        # An executor with active workflows but no heartbeat row at all.
+        ghost = types.SimpleNamespace(
+            status='RUNNING', queue_name='default', executor_id='ghost-worker', created_at=1, dequeued_at=2
+        )
+        mocker.patch('django_dbos.capacity._active_workflows', return_value=[ghost])
         output = _status()
         assert 'ghost-worker: NO HEARTBEAT (worker down, or django_dbos migrations not applied)' in output
 
+    def test_human_output_flags_stale_heartbeat(self, dbos_environment: Any) -> None:
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from django_dbos.heartbeat import STALE_AFTER_SECONDS
+        from django_dbos.models import WorkerHeartbeat
+
+        write_heartbeat('dead-worker')
+        WorkerHeartbeat.objects.update(last_seen_at=timezone.now() - timedelta(seconds=STALE_AFTER_SECONDS + 1))
+        output = _status()
+        assert f'dead-worker: {socket.gethostname()} pid {os.getpid()}, STALE (last seen' in output
+
     def test_human_output_with_no_worker_at_all(self, dbos_environment: Any, mocker) -> None:
-        # Nothing active, nothing recent, no heartbeat: the section is empty.
-        mocker.patch('django_dbos.capacity._active_status_aggregates', return_value=[])
-        mocker.patch('django_dbos.capacity._recent_executor_ids', return_value=set())
+        # Nothing active, no heartbeat: the section is empty.
+        mocker.patch('django_dbos.capacity._active_workflows', return_value=[])
         output = _status()
         assert 'Workers:' in output
         assert '(none)' in output

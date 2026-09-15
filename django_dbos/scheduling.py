@@ -170,13 +170,12 @@ def _register_scheduled_workflow(task: DBOSTask) -> Any:
     both. ``SetWorkflowTimeout`` is how DBOS scopes a timeout to a child
     started from a workflow; schedules themselves carry none.
     """
-    from dbos._dbos import _get_or_create_dbos_registry
-
-    from .tasks_registry import task_workflow
+    from .tasks_registry import registered_workflow, remember_workflow, task_workflow
 
     name = schedule_name_for_task(task)
-    if name in _get_or_create_dbos_registry().workflow_info_map:
-        return _get_workflow(name)
+    existing = registered_workflow(name)
+    if existing is not None:
+        return existing
 
     child = task_workflow(task)
     timeout = task.dbos_params.workflow_timeout
@@ -195,13 +194,4 @@ def _register_scheduled_workflow(task: DBOSTask) -> Any:
             with SetWorkflowTimeout(timeout):
                 return child()
 
-    return _get_workflow(name)
-
-
-def _get_workflow(name: str) -> Any:
-    from dbos._dbos import _get_or_create_dbos_registry
-
-    workflow = _get_or_create_dbos_registry().workflow_info_map.get(name)
-    if workflow is None:  # pragma: no cover - registered just above
-        raise RuntimeError(f'Workflow {name} was not registered')
-    return workflow
+    return remember_workflow(name, scheduled_workflow)

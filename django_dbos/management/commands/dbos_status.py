@@ -81,6 +81,11 @@ class Command(BaseCommand):
                 continue
             for worker in sorted(workers, key=lambda item: (item['hostname'], item['pid'])):
                 parts = [f'{worker["hostname"]} pid {worker["pid"]}']
+                if not worker.get('alive', True):
+                    self.stdout.write(
+                        f'  {executor_id}: {parts[0]}, {self.style.ERROR("STALE")} (last seen {worker["last_seen_at"]})'
+                    )
+                    continue
                 if worker.get('queues'):
                     parts.append(f'queues {",".join(worker["queues"])}')
                 if worker.get('has_metrics'):

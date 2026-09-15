@@ -26,7 +26,6 @@ from typing import Any
 
 from asgiref.sync import sync_to_async
 from dbos import DBOS, StepOptions
-from dbos._dbos import _get_or_create_dbos_registry
 from django.db import close_old_connections
 
 from .logging import logger
@@ -34,6 +33,12 @@ from .params_dataclass import DbosTaskParams
 from .tasks import DBOSTask, known_tasks
 
 REGISTRY_PREFIX = 'django_dbos.tasks.'
+
+#: Workflow functions registered with DBOS by this process, by workflow name
+#: (task workflows and cron parents alike). ``DBOS.workflow`` returns the
+#: decorated function; keeping it here avoids the SDK's private registry and
+#: makes registration idempotent.
+_workflows: dict[str, Any] = {}
 
 #: Task module paths resolved via ``import_string`` come from a name stored in
 #: the system database (workflow status); reject anything that is not a plain
@@ -150,7 +155,7 @@ def register_task_workflow(task: DBOSTask) -> str:
     Returns the workflow name to enqueue.
     """
     name = workflow_name_for_task(task)
-    if name in _get_or_create_dbos_registry().workflow_info_map:
+    if name in _workflows:
         return name
 
     max_recovery_attempts = task.dbos_params.max_recovery_attempts
@@ -167,14 +172,25 @@ def register_task_workflow(task: DBOSTask) -> str:
         def workflow(*args: Any, **kwargs: Any) -> Any:
             return execute_task_body(task, args, kwargs)
 
+    _workflows[name] = workflow
     logger.debug('registered DBOS workflow', workflow_name=name)
     return name
 
 
 def task_workflow(task: DBOSTask) -> Any:
     """The registered DBOS workflow function executing ``task`` (registering it if needed)."""
-    name = register_task_workflow(task)
-    return _get_or_create_dbos_registry().workflow_info_map[name]
+    return _workflows[register_task_workflow(task)]
+
+
+def registered_workflow(name: str) -> Any | None:
+    """The workflow function registered under ``name`` by this process, if any."""
+    return _workflows.get(name)
+
+
+def remember_workflow(name: str, workflow: Any) -> Any:
+    """Record a workflow function registered with DBOS under ``name``."""
+    _workflows[name] = workflow
+    return workflow
 
 
 def register_all_task_workflows() -> None:

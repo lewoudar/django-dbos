@@ -1,9 +1,10 @@
 """Worker capacity diagnostics for django-dbos.
 
-Everything here comes from the DBOS system database (read through the
-process-wide ``DBOSClient``, never by launching DBOS): queue backlogs, waiting
-times and per-executor load — plus worker heartbeats pushed by the workers
-themselves into the Django database (see ``heartbeat.py``).
+Everything here comes from the DBOS system database, read through the public
+``DBOSClient`` API (never by launching DBOS): the *active* workflows — the
+backlog being measured — are listed and folded into per-queue and
+per-executor figures, plus worker heartbeats pushed by the workers themselves
+into the Django database (see ``heartbeat.py``).
 
 The heuristics are deliberately simple (see ``advise_queue``); for real
 capacity planning, feed :func:`collect` to a monitoring system (Prometheus,
@@ -28,36 +29,21 @@ IDLE_RUNNING_THRESHOLD = 0
 ACTIVE_STATUSES = ('ENQUEUED', 'PENDING', 'DELAYED', 'RUNNING')
 
 
-def _sys_db() -> Any:
-    """The client's SystemDatabase.
-
-    Accesses the private attribute because the workflow aggregates are not
-    (yet) exposed on the public ``DBOSClient`` class.
-    """
-    return get_client()._sys_db
-
-
-def _active_status_aggregates() -> list[dict[str, Any]]:
-    sys_db = _sys_db()
-    return sys_db.get_workflow_aggregates(
-        group_by_status=True,
-        group_by_queue_name=True,
-        group_by_executor_id=True,
-        select_count=True,
-        select_min_created_at=True,
-        select_max_queue_wait_ms=True,
+def _active_workflows(queues: list[str] | None) -> list[Any]:
+    """The workflows waiting or running right now — i.e. the backlog being measured."""
+    return get_client().list_workflows(
         status=list(ACTIVE_STATUSES),
+        queue_name=queues,
+        load_input=False,
+        load_output=False,
     )
 
 
 def _recovery_exceeded_count() -> int:
-    sys_db = _sys_db()
-    rows = sys_db.get_workflow_aggregates(
-        group_by_status=True,
-        select_count=True,
-        status=['MAX_RECOVERY_ATTEMPTS_EXCEEDED'],
+    dead_lettered = get_client().list_workflows(
+        status='MAX_RECOVERY_ATTEMPTS_EXCEEDED', load_input=False, load_output=False
     )
-    return sum(int(row['count'] or 0) for row in rows)
+    return len(dead_lettered)
 
 
 def _queue_capacities() -> dict[str, dict[str, Any]]:
@@ -104,21 +90,19 @@ def collect(queues: list[str] | None = None) -> dict[str, Any]:
     executors: dict[str, dict[str, int]] = {}
     now = datetime.now(tz=UTC)
 
-    for row in _active_status_aggregates():
-        group = row['group']
-        queue_name = group.get('queue_name')
-        if queues is not None and queue_name not in queues:
-            continue
-        queue_metrics = queues_metrics.setdefault(queue_name or '', _empty_queue_metrics())
+    for status in _active_workflows(queues):
+        queue_name = status.queue_name or ''
+        queue_metrics = queues_metrics.setdefault(queue_name, _empty_queue_metrics())
+        _ingest_workflow(status, queue_metrics, executors, now)
+    for queue_name, queue_metrics in queues_metrics.items():
         for key in ('worker_concurrency', 'global_concurrency'):
             queue_metrics[key] = capacities.get(queue_name, {}).get(key)
-        _ingest_aggregate_row(row, queue_metrics, executors, now)
         queue_metrics['advice'] = advise_queue(queue_metrics)
 
-    workers = read_heartbeats()
-    executor_ids = set(executors) | _recent_executor_ids() | {worker['executor_id'] for worker in workers}
-    # Executors that ran recently but have nothing active right now still
-    # belong to the report: their missing heartbeat is the signal.
+    # Stale heartbeats are reported too: a worker that died without cleaning
+    # up is exactly what an operator wants to see.
+    workers = read_heartbeats(include_stale=True)
+    executor_ids = set(executors) | {worker['executor_id'] for worker in workers}
     executors_report = {
         executor_id: executors.get(executor_id, {'running': 0, 'enqueued': 0}) for executor_id in executor_ids
     }
@@ -130,36 +114,33 @@ def collect(queues: list[str] | None = None) -> dict[str, Any]:
     }
 
 
-def _ingest_aggregate_row(
-    row: dict[str, Any],
+def _ingest_workflow(
+    status: Any,
     queue_metrics: dict[str, Any],
     executors: dict[str, dict[str, int]],
     now: datetime,
 ) -> None:
-    """Fold one aggregate row (queue x status x executor) into the report."""
-    group = row['group']
-    status = group.get('status')
-    executor_id = group.get('executor_id')
-    count = int(row['count'] or 0)
+    """Fold one active workflow into its queue's metrics and its executor's counts."""
+    workflow_status = str(getattr(status.status, 'value', status.status))
 
-    if status in ('ENQUEUED', 'PENDING'):
-        queue_metrics['enqueued'] += count
-        min_created_at = row.get('min_created_at')
-        if min_created_at is not None:
-            age = (now - datetime.fromtimestamp(min_created_at / 1000, tz=UTC)).total_seconds()
+    if workflow_status in ('ENQUEUED', 'PENDING'):
+        queue_metrics['enqueued'] += 1
+        if status.created_at is not None:
+            age = (now - datetime.fromtimestamp(status.created_at / 1000, tz=UTC)).total_seconds()
             backlog_age = queue_metrics['backlog_age_seconds']
             if backlog_age is None or age > backlog_age:
                 queue_metrics['backlog_age_seconds'] = age
-    elif status == 'DELAYED':
-        queue_metrics['delayed'] += count
-    elif status == 'RUNNING':
-        queue_metrics['running'] += count
-        if row.get('max_queue_wait_ms') is not None:
-            queue_metrics['max_queue_wait_ms'] = max(queue_metrics['max_queue_wait_ms'] or 0, row['max_queue_wait_ms'])
+    elif workflow_status == 'DELAYED':
+        queue_metrics['delayed'] += 1
+    elif workflow_status == 'RUNNING':
+        queue_metrics['running'] += 1
+        if status.dequeued_at is not None and status.created_at is not None:
+            queue_wait_ms = status.dequeued_at - status.created_at
+            queue_metrics['max_queue_wait_ms'] = max(queue_metrics['max_queue_wait_ms'] or 0, queue_wait_ms)
 
-    if status in ('ENQUEUED', 'PENDING', 'RUNNING') and executor_id:
-        executor = executors.setdefault(executor_id, {'running': 0, 'enqueued': 0})
-        executor['running' if status == 'RUNNING' else 'enqueued'] += count
+    if workflow_status in ('ENQUEUED', 'PENDING', 'RUNNING') and status.executor_id:
+        executor = executors.setdefault(status.executor_id, {'running': 0, 'enqueued': 0})
+        executor['running' if workflow_status == 'RUNNING' else 'enqueued'] += 1
 
 
 def advise_queue(queue_metrics: dict[str, Any]) -> str:
@@ -180,15 +161,3 @@ def advise_queue(queue_metrics: dict[str, Any]) -> str:
     if backlog > 0 and backlog_age is not None and backlog_age > QUEUE_WAIT_THRESHOLD_SECONDS:
         return 'SCALE_UP'
     return 'OK'
-
-
-def _recent_executor_ids(max_age_seconds: float = 3600.0) -> set[str]:
-    """Executor ids that ran a workflow recently (they should have a heartbeat)."""
-    cutoff = datetime.fromtimestamp(datetime.now(tz=UTC).timestamp() - max_age_seconds, tz=UTC)
-    rows = _sys_db().get_workflow_aggregates(
-        group_by_executor_id=True,
-        select_count=True,
-        # start_time filters on created_at and expects an ISO datetime string
-        start_time=cutoff.isoformat(),
-    )
-    return {row['group'].get('executor_id') or '' for row in rows}
