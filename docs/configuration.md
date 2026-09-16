@@ -153,8 +153,8 @@ DJANGO_DBOS = {
 
 `dbos_migrate` reads the URL and schema from `DJANGO_DBOS`, connects with a
 plain database handle (no worker, no background thread) and prints a
-credential-free summary. It is idempotent. On fly.io, put both commands in
-`[deploy] release_command`.
+credential-free summary. It is idempotent, so it belongs in whatever step
+runs before a new version starts serving (see [Deployment](deployment.md)).
 
 ### Executor identity
 
@@ -169,9 +169,10 @@ instances:
 import os
 
 DJANGO_DBOS = {
-    'EXECUTOR_ID': os.environ.get('FLY_MACHINE_ID'),  # fly.io; the pod name on Kubernetes, ...
+    'EXECUTOR_ID': os.environ.get('WORKER_INSTANCE_ID'),  # whatever names an instance on your platform
 }
 ```
 
 `None` falls back to the `DBOS__VMID` environment variable DBOS itself reads,
-then to `"local"`.
+then to `"local"`. [Deployment](deployment.md) shows which variable to use on
+common platforms.

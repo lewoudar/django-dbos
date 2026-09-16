@@ -18,6 +18,7 @@ nav = [
   { "Admin" = "admin.md" },
   { "Worker capacity" = "status.md" },
   { "Testing" = "testing.md" },
+  { "Deployment" = "deployment.md" },
 ]
 
 # extra_css = ["stylesheets/extra.css"]
