@@ -25,7 +25,7 @@ from dbos import DBOS, SetWorkflowTimeout
 
 from .exceptions import ImproperlyConfiguredDbos
 from .logging import logger
-from .sentry import UNSET, SentryMonitorConfig, monitor_cron_task
+from .sentry import UNSET, SentryMonitorConfig, monitor_cron_execution, resolve_monitor_config
 from .tasks import DBOSTask
 
 SCHEDULE_PREFIX = 'django_dbos.schedules.'
@@ -35,7 +35,8 @@ SCHEDULE_PREFIX = 'django_dbos.schedules.'
 class CronRegistration:
     task: DBOSTask
     crontab: str
-    sentry_monitor_config: Any
+    #: Resolved Sentry monitor configuration (None: not monitored).
+    monitor_config: SentryMonitorConfig | None
 
 
 _registry: dict[str, CronRegistration] = {}
@@ -72,14 +73,13 @@ def cron(
 
     def wrapper(task: DBOSTask) -> DBOSTask:
         _validate_cron_task(task)
-        monitored = monitor_cron_task(task, crontab, sentry_monitor_config)
-        _registry[monitored.module_path] = CronRegistration(
-            task=monitored,
+        _registry[task.module_path] = CronRegistration(
+            task=task,
             crontab=normalized,
-            sentry_monitor_config=sentry_monitor_config,
+            monitor_config=resolve_monitor_config(task, crontab, sentry_monitor_config),
         )
         logger.debug('registered cron task', task_name=task.name, crontab=normalized)
-        return monitored
+        return task
 
     return wrapper
 
@@ -120,7 +120,7 @@ def register_cron_schedules() -> None:
     cron_timezone = str(_django_timezone())
     for registration in _registry.values():
         name = schedule_name_for_task(registration.task)
-        scheduled_workflow = _register_scheduled_workflow(registration.task)
+        scheduled_workflow = _register_scheduled_workflow(registration.task, registration.monitor_config)
         wanted = {
             'schedule': registration.crontab,
             'cron_timezone': cron_timezone,
@@ -160,7 +160,7 @@ def _django_timezone() -> Any:
     return 'UTC'
 
 
-def _register_scheduled_workflow(task: DBOSTask) -> Any:
+def _register_scheduled_workflow(task: DBOSTask, monitor_config: SentryMonitorConfig | None = None) -> Any:
     """Register the workflow fired by the schedule.
 
     It is a thin parent: each firing runs the task's regular workflow (the one
@@ -168,7 +168,8 @@ def _register_scheduled_workflow(task: DBOSTask) -> Any:
     enqueued executions share a workflow name — and the task's DBOS options
     (``workflow_timeout``, ``max_recovery_attempts``, step retries) apply to
     both. ``SetWorkflowTimeout`` is how DBOS scopes a timeout to a child
-    started from a workflow; schedules themselves carry none.
+    started from a workflow; schedules themselves carry none. The parent is
+    also where a firing is reported to Sentry, so ad-hoc enqueues are not.
     """
     from .tasks_registry import registered_workflow, remember_workflow, task_workflow
 
@@ -184,14 +185,14 @@ def _register_scheduled_workflow(task: DBOSTask) -> Any:
 
         @DBOS.workflow(name=name)
         async def scheduled_workflow(scheduled_time: Any, context: Any) -> Any:
-            with SetWorkflowTimeout(timeout):
+            with monitor_cron_execution(task, monitor_config), SetWorkflowTimeout(timeout):
                 return await child()
 
     else:
 
         @DBOS.workflow(name=name)
         def scheduled_workflow(scheduled_time: Any, context: Any) -> Any:
-            with SetWorkflowTimeout(timeout):
+            with monitor_cron_execution(task, monitor_config), SetWorkflowTimeout(timeout):
                 return child()
 
     return remember_workflow(name, scheduled_workflow)

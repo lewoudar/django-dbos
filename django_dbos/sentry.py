@@ -14,9 +14,10 @@ Without ``sentry-sdk`` installed everything here is a no-op.
 
 from __future__ import annotations
 
+import contextlib
 import re
 import string
-from dataclasses import replace
+from collections.abc import Iterator
 from typing import Any
 
 from .logging import logger
@@ -43,12 +44,17 @@ def is_sentry_enabled() -> bool:
         return False
 
 
-def monitor_slug(task_name: str) -> str:
-    """Derive a valid Sentry monitor slug from a task name."""
-    slug = task_name.lower().replace('.', '-')
+def monitor_slug(task_path: str) -> str:
+    """Derive a valid Sentry monitor slug from a task's module path.
+
+    ``myapp.tasks.cleanup`` becomes ``myapp-tasks-cleanup``. Slugs are capped
+    at 50 characters; a long path is cut from the left so the function name
+    (its most distinctive part) survives.
+    """
+    slug = task_path.lower().replace('.', '-')
     slug = ''.join(char if char in _SLUG_ALLOWED else '-' for char in slug)
     slug = re.sub(r'-{2,}', '-', slug).strip('-')
-    return slug[:_MAX_SLUG_LENGTH]
+    return slug[-_MAX_SLUG_LENGTH:].lstrip('-')
 
 
 def crontab_to_monitor_config(crontab: str) -> SentryMonitorConfig | None:
@@ -75,20 +81,19 @@ def crontab_to_monitor_config(crontab: str) -> SentryMonitorConfig | None:
     }
 
 
-def monitor_cron_task(
+def resolve_monitor_config(
     task: DBOSTask,
     crontab: str,
     sentry_monitor_config: SentryMonitorConfig | Any | None = UNSET,
-) -> DBOSTask:
-    """Wrap the task function with a Sentry cron monitor when possible.
+) -> SentryMonitorConfig | None:
+    """The monitor configuration to use for a cron task, or None to not monitor it.
 
-    The task is returned unchanged when sentry-sdk is not active, when the
-    schedule has no monitor representation, or when the caller explicitly
-    passed ``sentry_monitor_config=None``.
+    ``None`` is returned when the caller explicitly passed
+    ``sentry_monitor_config=None``, or when the schedule has no monitor
+    representation (sub-minute crontabs).
     """
-    if sentry_monitor_config is None or not is_sentry_enabled():
-        return task
-
+    if sentry_monitor_config is None:
+        return None
     if sentry_monitor_config is UNSET or sentry_monitor_config == {}:
         monitor_config = crontab_to_monitor_config(crontab)
         if monitor_config is None:
@@ -97,12 +102,25 @@ def monitor_cron_task(
                 task_name=task.name,
                 crontab=crontab,
             )
-            return task
-    else:
-        monitor_config = sentry_monitor_config
+        return monitor_config
+    return sentry_monitor_config
+
+
+@contextlib.contextmanager
+def monitor_cron_execution(task: DBOSTask, monitor_config: SentryMonitorConfig | None) -> Iterator[None]:
+    """Report one scheduled execution of ``task`` as a Sentry cron check-in.
+
+    Decided at execution time: Sentry is looked up when the schedule fires,
+    in the worker, so it does not matter when or in which process the SDK was
+    initialized. A no-op without a monitor config or without an active
+    Sentry client. Only scheduled firings go through here — an ad-hoc
+    ``task.enqueue()`` of the same task is not a cron execution.
+    """
+    if monitor_config is None or not is_sentry_enabled():
+        yield
+        return
 
     import sentry_sdk.crons
 
-    slug = monitor_slug(task.name)
-    monitored = sentry_sdk.crons.monitor(slug, monitor_config=monitor_config)(task.func)
-    return replace(task, func=monitored)
+    with sentry_sdk.crons.monitor(monitor_slug(task.module_path), monitor_config=monitor_config):
+        yield

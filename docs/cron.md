@@ -58,7 +58,15 @@ uv add django-dbos[sentry]
 Scheduled tasks are then monitored with [Sentry cron
 monitors](https://docs.sentry.io/product/crons/): the monitor is upserted by
 Sentry on each check-in, so there is nothing to create in the UI. Its slug is
-derived from the task name (`myapp.tasks.cleanup` → `myapp-tasks-cleanup`).
+derived from the task's module path (`myapp.tasks.cleanup` →
+`myapp-tasks-cleanup`; long paths are cut from the left to Sentry's 50
+characters, keeping the function name).
+
+Check-ins are sent by the worker around each *scheduled* firing, and whether
+Sentry is active is looked up at that moment — initializing the SDK after
+the task modules are imported, or only in the worker, is fine. An ad-hoc
+`cleanup.enqueue()` of the same task is not a cron execution and sends no
+check-in.
 
 Options of `@cron`:
 
