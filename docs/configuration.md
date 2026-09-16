@@ -154,7 +154,9 @@ DJANGO_DBOS = {
 `dbos_migrate` reads the URL and schema from `DJANGO_DBOS`, connects with a
 plain database handle (no worker, no background thread) and prints a
 credential-free summary. It is idempotent, so it belongs in whatever step
-runs before a new version starts serving (see [Deployment](deployment.md)).
+runs before a new version starts serving — typically a `release` management
+command of your project that calls `migrate` then `dbos_migrate` (see
+[Deployment](deployment.md)).
 
 ### Executor identity
 

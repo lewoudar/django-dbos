@@ -11,10 +11,25 @@ settle, then shows the same setup on a few platforms.
    to the system database; `dbos_worker` processes execute tasks. Scale them
    independently. See [Processes](configuration.md#processes).
 2. **A release step** that runs before the new version starts serving:
-   `python manage.py migrate` and `python manage.py dbos_migrate`, with
+   Django's `migrate` and django-dbos' `dbos_migrate`, with
    `DJANGO_DBOS["RUN_MIGRATIONS"] = False` so workers verify the schema
-   instead of altering it. See
-   [Migrating the system database](configuration.md#migrating-the-system-database).
+   instead of altering it. Platforms run *one* command there, so wrap what
+   your release needs in a management command of your project:
+
+    ```python
+    # myproject/management/commands/release.py
+    from django.core.management import BaseCommand, call_command
+
+
+    class Command(BaseCommand):
+        help = 'Everything that must run before a new version serves traffic.'
+
+        def handle(self, *args, **options):
+            call_command('migrate', interactive=False)
+            call_command('dbos_migrate')
+    ```
+
+    See [Migrating the system database](configuration.md#migrating-the-system-database).
 3. **A stable identity per worker instance**, through
    `DJANGO_DBOS["EXECUTOR_ID"]`: crash recovery and the capacity reports are
    keyed by it. Use the platform's instance name, never something that
@@ -51,8 +66,10 @@ The examples below only differ in *where* those values come from.
 ## fly.io
 
 Two [process groups](https://fly.io/docs/launch/processes/) share one image:
-`web` serves requests, `worker` runs `dbos_worker`. The release command runs
-on a temporary Machine with the app's secrets before each deploy.
+`web` serves requests, `worker` runs `dbos_worker`. The
+[release command](https://fly.io/docs/reference/configuration/#run-one-off-commands-before-releasing-a-deployment)
+runs the `release` command above on a temporary Machine, with the app's
+secrets, before each deploy.
 
 ```toml
 # fly.toml
@@ -61,7 +78,7 @@ app = "myproject"
 [build]
 
 [deploy]
-  release_command = "sh -c 'python manage.py migrate && python manage.py dbos_migrate'"
+  release_command = "python manage.py release"
 
 [processes]
   web = "gunicorn myproject.wsgi"
@@ -126,7 +143,7 @@ containers:
 containers:
   - name: release
     image: myproject:latest
-    command: ["sh", "-c", "python manage.py migrate && python manage.py dbos_migrate"]
+    command: ["python", "manage.py", "release"]
 ```
 
 Stop workers with `SIGTERM` (the default): `dbos_worker` shuts DBOS down
@@ -146,7 +163,7 @@ services:
       POSTGRES_PASSWORD: secret
   release:
     image: myproject
-    command: sh -c "python manage.py migrate && python manage.py dbos_migrate"
+    command: python manage.py release
     environment: &env
       DATABASE_URL: postgresql://postgres:secret@db/myproject
       DBOS_SYSTEM_DATABASE_URL: postgresql+psycopg://postgres:secret@db/dbos_myproject
@@ -173,8 +190,9 @@ replicas indistinguishable.
 
 ## Anywhere else
 
-Any platform works as long as it can run the three commands (`migrate`,
-`dbos_migrate`, `dbos_worker`), inject the database URL, and expose
+Any platform works as long as it can run the `release` command before a
+version goes live and `dbos_worker` next to the web processes, inject the
+database URL, and expose
 something stable to name a worker instance (a hostname, a slot number, an
 instance id). If it exposes nothing, DBOS' default `"local"` still works:
 every worker recovers every interrupted workflow, and the capacity report
