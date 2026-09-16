@@ -45,6 +45,11 @@ def _build_dbos_config() -> dict[str, Any]:
         config['executor_id'] = resolved.executor_id
     if resolved.serializer is not None:
         config['serializer'] = resolved.serializer
+    run_migrations = settings_module.get_dbos_setting('RUN_MIGRATIONS')
+    if run_migrations is not None:
+        # False: launch verifies the schema instead of creating/migrating it
+        # (migrate out of band with `manage.py dbos_migrate`).
+        config['run_migrations'] = bool(run_migrations)
     scheduler_polling_interval = settings_module.get_dbos_setting('SCHEDULER_POLLING_INTERVAL_SEC')
     if scheduler_polling_interval is not None:
         config['scheduler_polling_interval_sec'] = float(scheduler_polling_interval)

@@ -41,6 +41,7 @@ DJANGO_DBOS = {
 | `EXECUTOR_ID` | `DBOS__VMID` env, else `"local"` | Identity of a worker instance (see [Executor identity](#executor-identity)). |
 | `SERIALIZER` | DBOS default (pickle) | How task arguments, results and errors are stored (see [Serialization](#serialization)). |
 | `CAPACITY` | `{}` | Thresholds and advisor of the scaling advice (see [Worker capacity](status.md#thresholds)). |
+| `RUN_MIGRATIONS` | `True` | Whether workers create/migrate the system database on launch (see [Migrating the system database](#migrating-the-system-database)). |
 | `SCHEDULER_POLLING_INTERVAL_SEC` | `30.0` | How often the scheduler thread looks for new schedules. |
 
 ## Serialization
@@ -93,9 +94,10 @@ django-dbos follows DBOS' own split between an *application* and its *clients*:
 | Web (gunicorn, uvicorn, `runserver`), shell, other commands | A `DBOSClient` against the system database: enqueue tasks, read results, admin pages, `dbos_status`. Never executes a task. |
 | `dbos_worker` | The DBOS application: registers every task as a workflow, launches the queue workers, the scheduler and crash recovery, executes tasks. |
 
-The client is created on first use and never runs schema migrations: **start a
-worker once before enqueuing** — it creates the system database and its
-tables on launch.
+The client is created on first use and never runs schema migrations: the
+system database must exist before the first enqueue — either created by a
+worker's launch (the default) or by `manage.py dbos_migrate` (see
+[Migrating the system database](#migrating-the-system-database)).
 
 The two sides also react differently to a lost system database, on purpose:
 a worker follows DBOS' default and **waits** for the connection to come back
@@ -128,6 +130,31 @@ which is why django-dbos ships a migration.
 Use `--no-scheduler` to run a worker that does not manage cron schedules
 (useful when running several workers behind a load balancer and you want a
 dedicated scheduler).
+
+### Migrating the system database
+
+By default a worker creates the system database and applies DBOS' schema
+migrations every time it launches. That is convenient in development, but
+in production it means the worker's database role needs DDL rights and
+that a DBOS upgrade changes the schema whenever the first new worker boots.
+Do it as an explicit release step instead, next to Django's own migrations:
+
+```bash
+python manage.py migrate
+python manage.py dbos_migrate            # creates the database and applies DBOS' migrations
+python manage.py dbos_migrate --app-role app   # optionally grant the schema to your runtime role
+```
+
+```python
+DJANGO_DBOS = {
+    'RUN_MIGRATIONS': False,  # workers verify the schema and refuse to launch if it is missing or behind
+}
+```
+
+`dbos_migrate` reads the URL and schema from `DJANGO_DBOS`, connects with a
+plain database handle (no worker, no background thread) and prints a
+credential-free summary. It is idempotent. On fly.io, put both commands in
+`[deploy] release_command`.
 
 ### Executor identity
 

@@ -18,6 +18,7 @@ class TestBuildDbosConfig:
         assert 'dbos_system_schema' not in config
         assert 'executor_id' not in config
         assert 'serializer' not in config
+        assert 'run_migrations' not in config
         assert 'scheduler_polling_interval_sec' not in config
 
     def test_full_config(self, settings, monkeypatch):
@@ -29,6 +30,7 @@ class TestBuildDbosConfig:
             'SYSTEM_DB_SCHEMA': 'custom_schema',
             'EXECUTOR_ID': 'machine-42',
             'SERIALIZER': 'dbos.DBOSPortableJSONSerializer',
+            'RUN_MIGRATIONS': False,
             'SCHEDULER_POLLING_INTERVAL_SEC': 2,
         }
         config = dbos_setup._build_dbos_config()
@@ -37,6 +39,7 @@ class TestBuildDbosConfig:
         assert config['dbos_system_schema'] == 'custom_schema'
         assert config['executor_id'] == 'machine-42'
         assert type(config['serializer']).__name__ == 'DBOSPortableJSONSerializer'
+        assert config['run_migrations'] is False
         assert config['scheduler_polling_interval_sec'] == 2.0
 
     def test_executor_id_falls_back_to_dbos_env(self, settings, monkeypatch):
