@@ -2,7 +2,7 @@
 site_url = "https://lewoudar.github.io/django-dbos/"
 site_name = "django-dbos"
 site_description = "DBOS-backed backend for Django's tasks framework: durable background tasks, cron scheduling and optional Sentry monitoring."
-# site_author = "Your name"
+site_author = "Kevin Tewouda"
 
 copyright = "Copyright &copy; 2026 Kevin Tewouda"
 
