@@ -40,6 +40,7 @@ DJANGO_DBOS = {
 | `QUEUES` | `{"default": None}` | Declared queues and their options (see below). |
 | `EXECUTOR_ID` | `DBOS__VMID` env, else `"local"` | Identity of a worker instance (see [Executor identity](#executor-identity)). |
 | `SERIALIZER` | DBOS default (pickle) | How task arguments, results and errors are stored (see [Serialization](#serialization)). |
+| `CAPACITY` | `{}` | Thresholds and advisor of the scaling advice (see [Worker capacity](status.md#thresholds)). |
 | `SCHEDULER_POLLING_INTERVAL_SEC` | `30.0` | How often the scheduler thread looks for new schedules. |
 
 ## Serialization
@@ -77,6 +78,7 @@ DJANGO_DBOS = {
             'worker_concurrency': 4,  # max concurrent executions per worker
             'global_concurrency': 10,  # max concurrent executions across workers
             'limiter': {'limit': 50, 'period': 30},  # rate limit
+            'capacity': {'SCALE_UP_BACKLOG_AGE_SECONDS': 300},  # django-dbos only, see Worker capacity
         },
     },
 }

@@ -42,12 +42,53 @@ Each queue gets a simple heuristic:
 
 | Advice | Meaning |
 | --- | --- |
-| `SCALE_UP` | The oldest waiting workflow has been waiting for more than 60 seconds: the queue is not drained fast enough. |
-| `SCALE_DOWN` | Nothing running and nothing waiting: an idle queue. |
+| `SCALE_UP` | The oldest waiting workflow has been waiting for more than `SCALE_UP_BACKLOG_AGE_SECONDS` (60 by default): the queue is not drained fast enough. |
+| `SCALE_DOWN` | Nothing waiting and at most `SCALE_DOWN_MAX_RUNNING` (0 by default) workflows running: an idle queue. |
 | `OK` | Everything looks healthy. |
 
-The thresholds are simple on purpose. For real capacity planning, use the JSON
-output (below) with your monitoring system.
+### Thresholds
+
+Set them globally in `DJANGO_DBOS["CAPACITY"]`, and per queue under the
+queue's own `capacity` option (which is never sent to DBOS):
+
+```python
+DJANGO_DBOS = {
+    'CAPACITY': {
+        'SCALE_UP_BACKLOG_AGE_SECONDS': 30,
+        'SCALE_DOWN_MAX_RUNNING': 1,
+    },
+    'QUEUES': {
+        'default': None,
+        'emails': {'worker_concurrency': 4, 'capacity': {'SCALE_UP_BACKLOG_AGE_SECONDS': 300}},
+    },
+}
+```
+
+The thresholds applied to each queue are part of the report (`thresholds`),
+so a dashboard can show *why* a queue got its advice.
+
+### Your own heuristic
+
+Replace the advice function entirely with a callable
+`(queue_name, metrics, thresholds) -> str`, as a dotted path in the settings
+or directly as an argument of `collect()`:
+
+```python
+DJANGO_DBOS = {'CAPACITY': {'ADVISOR': 'myproject.scaling.advise'}}
+```
+
+```python
+def advise(queue_name, metrics, thresholds):
+    if metrics['running'] >= (metrics['global_concurrency'] or 0) > 0:
+        return 'SCALE_UP'
+    return 'OK'
+```
+
+!!! warning
+    `collect()` is a **snapshot**. A single `SCALE_DOWN` reading only means
+    the queue was idle at that instant — smooth several samples over a few
+    minutes before removing a worker. django-dbos keeps no history on
+    purpose; that logic belongs to your autoscaling script or dashboard.
 
 ## Workers (heartbeats)
 
@@ -94,6 +135,7 @@ python manage.py dbos_status --queues=emails,reports
 
 The command is a thin wrapper around `django_dbos.capacity.collect()`, which
 returns the same structure as `--json` (`queues`, `executors`, `workers`,
-`max_recovery_attempts_exceeded`). Call it from a Prometheus exporter, a
-health endpoint or your own autoscaling logic; `advise_queue()` holds the
-(deliberately simple) heuristic if you want to reuse or replace it.
+`max_recovery_attempts_exceeded`) and accepts an `advisor=` callable. Call it
+from a Prometheus exporter, a health endpoint or your own autoscaling logic;
+`advise_queue(metrics, scale_up_backlog_age_seconds=..., scale_down_max_running=...)`
+is the built-in heuristic if you want to reuse it.

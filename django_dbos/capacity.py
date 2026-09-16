@@ -6,25 +6,30 @@ backlog being measured — are listed and folded into per-queue and
 per-executor figures, plus worker heartbeats pushed by the workers themselves
 into the Django database (see ``heartbeat.py``).
 
-The heuristics are deliberately simple (see ``advise_queue``); for real
-capacity planning, feed :func:`collect` to a monitoring system (Prometheus,
-etc.) or an autoscaling script.
+Each queue gets a scaling *advice* (SCALE_UP / SCALE_DOWN / OK) from
+:func:`advise_queue`, a deliberately simple heuristic whose thresholds come
+from ``DJANGO_DBOS["CAPACITY"]`` (globally) and ``QUEUES[name]["capacity"]``
+(per queue); ``CAPACITY["ADVISOR"]`` or ``collect(advisor=...)`` replaces it
+entirely. :func:`collect` is a snapshot: smoothing several samples before
+acting on a SCALE_DOWN is the caller's job.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
 from .client import get_client
 from .heartbeat import read_heartbeats
+from .settings import CAPACITY_THRESHOLD_DEFAULTS, resolve_capacity, resolve_queues
 
-#: A backlog older than this (its oldest enqueued workflow) means the queue is
-#: not drained fast enough: scale up.
-QUEUE_WAIT_THRESHOLD_SECONDS = 60.0
+#: ``(queue_name, metrics, thresholds) -> advice`` — the signature of a custom advisor.
+Advisor = Callable[[str, dict[str, Any], dict[str, float | int]], str]
 
-#: A queue with no backlog and nothing running is an idle candidate: scale down.
-IDLE_RUNNING_THRESHOLD = 0
+#: Default thresholds of :func:`advise_queue` (overridable through settings).
+DEFAULT_SCALE_UP_BACKLOG_AGE_SECONDS = CAPACITY_THRESHOLD_DEFAULTS['SCALE_UP_BACKLOG_AGE_SECONDS']
+DEFAULT_SCALE_DOWN_MAX_RUNNING = CAPACITY_THRESHOLD_DEFAULTS['SCALE_DOWN_MAX_RUNNING']
 
 ACTIVE_STATUSES = ('ENQUEUED', 'PENDING', 'DELAYED', 'RUNNING')
 
@@ -56,18 +61,19 @@ def _queue_capacities() -> dict[str, dict[str, Any]]:
     return capacities
 
 
-def collect(queues: list[str] | None = None) -> dict[str, Any]:
+def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) -> dict[str, Any]:
     """Collect worker capacity metrics from the DBOS system database.
 
     Returns a dict with per-queue load (backlog, waiting age, running, declared
-    concurrency, advice), per-executor running counts, the live worker
+    concurrency, thresholds, advice), per-executor running counts, the worker
     heartbeats and the number of workflows that exhausted their recovery
     attempts. Pass ``queues`` to restrict the report to specific queue names.
     All declared queues (see ``DJANGO_DBOS["QUEUES"]``) always appear in the
-    report, even when idle.
+    report, even when idle. ``advisor`` overrides the configured advice
+    function for this call.
     """
-    from .settings import resolve_queues
-
+    capacity_config = resolve_capacity()
+    advise: Advisor = advisor or capacity_config.advisor or default_advisor
     declared = {queue.name: queue for queue in resolve_queues()}
     if queues is not None:
         declared = {name: queue for name, queue in declared.items() if name in queues}
@@ -81,6 +87,7 @@ def collect(queues: list[str] | None = None) -> dict[str, Any]:
             'max_queue_wait_ms': None,
             'worker_concurrency': None,
             'global_concurrency': None,
+            'thresholds': {},
             'advice': 'OK',
         }
 
@@ -97,7 +104,9 @@ def collect(queues: list[str] | None = None) -> dict[str, Any]:
     for queue_name, queue_metrics in queues_metrics.items():
         for key in ('worker_concurrency', 'global_concurrency'):
             queue_metrics[key] = capacities.get(queue_name, {}).get(key)
-        queue_metrics['advice'] = advise_queue(queue_metrics)
+        thresholds = capacity_config.thresholds_for(declared.get(queue_name))
+        queue_metrics['thresholds'] = thresholds
+        queue_metrics['advice'] = advise(queue_name, queue_metrics, thresholds)
 
     # Stale heartbeats are reported too: a worker that died without cleaning
     # up is exactly what an operator wants to see.
@@ -143,21 +152,46 @@ def _ingest_workflow(
         executor['running' if workflow_status == 'RUNNING' else 'enqueued'] += 1
 
 
-def advise_queue(queue_metrics: dict[str, Any]) -> str:
+def advise_queue(
+    queue_metrics: dict[str, Any],
+    *,
+    scale_up_backlog_age_seconds: float | None = None,
+    scale_down_max_running: int | None = None,
+) -> str:
     """Simple heuristic per queue: SCALE_UP / SCALE_DOWN / OK.
 
     - SCALE_UP: the oldest workflow waiting on this queue has been waiting
-      longer than ``QUEUE_WAIT_THRESHOLD_SECONDS`` — the queue is not drained
+      longer than ``scale_up_backlog_age_seconds`` — the queue is not drained
       fast enough.
-    - SCALE_DOWN: nothing running and nothing waiting — an idle queue.
+    - SCALE_DOWN: nothing waiting and at most ``scale_down_max_running``
+      workflows running — an idle queue.
     - OK otherwise.
+
+    Thresholds default to ``DJANGO_DBOS["CAPACITY"]`` (then to
+    ``CAPACITY_THRESHOLD_DEFAULTS``).
     """
+    if scale_up_backlog_age_seconds is None or scale_down_max_running is None:
+        configured = resolve_capacity().thresholds
+        if scale_up_backlog_age_seconds is None:
+            scale_up_backlog_age_seconds = configured['SCALE_UP_BACKLOG_AGE_SECONDS']
+        if scale_down_max_running is None:
+            scale_down_max_running = int(configured['SCALE_DOWN_MAX_RUNNING'])
+
     backlog = queue_metrics['enqueued']
     backlog_age = queue_metrics['backlog_age_seconds']
     running = queue_metrics['running']
 
-    if backlog == 0 and running <= IDLE_RUNNING_THRESHOLD:
+    if backlog == 0 and running <= scale_down_max_running:
         return 'SCALE_DOWN'
-    if backlog > 0 and backlog_age is not None and backlog_age > QUEUE_WAIT_THRESHOLD_SECONDS:
+    if backlog > 0 and backlog_age is not None and backlog_age > scale_up_backlog_age_seconds:
         return 'SCALE_UP'
     return 'OK'
+
+
+def default_advisor(queue_name: str, metrics: dict[str, Any], thresholds: dict[str, float | int]) -> str:
+    """The built-in advisor: :func:`advise_queue` with the queue's resolved thresholds."""
+    return advise_queue(
+        metrics,
+        scale_up_backlog_age_seconds=thresholds['scale_up_backlog_age_seconds'],
+        scale_down_max_running=int(thresholds['scale_down_max_running']),
+    )
