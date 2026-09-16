@@ -10,8 +10,9 @@ and even for non-Django test suites.
 Fixtures:
 
 - ``dbos_inline``: patch the DBOS backend so enqueued tasks execute
-  synchronously in-process, without a DBOS system database. Serves the
-  majority of test needs.
+  synchronously in-process, without a DBOS system database — sync and async
+  enqueues alike, a failing task yielding a FAILED result like the real
+  backend. Serves the majority of test needs.
 - ``dbos_system``: run a real (in-process) DBOS worker on a system database —
   SQLite file by default, a PostgreSQL container when
   ``--dbos-system-db=postgres`` is passed (requires Docker and
@@ -52,14 +53,28 @@ def _now() -> datetime:
     return datetime.now(tz=UTC)
 
 
-def _inline_result(task: Any, args: tuple[Any, ...], kwargs: dict[str, Any], return_value: Any) -> Any:
+def _inline_result(task: Any, args: tuple[Any, ...], kwargs: dict[str, Any], outcome: Any) -> Any:
+    """A finished TaskResult: SUCCESSFUL with the return value, or FAILED with the exception."""
+    from traceback import format_exception
+
     from django.tasks import TaskResult, TaskResultStatus
+    from django.tasks.base import TaskError
 
     now = _now()
+    failed = isinstance(outcome, BaseException)
+    errors = []
+    if failed:
+        exception_type = type(outcome)
+        errors = [
+            TaskError(
+                exception_class_path=f'{exception_type.__module__}.{exception_type.__qualname__}',
+                traceback=''.join(format_exception(outcome)),
+            )
+        ]
     result = TaskResult(
         task=task,
         id=str(uuid.uuid4()),
-        status=TaskResultStatus.SUCCESSFUL,
+        status=TaskResultStatus.FAILED if failed else TaskResultStatus.SUCCESSFUL,
         enqueued_at=now,
         started_at=now,
         finished_at=now,
@@ -67,42 +82,68 @@ def _inline_result(task: Any, args: tuple[Any, ...], kwargs: dict[str, Any], ret
         args=list(args),
         kwargs=dict(kwargs),
         backend=task.backend,
-        errors=[],
+        errors=errors,
         worker_ids=['inline'],
     )
-    object.__setattr__(result, '_return_value', return_value)
+    if not failed:
+        object.__setattr__(result, '_return_value', outcome)
+    _results[result.id] = result
     return result
 
 
-def _inline_enqueue(self: Any, task: Any, args: Any, kwargs: Any) -> Any:
+def _check_inline_support(backend: Any, task: Any) -> None:
+    """Mirror the real backend's validation, and refuse what inline cannot reproduce in strict mode."""
     from django_dbos.exceptions import DjangoDbosError
 
-    strict = self._inline_strict
-    self.validate_task(task)
-
-    if task.run_after is not None and strict:
+    backend.validate_task(task)
+    backend._validate_queue(task)
+    if not backend._inline_strict:
+        return
+    if task.run_after is not None:
         raise DjangoDbosError(
             f"Task '{task.name}' is deferred (run_after) and cannot be "
             'executed inline. Test the task body with run_task() or use '
             'the dbos_system fixture.'
         )
-
-    if task.dbos_params.durable_operations and strict:
+    if task.dbos_params.durable_operations:
         raise DjangoDbosError(
             f"Task '{task.name}' uses durable operations, which the inline "
             'mode cannot reproduce. Use the dbos_system fixture.'
         )
 
-    if task.takes_context:
-        from django_dbos.tasks_registry import _build_task_context
 
-        context = _build_task_context(task, args, kwargs)
-        args = (context, *args)
+def _inline_args(task: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[Any, ...]:
+    if not task.takes_context:
+        return tuple(args)
+    from django_dbos.tasks_registry import _build_task_context
 
-    return_value = task.call(*args, **kwargs)
-    result = _inline_result(task, args, kwargs, return_value)
-    _results[result.id] = result
-    return result
+    return (_build_task_context(task, args, kwargs), *args)
+
+
+def _inline_enqueue(self: Any, task: Any, args: Any, kwargs: Any) -> Any:
+    """Run the task now, like Django's immediate backend: a failure is a FAILED result, not an exception."""
+    _check_inline_support(self, task)
+    call_args = _inline_args(task, args, kwargs)
+    try:
+        outcome = task.call(*call_args, **kwargs)
+    except KeyboardInterrupt:
+        raise
+    except BaseException as exc:  # noqa: BLE001 - reported as a FAILED result, like the real backend
+        outcome = exc
+    return _inline_result(task, tuple(args), kwargs, outcome)
+
+
+async def _inline_aenqueue(self: Any, task: Any, args: Any, kwargs: Any) -> Any:
+    """Async variant: awaits coroutine tasks directly (no async_to_sync inside the running loop)."""
+    _check_inline_support(self, task)
+    call_args = _inline_args(task, args, kwargs)
+    try:
+        outcome = await task.acall(*call_args, **kwargs)
+    except KeyboardInterrupt:
+        raise
+    except BaseException as exc:  # noqa: BLE001 - reported as a FAILED result, like the real backend
+        outcome = exc
+    return _inline_result(task, tuple(args), kwargs, outcome)
 
 
 _results: dict[str, Any] = {}
@@ -117,6 +158,10 @@ def _lookup_result(self: Any, result_id: str) -> Any:
         raise TaskResultDoesNotExist(result_id) from None
 
 
+async def _alookup_result(self: Any, result_id: str) -> Any:
+    return _lookup_result(self, result_id)
+
+
 @pytest.fixture
 def dbos_inline(monkeypatch: Any, request: Any) -> Any:
     """Make DBOS-backed tasks execute synchronously, without a system database."""
@@ -125,7 +170,9 @@ def dbos_inline(monkeypatch: Any, request: Any) -> Any:
     strict = bool(request.config.getoption('--dbos-inline-strict'))
     monkeypatch.setattr(DBOSBackend, '_inline_strict', strict, raising=False)
     monkeypatch.setattr(DBOSBackend, 'enqueue', _inline_enqueue)
+    monkeypatch.setattr(DBOSBackend, 'aenqueue', _inline_aenqueue)
     monkeypatch.setattr(DBOSBackend, 'get_result', _lookup_result)
+    monkeypatch.setattr(DBOSBackend, 'aget_result', _alookup_result)
     _results.clear()
 
     yield

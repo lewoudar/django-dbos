@@ -17,7 +17,7 @@ INSTALLED_APPS = [
 ]
 DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
 TASKS = {
-    "default": {"BACKEND": "django_dbos.backends.DBOSBackend", "QUEUES": ["default"]},
+    "default": {"BACKEND": "django_dbos.backends.DBOSBackend", "QUEUES": ["default", "ghost"]},
 }
 USE_TZ = True
 """
@@ -39,6 +39,21 @@ async def async_add(a, b):
 @task
 def say_hello():
     return "hello"
+
+
+@task
+def explode():
+    raise ValueError("boom")
+
+
+@task(takes_context=True)
+def with_context(context):
+    return context.task_result.id
+
+
+@task(queue_name="ghost")
+def on_undeclared_queue():
+    return "never"
 """
 
 INLINE_TEST_SYNC = """
@@ -61,6 +76,59 @@ def test_roundtrip(dbos_inline):
     result = async_add.enqueue(2, 3)
     assert result.status == TaskResultStatus.SUCCESSFUL
     assert result.return_value == 5
+"""
+
+INLINE_TEST_AENQUEUE = """
+import asyncio
+
+from django.tasks import TaskResultStatus
+from tasks_app.tasks import add, async_add
+
+
+async def _roundtrip():
+    sync_result = await add.aenqueue(2, 3)
+    async_result = await async_add.aenqueue(4, 5)
+    fetched = await add.aget_result(sync_result.id)
+    return sync_result, async_result, fetched
+
+
+def test_async_roundtrip(dbos_inline):
+    sync_result, async_result, fetched = asyncio.run(_roundtrip())
+    assert (sync_result.return_value, async_result.return_value) == (5, 9)
+    assert fetched.status == TaskResultStatus.SUCCESSFUL
+"""
+
+INLINE_TEST_FAILURE = """
+from django.tasks import TaskResultStatus
+from tasks_app.tasks import explode
+
+
+def test_failure_is_a_failed_result(dbos_inline):
+    result = explode.enqueue()
+    assert result.status == TaskResultStatus.FAILED
+    assert result.errors[0].exception_class is ValueError
+    assert 'boom' in result.errors[0].traceback
+"""
+
+INLINE_TEST_CONTEXT = """
+from tasks_app.tasks import with_context
+
+
+def test_context_is_provided(dbos_inline):
+    result = with_context.enqueue()
+    assert result.return_value == ''  # no DBOS workflow id inline, but a TaskContext
+"""
+
+INLINE_TEST_UNDECLARED_QUEUE = """
+import pytest
+
+from django_dbos.exceptions import QueueNotDeclared
+from tasks_app.tasks import on_undeclared_queue
+
+
+def test_undeclared_queue_is_rejected_inline_too(dbos_inline):
+    with pytest.raises(QueueNotDeclared):
+        on_undeclared_queue.enqueue()
 """
 
 INLINE_TEST_GET_RESULT = """
@@ -90,6 +158,10 @@ class TestDbosInline:
             pytest.param(INLINE_TEST_SYNC, id='sync-roundtrip'),
             pytest.param(INLINE_TEST_ASYNC, id='async-roundtrip'),
             pytest.param(INLINE_TEST_GET_RESULT, id='get-result'),
+            pytest.param(INLINE_TEST_AENQUEUE, id='async-api'),
+            pytest.param(INLINE_TEST_FAILURE, id='failure-is-a-failed-result'),
+            pytest.param(INLINE_TEST_CONTEXT, id='takes-context'),
+            pytest.param(INLINE_TEST_UNDECLARED_QUEUE, id='undeclared-queue'),
         ],
     )
     def test_inline_roundtrip(self, pytester: pytest.Pytester, inline_test_source: str):

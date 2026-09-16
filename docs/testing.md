@@ -40,6 +40,12 @@ def test_send_email(dbos_inline):
     assert result.return_value == 'sent to kevin@example.com'
 ```
 
+`aenqueue()` / `aget_result()` work the same way, and a task that raises
+gives a `FAILED` result carrying the exception in `result.errors` — as the
+real backend (and Django's immediate backend) would — instead of propagating
+it into the test. Queues are validated against `DJANGO_DBOS["QUEUES"]`
+exactly as in production.
+
 Features the inline mode cannot reproduce (deferred tasks, durable
 operations) execute anyway; pass `--dbos-inline-strict` to turn them into
 errors instead, so your tests don't silently diverge from production
