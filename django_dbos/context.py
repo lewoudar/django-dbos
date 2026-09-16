@@ -18,6 +18,12 @@ their function then runs at workflow level and can call
         ctx.run_step(send_welcome_email, user_id)
         ctx.sleep(86400)  # one day, durably
         ctx.run_step(send_followup_email, user_id)
+
+``run_step`` is for plain functions (third-party code, or a name computed per
+call). A function you own can instead be decorated with DBOS's own
+``@DBOS.step`` and called directly with its normal arguments: the workflow-level
+context is already active, so the call is checkpointed the same way, with no
+need to go through ``ctx.run_step``.
 """
 
 from __future__ import annotations

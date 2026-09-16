@@ -46,6 +46,28 @@ the worker at #6,000, restart it anywhere, and the task resumes at #6,001 —
 no duplicate sends, no external state to reconcile, no idempotency keys to
 invent yourself.
 
+`run_step` is for functions you don't control the definition of, or that need
+a name computed per call (like `f'email-{user_id}'` above). If you own the
+function, DBOS's own `@DBOS.step` decorator works too — call it like a
+regular function and it checkpoints automatically as long as it runs inside
+a `durable_operations` task:
+
+```python
+from dbos import DBOS
+from django_dbos import dbos_params
+
+
+@DBOS.step()
+def send_one_email(user_id: int, campaign_id: int) -> None: ...
+
+
+@dbos_params(durable_operations=True)
+@task
+def send_newsletter(campaign_id: int) -> None:
+    for user_id in User.objects.values_list('id', flat=True):
+        send_one_email(user_id, campaign_id)
+```
+
 You don't need any of this for a simple task — `@task` alone already gives
 you a workflow that DBOS retries as a whole on crash:
 
