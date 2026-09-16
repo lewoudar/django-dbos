@@ -1,9 +1,11 @@
 """Pytest plugin for django-dbos.
 
 Distributed through the ``pytest11`` entry point, so it loads automatically
-whenever django-dbos is installed — no configuration needed. Everything here
-imports Django/DBOS lazily (inside fixtures), because pytest loads plugins
-before ``django.setup()`` and even for non-Django test suites.
+whenever django-dbos and pytest are installed — no configuration needed.
+Its dependencies come with the ``django-dbos[test]`` extra (pytest and
+testcontainers; pytest-django is the natural companion). Everything here imports Django/DBOS lazily
+(inside fixtures), because pytest loads plugins before ``django.setup()``
+and even for non-Django test suites.
 
 Fixtures:
 
@@ -151,7 +153,14 @@ def dbos_system(request: Any, tmp_path_factory: Any) -> Any:
 
     if mode in ('postgres', 'auto'):
         try:
-            from testcontainers.community.postgres import PostgresContainer
+            try:
+                from testcontainers.community.postgres import PostgresContainer
+            except ImportError:
+                pytest.fail(
+                    'The dbos_system fixture needs testcontainers for PostgreSQL: '
+                    'install the django-dbos[test] extra (or pass --dbos-system-db=sqlite).',
+                    pytrace=False,
+                )
 
             container = PostgresContainer('postgres:17')
             container.start()

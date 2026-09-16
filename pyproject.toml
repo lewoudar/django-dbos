@@ -38,6 +38,8 @@ Changelog = "https://github.com/lewoudar/django-dbos/blob/main/CHANGELOG.md"
 [project.optional-dependencies]
 sentry = ["sentry-sdk>=2.19"]
 metrics = ["psutil>=7.0"]
+# What the shipped pytest plugin (dbos_inline / dbos_system fixtures) imports at runtime.
+test = ["pytest>=8.4", "testcontainers[postgres]>=4.13"]
 
 [dependency-groups]
 dev = [
@@ -134,9 +136,3 @@ change_type_order = ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Secu
 
 [tool.deptry]
 known_first_party = ["django_dbos"]
-
-[tool.deptry.per_rule_ignores]
-# The shipped pytest plugin legitimately imports pytest and testcontainers:
-# these are test-group dependencies required at runtime for anyone using the
-# fixtures (declared via the pytest11 entry point).
-DEP004 = ["pytest", "testcontainers"]

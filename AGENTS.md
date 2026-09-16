@@ -59,6 +59,9 @@ they are exercised by the plugin tests.
 - CI workflows have their actions pinned by SHA (zizmor-checked); run
   `uv run prek run --all-files` before committing (ruff, commitizen, deptry,
   zizmor).
+- The pytest plugin's runtime imports (pytest, testcontainers) are the
+  `django-dbos[test]` extra; deptry checks the package against the declared
+  dependencies and extras, so keep the extra in sync with the plugin.
 - Python ≥ 3.12, Django ≥ 6.0.
 
 ## Process model (do not regress)

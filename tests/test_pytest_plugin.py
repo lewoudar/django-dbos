@@ -117,6 +117,27 @@ class TestDbosInline:
         result.assert_outcomes(failed=1)
         result.stdout.fnmatch_lines(['*is deferred (run_after)*'])
 
+    def test_dbos_system_without_testcontainers_explains_the_extra(self, pytester: pytest.Pytester):
+        _make_project(pytester)
+        pytester.makepyfile(
+            conftest="""
+            import sys
+
+            # Simulate an environment without the [test] extra's testcontainers.
+            sys.modules['testcontainers'] = None
+            sys.modules['testcontainers.community.postgres'] = None
+            """
+        )
+        pytester.makepyfile(
+            """
+            def test_needs_postgres(dbos_system):
+                pass
+            """
+        )
+        result = pytester.runpytest_subprocess('--ds=settings', '--dbos-system-db=postgres', '-p', 'no:cacheprovider')
+        result.assert_outcomes(errors=1)
+        result.stdout.fnmatch_lines(['*install the django-dbos[[]test[]] extra*'])
+
     def test_plugin_does_not_break_non_django_sessions(self, pytester: pytest.Pytester):
         # The plugin module must load cleanly without Django configured.
         pytester.makepyfile('def test_ok(): assert True')

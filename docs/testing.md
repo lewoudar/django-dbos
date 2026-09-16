@@ -1,8 +1,15 @@
 # Testing
 
-django-dbos ships a pytest plugin (loaded automatically as soon as
-django-dbos is installed). It provides two fixtures to test tasks through the
-tasks API.
+django-dbos ships a pytest plugin, loaded automatically as soon as
+django-dbos and pytest are installed. Its own dependencies come with the
+`test` extra:
+
+```bash
+uv add --group test "django-dbos[test]" pytest-django
+```
+
+It provides two fixtures to test tasks through the tasks API. They expect
+Django to be configured, which pytest-django does for you.
 
 ## Running task functions directly
 
@@ -53,9 +60,9 @@ def test_durable_sleep(dbos_system):
 
 The system database is a SQLite file by default; pass
 `--dbos-system-db=postgres` to run a PostgreSQL container via
-`testcontainers[postgres]` (skipped if Docker is unavailable). With the
-default `--dbos-system-db=auto`, the PostgreSQL container is used when
-possible and SQLite is the fallback.
+`testcontainers[postgres]` (skipped if Docker is unavailable, an error if the
+`test` extra is not installed). With the default `--dbos-system-db=auto`, the
+PostgreSQL container is used when possible and SQLite is the fallback.
 
 ## structlog
 
