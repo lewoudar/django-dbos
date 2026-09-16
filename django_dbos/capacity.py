@@ -98,8 +98,12 @@ def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) 
     now = datetime.now(tz=UTC)
 
     for status in _active_workflows(queues):
-        queue_name = status.queue_name or ''
-        queue_metrics = queues_metrics.setdefault(queue_name, _empty_queue_metrics())
+        # Child workflows started inline by a parent (cron firings run the
+        # task workflow that way) carry no queue: they count for their
+        # executor's load, not for any queue's backlog.
+        queue_metrics = (
+            queues_metrics.setdefault(status.queue_name, _empty_queue_metrics()) if status.queue_name else None
+        )
         _ingest_workflow(status, queue_metrics, executors, now)
     for queue_name, queue_metrics in queues_metrics.items():
         for key in ('worker_concurrency', 'global_concurrency'):
@@ -125,14 +129,16 @@ def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) 
 
 def _ingest_workflow(
     status: Any,
-    queue_metrics: dict[str, Any],
+    queue_metrics: dict[str, Any] | None,
     executors: dict[str, dict[str, int]],
     now: datetime,
 ) -> None:
-    """Fold one active workflow into its queue's metrics and its executor's counts."""
+    """Fold one active workflow into its queue's metrics (if any) and its executor's counts."""
     workflow_status = str(getattr(status.status, 'value', status.status))
 
-    if workflow_status in ('ENQUEUED', 'PENDING'):
+    if queue_metrics is None:
+        pass
+    elif workflow_status in ('ENQUEUED', 'PENDING'):
         queue_metrics['enqueued'] += 1
         if status.created_at is not None:
             age = (now - datetime.fromtimestamp(status.created_at / 1000, tz=UTC)).total_seconds()

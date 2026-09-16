@@ -12,8 +12,9 @@ from io import StringIO
 from typing import Any
 
 import pytest
-from django.core.management import call_command
+from django.core.management import CommandError, call_command
 from django.utils import timezone
+from sqlalchemy.exc import OperationalError
 
 from django_dbos import capacity
 from django_dbos.capacity import DEFAULT_SCALE_UP_BACKLOG_AGE_SECONDS, advise_queue
@@ -165,6 +166,16 @@ class TestCollect:
         # JSON output stays parseable
         payload = json.loads(json.dumps(report, default=str))
         assert 'queues' in payload and 'executors' in payload
+
+    def test_queue_less_child_workflows_count_for_executors_only(self, dbos_environment, mocker):
+        # A task workflow run inline by a cron parent has no queue of its own.
+        child = types.SimpleNamespace(
+            status='RUNNING', queue_name=None, executor_id='worker-1', created_at=1, dequeued_at=None
+        )
+        mocker.patch('django_dbos.capacity._active_workflows', return_value=[child])
+        report = capacity.collect()
+        assert set(report['queues']) == {'default', 'emails'}
+        assert report['executors']['worker-1'] == {'running': 1, 'enqueued': 0}
 
     def test_collect_filters_queues(self, dbos_environment):
         report = capacity.collect(queues=['emails'])
