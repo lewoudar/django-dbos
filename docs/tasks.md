@@ -131,6 +131,10 @@ Available on the context:
 | `recv(topic, timeout_seconds)` | Wait for a durable message. |
 | `start_child_workflow(func, *args)` | Start a child workflow without waiting for it. |
 
+See [Workflows](workflows.md) for a worked example of each primitive —
+progress reporting with events, pausing for an external decision with
+messages, fanning out with child workflows.
+
 !!! warning
     With `durable_operations=True`, the task function must be deterministic and
     is responsible for checkpointing its side effects through steps. Keep the

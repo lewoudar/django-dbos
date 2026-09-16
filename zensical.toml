@@ -14,6 +14,7 @@ nav = [
   { "Home" = "index.md" },
   { "Configuration" = "configuration.md" },
   { "Tasks" = "tasks.md" },
+  { "Workflows" = "workflows.md" },
   { "Cron scheduling" = "cron.md" },
   { "Admin" = "admin.md" },
   { "Worker capacity" = "status.md" },
