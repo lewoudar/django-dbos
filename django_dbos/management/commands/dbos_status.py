@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from django_dbos import capacity
+from django_dbos.exceptions import ImproperlyConfiguredDbos, describe_error, system_database_errors
 
 _ADVICE_STYLES = {'SCALE_UP': 'ERROR', 'SCALE_DOWN': 'WARNING', 'OK': 'SUCCESS'}
 
@@ -32,7 +33,10 @@ class Command(BaseCommand):
 
     def handle(self, *args: Any, **options: Any) -> None:
         queue_filter = [name.strip() for name in options['queues'].split(',') if name.strip()] or None
-        report = capacity.collect(queues=queue_filter)
+        try:
+            report = capacity.collect(queues=queue_filter)
+        except (ImproperlyConfiguredDbos, *system_database_errors()) as exc:
+            raise CommandError(f'DBOS system database unavailable: {describe_error(exc)}') from None
 
         if options['json']:
             self.stdout.write(json.dumps(report, indent=2, default=str))

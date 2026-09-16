@@ -97,6 +97,20 @@ The client is created on first use and never runs schema migrations: **start a
 worker once before enqueuing** — it creates the system database and its
 tables on launch.
 
+The two sides also react differently to a lost system database, on purpose:
+a worker follows DBOS' default and **waits** for the connection to come back
+(pausing its workflows rather than failing them), while the client **fails
+fast** so a web request never hangs on it. The admin pages then show an
+error page and `dbos_status` exits with an error, both with a message where
+database passwords are masked.
+
+!!! warning
+    Error messages from the DBOS SDK and SQLAlchemy can quote the database
+    URL. django-dbos masks the password in everything it reports, but
+    Django's own `DEBUG=True` error page prints the local variables of every
+    frame — including URLs held by the SDK. Keep `DEBUG=False` in
+    production, as always.
+
 ## Launching workers
 
 Tasks are executed by the `dbos_worker` management command:

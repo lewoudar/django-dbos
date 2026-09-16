@@ -9,6 +9,7 @@
 {% block content %}
 <h2>django-dbos is not available</h2>
 <p class="errornote">{{ error_message }}</p>
-<p>Fix your <code>DJANGO_DBOS</code> setting (or the
-<code>DBOS_SYSTEM_DATABASE_URL</code> environment variable) and reload.</p>
+<p>Check the <code>DJANGO_DBOS</code> setting (or the
+<code>DBOS_SYSTEM_DATABASE_URL</code> environment variable) and that the DBOS
+system database is reachable, then reload.</p>
 {% endblock %}

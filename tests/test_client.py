@@ -33,6 +33,7 @@ class TestGetClient:
             dbos_system_schema='custom',
             application_name='myproject',
             lazy=True,
+            retry_connection_errors=False,
         )
 
     def test_serializer_is_forwarded(self, settings, monkeypatch, mocker):
@@ -77,4 +78,6 @@ class TestGetClient:
             client.get_client()
 
         assert 'hunter2' not in str(excinfo.value)
-        assert 'user:***@db' in str(excinfo.value)
+        assert str(excinfo.value) == 'ValueError: cannot use postgresql://user:***@db/dbos'
+        # Unchained on purpose: the cause would carry the unmasked DSN.
+        assert excinfo.value.__cause__ is None

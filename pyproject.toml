@@ -13,6 +13,7 @@ dependencies = [
     "croniter>=6.0",
     "structlog>=25.1",
     "asgiref>=3.8",
+    "sqlalchemy>=2.0",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",

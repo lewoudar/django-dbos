@@ -21,8 +21,7 @@ import threading
 from typing import TYPE_CHECKING, Any
 
 from . import settings as settings_module
-from .dbos_setup import _scrub_credentials
-from .exceptions import ImproperlyConfiguredDbos
+from .exceptions import ImproperlyConfiguredDbos, describe_error
 
 if TYPE_CHECKING:
     from dbos import DBOSClient
@@ -35,7 +34,9 @@ def get_client() -> DBOSClient:
     """The process-wide :class:`dbos.DBOSClient`, created on first use.
 
     The client connects lazily: a misconfigured or unreachable system database
-    surfaces on the first operation, not at import or ``ready()`` time.
+    surfaces on the first operation, not at import or ``ready()`` time, and
+    connection errors are raised rather than retried (see
+    ``exceptions.system_database_errors``).
     """
     global _client
     if _client is not None:
@@ -59,12 +60,15 @@ def _create_client() -> DBOSClient:
             dbos_system_schema=resolved.dbos_system_schema or 'dbos',
             application_name=resolved.app_name,
             lazy=True,
+            # A web request must fail fast when the system database is down;
+            # the SDK default retries forever (the right choice for a worker).
+            retry_connection_errors=False,
             **kwargs,
         )
     except ImproperlyConfiguredDbos:
         raise
-    except Exception as exc:
-        raise ImproperlyConfiguredDbos(_scrub_credentials(str(exc))) from exc
+    except Exception as exc:  # noqa: BLE001 - deliberately unchained: the cause would print the DSN
+        raise ImproperlyConfiguredDbos(describe_error(exc)) from None
 
 
 def close_client() -> None:

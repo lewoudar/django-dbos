@@ -270,6 +270,14 @@ class TestCollect:
         assert 'Workers:' in output
         assert '(none)' in output
 
+    def test_unreachable_system_database_is_a_command_error(self, dbos_environment: Any, mocker) -> None:
+        error = OperationalError('SELECT 1', {}, Exception('postgresql://user:hunter2@db/dbos: connection refused'))
+        mocker.patch('django_dbos.capacity.get_client', side_effect=error)
+        with pytest.raises(CommandError, match='OperationalError') as excinfo:
+            _status()
+        assert 'hunter2' not in str(excinfo.value)
+        assert 'user:***@db' in str(excinfo.value)
+
     def test_human_output_with_queue_filter(self, dbos_environment: Any) -> None:
         output = _status('--queues', 'emails')
         assert 'Queue "emails"' in output

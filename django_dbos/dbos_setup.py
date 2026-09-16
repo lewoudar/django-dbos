@@ -18,14 +18,13 @@ admin, ``dbos_status``) never call these: they use ``client.get_client()``.
 
 from __future__ import annotations
 
-import re
 import threading
 from typing import Any
 
 from dbos import DBOS
 
 from . import settings as settings_module
-from .exceptions import ImproperlyConfiguredDbos
+from .exceptions import ImproperlyConfiguredDbos, describe_error
 
 _instance_lock = threading.Lock()
 _initialized = False
@@ -73,17 +72,6 @@ def _register_queues() -> None:
         Queue(queue.name, **kwargs)
 
 
-#: A DSN with credentials embedded in an error message, e.g.
-#: ``postgresql+psycopg://user:secrets@host/db``. Driver and ORMs may include
-#: one in connection errors; the password is masked before showing the message.
-_DSN_WITH_PASSWORD_RE = re.compile(r"([a-z][a-z0-9+.-]*://[^\s:/@\"']+):([^\s@\"'/]+)@", re.IGNORECASE)
-
-
-def _scrub_credentials(message: str) -> str:
-    """Mask passwords in any DSN found in an error message."""
-    return _DSN_WITH_PASSWORD_RE.sub(r'\1:***@', message)
-
-
 def ensure_initialized() -> None:
     """Create the DBOS singleton if it does not exist yet."""
     global _initialized
@@ -92,10 +80,14 @@ def ensure_initialized() -> None:
             return
         try:
             config = _build_dbos_config()
-        except Exception as exc:
-            raise ImproperlyConfiguredDbos(_scrub_credentials(str(exc))) from exc
-        DBOS(config=config)  # type: ignore[arg-type]
-        _register_queues()
+            DBOS(config=config)  # type: ignore[arg-type]
+            _register_queues()
+        except ImproperlyConfiguredDbos:
+            raise
+        except Exception as exc:  # noqa: BLE001 - deliberately unchained: the cause would print the DSN
+            # The SDK and SQLAlchemy echo the database URL in their messages:
+            # re-raise without the chain, which would print it unmasked.
+            raise ImproperlyConfiguredDbos(describe_error(exc)) from None
         _initialized = True
 
 
@@ -114,7 +106,10 @@ def ensure_launched() -> None:
         from .tasks_registry import register_all_task_workflows
 
         register_all_task_workflows()
-        DBOS.launch()
+        try:
+            DBOS.launch()
+        except Exception as exc:  # noqa: BLE001 - deliberately unchained: the cause would print the DSN
+            raise ImproperlyConfiguredDbos(describe_error(exc)) from None
         _launched = True
 
 

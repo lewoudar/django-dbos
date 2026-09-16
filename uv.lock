@@ -455,6 +455,7 @@ dependencies = [
     { name = "croniter" },
     { name = "dbos" },
     { name = "django" },
+    { name = "sqlalchemy" },
     { name = "structlog" },
 ]
 
@@ -499,6 +500,7 @@ requires-dist = [
     { name = "django", specifier = ">=6.0" },
     { name = "psutil", marker = "extra == 'metrics'", specifier = ">=7.0" },
     { name = "sentry-sdk", marker = "extra == 'sentry'", specifier = ">=2.19" },
+    { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "structlog", specifier = ">=25.1" },
 ]
 provides-extras = ["sentry", "metrics"]

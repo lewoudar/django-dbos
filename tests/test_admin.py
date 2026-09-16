@@ -13,6 +13,7 @@ from django.tasks import TaskResultStatus
 from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
+from sqlalchemy.exc import OperationalError
 
 from django_dbos.admin import (
     get_admin_site_paths,
@@ -238,6 +239,33 @@ class TestAdminGating:
         response = client.get('/admin/dbos/workflows/')
         assert response.status_code == 302
         assert '/admin/login' in response['Location']
+
+
+class TestUnavailableSystemDatabase:
+    def _failing_client(self, mocker):
+        error = OperationalError(
+            'SELECT 1', {}, Exception('connection to postgresql://user:hunter2@db:5432/dbos_app failed')
+        )
+        client = mocker.MagicMock()
+        client.list_workflows.side_effect = error
+        client.retrieve_workflow.side_effect = error
+        client.list_schedules.side_effect = error
+        return mocker.patch('django_dbos.admin_views.get_client', return_value=client)
+
+    @pytest.mark.parametrize(
+        'path', ['/admin/dbos/workflows/', '/admin/dbos/workflows/some-id/', '/admin/dbos/schedules/']
+    )
+    def test_renders_error_page_without_credentials(self, admin_client, dbos_environment, mocker, path):
+        self._failing_client(mocker)
+        response = admin_client.get(path)
+        assert response.status_code == 200
+        assert_text(response, 'django-dbos is not available')
+        assert_text(response, 'OperationalError')
+        assert_text(response, 'user:***@db:5432')
+        assert 'hunter2' not in response.content.decode()
+
+    def test_unknown_workflow_is_still_a_404(self, admin_client, dbos_environment):
+        assert admin_client.get('/admin/dbos/workflows/unknown-id/').status_code == 404
 
 
 class TestWorkerHeartbeatAdmin:

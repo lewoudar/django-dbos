@@ -18,7 +18,7 @@ from django.shortcuts import render
 from django.urls import reverse
 
 from .client import get_client
-from .exceptions import ImproperlyConfiguredDbos
+from .exceptions import ImproperlyConfiguredDbos, describe_error, system_database_errors
 from .logging import logger
 
 PAGE_SIZE = 50
@@ -39,11 +39,12 @@ WORKFLOW_STATUSES = list(STATUS_BADGES)
 
 
 def _dbos_view(view: Any) -> Any:
-    """Wrap an admin view: require the superuser and a configured DBOS client.
+    """Wrap an admin view: require the superuser, render an error page when DBOS is unavailable.
 
     ``site.admin_view`` already enforces staff-only access; these pages also
     expose destructive operations and every workflow's data, so they are
-    restricted to superusers.
+    restricted to superusers. A misconfigured or unreachable system database
+    renders ``error.html`` with a credential-free message instead of a 500.
     """
 
     def wrapper(request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
@@ -51,13 +52,11 @@ def _dbos_view(view: Any) -> Any:
             raise PermissionDenied('django-dbos admin pages are restricted to superusers.')
         try:
             get_client()
-        except ImproperlyConfiguredDbos as exc:
-            return render(
-                request,
-                'admin/django_dbos/error.html',
-                {'title': 'django-dbos', 'error_message': str(exc)},
-            )
-        return view(request, *args, **kwargs)
+            return view(request, *args, **kwargs)
+        except (ImproperlyConfiguredDbos, *system_database_errors()) as exc:
+            message = describe_error(exc)
+            logger.error('admin: DBOS system database unavailable', error=message, view=view.__name__)
+            return render(request, 'admin/django_dbos/error.html', {'title': 'django-dbos', 'error_message': message})
 
     wrapper.__name__ = view.__name__
     wrapper.__qualname__ = view.__qualname__

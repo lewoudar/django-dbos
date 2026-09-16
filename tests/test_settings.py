@@ -5,8 +5,7 @@ from dbos import DBOSPortableJSONSerializer
 
 from django_dbos import settings as dbos_settings
 from django_dbos.checks import check_dbos_settings
-from django_dbos.dbos_setup import _scrub_credentials
-from django_dbos.exceptions import ImproperlyConfiguredDbos
+from django_dbos.exceptions import ImproperlyConfiguredDbos, scrub_credentials
 
 
 class TestSystemDatabaseUrlDerivation:
@@ -135,18 +134,18 @@ class TestAppName:
 class TestCredentialScrubbing:
     def test_postgres_dsn_password_masked(self):
         message = 'connection to server failed: postgresql+psycopg://app_user:s3cret-pw@db.internal:5432/dbos_mydb'
-        scrubbed = _scrub_credentials(message)
+        scrubbed = scrub_credentials(message)
         assert 's3cret-pw' not in scrubbed
         assert 'postgresql+psycopg://app_user:***@db.internal:5432/dbos_mydb' in scrubbed
 
     def test_schemes_and_special_characters(self):
-        scrubbed = _scrub_credentials('mysql://u:p@h/db then postgresql://u2:p2%40x@h2/db2')
+        scrubbed = scrub_credentials('mysql://u:p@h/db then postgresql://u2:p2%40x@h2/db2')
         assert 'mysql://u:***@h/db' in scrubbed
         assert 'postgresql://u2:***@h2/db2' in scrubbed
 
     def test_message_without_dsn_unchanged(self):
         message = 'No credentials in here, just text.'
-        assert _scrub_credentials(message) == message
+        assert scrub_credentials(message) == message
 
 
 class TestQueueOptionsValidation:

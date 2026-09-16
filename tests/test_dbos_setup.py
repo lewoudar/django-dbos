@@ -1,6 +1,9 @@
 """Tests for dbos_setup helpers: config building, queue registration and launch ordering."""
 
+import pytest
+
 from django_dbos import dbos_setup
+from django_dbos.exceptions import ImproperlyConfiguredDbos
 
 
 class TestBuildDbosConfig:
@@ -70,6 +73,48 @@ class TestRegisterQueues:
         settings.DJANGO_DBOS = {}
         dbos_setup._register_queues()
         queue_cls.assert_called_once_with('default')
+
+
+class TestScrubbedSdkErrors:
+    DSN_ERROR = RuntimeError('could not connect to postgresql://user:hunter2@db:5432/dbos_app')
+
+    def test_initialization_failure_is_scrubbed_and_unchained(self, settings, monkeypatch, mocker):
+        monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
+        settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://user:hunter2@db:5432/dbos_app'}
+        mocker.patch.object(dbos_setup, '_initialized', False)
+        mocker.patch.object(dbos_setup, 'DBOS', side_effect=self.DSN_ERROR)
+
+        with pytest.raises(ImproperlyConfiguredDbos) as excinfo:
+            dbos_setup.ensure_initialized()
+
+        message = str(excinfo.value)
+        assert message.startswith('RuntimeError: ')
+        assert 'hunter2' not in message
+        assert 'user:***@db:5432' in message
+        assert excinfo.value.__cause__ is None and excinfo.value.__suppress_context__
+        assert dbos_setup._initialized is False
+
+    def test_launch_failure_is_scrubbed_and_unchained(self, mocker):
+        mocker.patch.object(dbos_setup, '_initialized', True)
+        mocker.patch.object(dbos_setup, '_launched', False)
+        mocker.patch('django_dbos.tasks_registry.register_all_task_workflows')
+        mocker.patch.object(dbos_setup.DBOS, 'launch', side_effect=self.DSN_ERROR)
+
+        with pytest.raises(ImproperlyConfiguredDbos) as excinfo:
+            dbos_setup.ensure_launched()
+
+        assert 'hunter2' not in str(excinfo.value)
+        assert excinfo.value.__cause__ is None
+        assert dbos_setup._launched is False
+
+    def test_configuration_errors_pass_through(self, settings, monkeypatch, mocker):
+        monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
+        settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://db', 'QUEUES': {'emails': {'nope': 1}}}
+        mocker.patch.object(dbos_setup, '_initialized', False)
+        mocker.patch.object(dbos_setup, 'DBOS')
+
+        with pytest.raises(ImproperlyConfiguredDbos, match='unknown option'):
+            dbos_setup.ensure_initialized()
 
 
 class TestEnsureLaunched:
