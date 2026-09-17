@@ -5,12 +5,13 @@ creation, launch and teardown so the worker entry points (the ``dbos_worker``
 command, the ``dbos_system`` test fixture) share one idempotent lifecycle:
 
 - :func:`ensure_initialized` builds the singleton from the ``DJANGO_DBOS``
-  setting and declares the queues.
-- :func:`ensure_launched` registers every known task as a DBOS workflow and
-  starts the queue/scheduler/recovery threads: from then on this process
-  executes tasks.
+  setting.
+- :func:`ensure_launched` registers every known task as a DBOS workflow,
+  starts the queue/scheduler/recovery threads and declares the queues (DBOS
+  persists queue configuration to the system database, which only exists once
+  launched): from then on this process executes tasks.
 - :func:`shutdown` tears the singleton down (used on worker shutdown and
-  between tests).
+  between tests), waiting for in-flight workflows to finish first.
 
 Processes that only enqueue tasks or inspect the system database (web,
 admin, ``dbos_status``) never call these: they use ``client.get_client()``.
@@ -57,13 +58,11 @@ def _build_dbos_config() -> dict[str, Any]:
 
 
 def _register_queues() -> None:
-    """Declare configured queues in the DBOS registry.
+    """Declare configured queues, persisting their configuration to the system database.
 
-    Queues are plain (non database-backed) objects here: their configuration is
-    pushed to the system database at launch time.
+    Called after ``DBOS.launch()``: ``DBOS.register_queue`` writes through to
+    the system database, which only exists once launched.
     """
-    from dbos import Queue
-
     for queue in settings_module.resolve_queues():
         kwargs: dict[str, Any] = {}
         if queue.worker_concurrency is not None:
@@ -74,7 +73,7 @@ def _register_queues() -> None:
             kwargs['limiter'] = queue.limiter
         if queue.polling_interval_sec is not None:
             kwargs['polling_interval_sec'] = queue.polling_interval_sec
-        Queue(queue.name, **kwargs)
+        DBOS.register_queue(queue.name, **kwargs)
 
 
 def ensure_initialized() -> None:
@@ -86,7 +85,6 @@ def ensure_initialized() -> None:
         try:
             config = _build_dbos_config()
             DBOS(config=config)  # type: ignore[arg-type]
-            _register_queues()
         except ImproperlyConfiguredDbos:
             raise
         except Exception as exc:  # noqa: BLE001 - deliberately unchained: the cause would print the DSN
@@ -113,16 +111,30 @@ def ensure_launched() -> None:
         register_all_task_workflows()
         try:
             DBOS.launch()
+            # Queues persist to the system database (DBOS.register_queue), which
+            # only exists once launched: declare them now, not in ensure_initialized.
+            _register_queues()
+        except ImproperlyConfiguredDbos:
+            raise
         except Exception as exc:  # noqa: BLE001 - deliberately unchained: the cause would print the DSN
             raise ImproperlyConfiguredDbos(describe_error(exc)) from None
         _launched = True
 
 
-def shutdown() -> None:
-    """Destroy the DBOS singleton, if it was created by this module."""
+def shutdown(*, workflow_completion_timeout_sec: int = 10) -> None:
+    """Destroy the DBOS singleton, if it was created by this module.
+
+    Waits up to ``workflow_completion_timeout_sec`` for workflows already
+    running (an enqueued task picked up by a worker thread, a cron firing) to
+    finish before disconnecting from the system database. ``DBOS.destroy()``
+    defaults to 0 (no wait), which races the SDK's own background threads: a
+    step or workflow still persisting its result accesses ``DBOS._sys_db``
+    after it has been torn down and raises ``System database accessed before
+    DBOS was launched``.
+    """
     global _initialized, _launched
     if not _initialized:
         return
-    DBOS.destroy()
+    DBOS.destroy(workflow_completion_timeout_sec=workflow_completion_timeout_sec)
     _initialized = False
     _launched = False

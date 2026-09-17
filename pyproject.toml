@@ -8,12 +8,12 @@ license-files = ["LICENSE"]
 authors = [{ name = "Kevin Tewouda", email = "rollandkev@yahoo.fr" }]
 requires-python = ">=3.12"
 dependencies = [
-    "django>=6.0",
-    "dbos>=1.6",
+    "django>=6.0,<7",
+    "dbos>=3.0,<4",
     "croniter>=6.0",
     "structlog>=25.1",
     "asgiref>=3.8",
-    "sqlalchemy>=2.0",
+    "sqlalchemy>=2.0,<3",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -79,6 +79,7 @@ packages = ["django_dbos"]
 [tool.uv]
 default-groups = ["dev", "test"]
 exclude-newer = "7 days"
+exclude-newer-package = { dbos = "1 day" }
 
 [tool.ruff]
 line-length = 120
@@ -101,13 +102,22 @@ extend-select = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S106"]
-"django_dbos/migrations/*" = ["RUF012"]  # Django's generated class attributes
+"**/migrations/*" = ["RUF012"]  # Django's generated class attributes (package and examples/)
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "tests.settings"
 testpaths = ["tests"]
 addopts = "--strict-markers"
-filterwarnings = ["error"]
+filterwarnings = [
+    "error",
+    # Background sockets/threads (DBOS's own, or testcontainers probing for a
+    # Docker daemon that isn't there) can be garbage-collected at an arbitrary
+    # later point against the session-scoped dbos_system fixture, landing on
+    # whatever test happens to be running rather than the one that caused it.
+    # Keep them visible without failing an unrelated test over GC timing.
+    "always::pytest.PytestUnraisableExceptionWarning",
+    "always::pytest.PytestUnhandledThreadExceptionWarning",
+]
 markers = [
     "integration: tests that require a running Postgres via testcontainers",
 ]

@@ -1,0 +1,16 @@
+[project]
+name = "ninja-api-example"
+version = "0.1.0"
+description = "django-dbos example: submit and poll a background task through a Django Ninja API."
+requires-python = ">=3.12"
+dependencies = [
+    "django>=6.0",
+    "django-dbos",
+    "django-ninja>=1.3",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+django-dbos = { path = "../..", editable = true }

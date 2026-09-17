@@ -35,7 +35,7 @@ def format(session: nox.Session) -> None:
 
 @nox.session
 def typecheck(session: nox.Session) -> None:
-    session.run('uv', 'run', '--active', 'pyrefly', 'check', external=True)
+    session.run('uv', 'run', '--active', 'pyrefly', 'check', '--project-excludes', 'examples/**', external=True)
 
 
 @nox.session

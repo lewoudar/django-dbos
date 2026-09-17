@@ -62,6 +62,16 @@ web processes only talk to the DBOS system database; they never execute
 tasks. See [Configuration](configuration.md) for the database setup and the
 available options.
 
+## Examples
+
+Two runnable projects, each a standalone `uv` project you can `uv sync` and
+run on its own:
+[`examples/ninja_api`](https://github.com/lewoudar/django_dbos/tree/main/examples/ninja_api)
+(a [Django Ninja](https://django-ninja.dev/) API that enqueues a task and
+polls its status) and
+[`examples/cron_report`](https://github.com/lewoudar/django_dbos/tree/main/examples/cron_report)
+(a `@cron` task that fires on its own once a worker is running).
+
 ## License
 
 MIT

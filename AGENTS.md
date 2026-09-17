@@ -17,6 +17,11 @@ monitors, admin pages and a worker-capacity report. Published on PyPI.
 - Tests in `tests/` are plain functions (not Django `TestCase` unless a DB is
   needed); integration tests are marked `integration` and run against a real
   system database (PostgreSQL via testcontainers, SQLite file fallback).
+- `examples/` holds standalone runnable projects (own `pyproject.toml`/`uv.lock`,
+  `django-dbos` pulled in as an editable path dependency) demonstrating the
+  package end to end; not part of the root `uv` project or its dependency
+  extras, so `uv run pyrefly check` needs `--project-excludes 'examples/**'`
+  (its imports are not installed in the root `.venv`) — see Commands below.
 
 ## Commands
 
@@ -25,7 +30,7 @@ uv run pytest                          # unit tests
 uv run pytest -m integration           # integration tests (Docker recommended)
 uv run coverage run -m pytest && uv run coverage report   # coverage, see note
 uv run ruff check . && uv run ruff format --check .
-uv run pyrefly check                   # type check
+uv run pyrefly check --project-excludes 'examples/**'   # type check (examples/ are separate projects)
 uv run deptry django_dbos              # dependency hygiene (package only)
 uv run --group doc zensical build      # docs (runs from the repo root)
 uv run cz bump                         # release (commitizen)

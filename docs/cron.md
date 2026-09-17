@@ -91,3 +91,6 @@ from the crontab. Sub-minute schedules cannot be represented as Sentry monitors
 and are simply not monitored.
 
 Without `sentry-sdk` installed, everything is a no-op.
+
+See [`examples/cron_report`](https://github.com/lewoudar/django_dbos/tree/main/examples/cron_report)
+for a runnable project built around `@cron`.

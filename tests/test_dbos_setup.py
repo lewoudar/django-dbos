@@ -51,7 +51,7 @@ class TestBuildDbosConfig:
 
 class TestRegisterQueues:
     def test_all_queue_options_forwarded(self, settings, mocker):
-        queue_cls = mocker.patch('dbos.Queue')
+        register_queue = mocker.patch.object(dbos_setup.DBOS, 'register_queue')
         settings.DJANGO_DBOS = {
             'QUEUES': {
                 'emails': {
@@ -63,7 +63,7 @@ class TestRegisterQueues:
             },
         }
         dbos_setup._register_queues()
-        queue_cls.assert_called_once_with(
+        register_queue.assert_called_once_with(
             'emails',
             worker_concurrency=2,
             global_concurrency=3,
@@ -72,10 +72,10 @@ class TestRegisterQueues:
         )
 
     def test_default_queue_has_no_options(self, settings, mocker):
-        queue_cls = mocker.patch('dbos.Queue')
+        register_queue = mocker.patch.object(dbos_setup.DBOS, 'register_queue')
         settings.DJANGO_DBOS = {}
         dbos_setup._register_queues()
-        queue_cls.assert_called_once_with('default')
+        register_queue.assert_called_once_with('default')
 
 
 class TestScrubbedSdkErrors:
@@ -122,7 +122,8 @@ class TestScrubbedSdkErrors:
 
 class TestEnsureLaunched:
     def test_registers_known_tasks_before_launch(self, mocker):
-        # The worker must know every task before it starts dequeuing.
+        # The worker must know every task before it starts dequeuing; queues
+        # persist to the system database, which only exists once launched.
         mocker.patch.object(dbos_setup, '_initialized', True)
         mocker.patch.object(dbos_setup, '_launched', False)
         calls: list[str] = []
@@ -131,8 +132,43 @@ class TestEnsureLaunched:
             side_effect=lambda: calls.append('register'),
         )
         mocker.patch.object(dbos_setup.DBOS, 'launch', side_effect=lambda: calls.append('launch'))
+        mocker.patch.object(dbos_setup, '_register_queues', side_effect=lambda: calls.append('queues'))
 
         dbos_setup.ensure_launched()
 
-        assert calls == ['register', 'launch']
+        assert calls == ['register', 'launch', 'queues']
         assert dbos_setup._launched is True
+
+
+class TestShutdown:
+    def test_waits_for_in_flight_workflows_by_default(self, mocker):
+        # DBOS.destroy() defaults to workflow_completion_timeout_sec=0 (no
+        # wait), which races its own background threads: a step or workflow
+        # still persisting its result can access DBOS._sys_db just after
+        # shutdown tears it down. Give in-flight work a grace period.
+        mocker.patch.object(dbos_setup, '_initialized', True)
+        mocker.patch.object(dbos_setup, '_launched', True)
+        destroy = mocker.patch.object(dbos_setup.DBOS, 'destroy')
+
+        dbos_setup.shutdown()
+
+        destroy.assert_called_once_with(workflow_completion_timeout_sec=10)
+        assert dbos_setup._initialized is False
+        assert dbos_setup._launched is False
+
+    def test_timeout_is_overridable(self, mocker):
+        mocker.patch.object(dbos_setup, '_initialized', True)
+        mocker.patch.object(dbos_setup, '_launched', True)
+        destroy = mocker.patch.object(dbos_setup.DBOS, 'destroy')
+
+        dbos_setup.shutdown(workflow_completion_timeout_sec=30)
+
+        destroy.assert_called_once_with(workflow_completion_timeout_sec=30)
+
+    def test_noop_when_never_initialized(self, mocker):
+        mocker.patch.object(dbos_setup, '_initialized', False)
+        destroy = mocker.patch.object(dbos_setup.DBOS, 'destroy')
+
+        dbos_setup.shutdown()
+
+        destroy.assert_not_called()
