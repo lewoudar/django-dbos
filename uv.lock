@@ -504,11 +504,11 @@ requires-dist = [
     { name = "asgiref", specifier = ">=3.8" },
     { name = "croniter", specifier = ">=6.0" },
     { name = "dbos", specifier = ">=3.0,<4" },
-    { name = "django", specifier = ">=6.0" },
+    { name = "django", specifier = ">=6.0,<7" },
     { name = "psutil", marker = "extra == 'metrics'", specifier = ">=7.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.4" },
     { name = "sentry-sdk", marker = "extra == 'sentry'", specifier = ">=2.19" },
-    { name = "sqlalchemy", specifier = ">=2.0" },
+    { name = "sqlalchemy", specifier = ">=2.0,<3" },
     { name = "structlog", specifier = ">=25.1" },
     { name = "testcontainers", extras = ["postgres"], marker = "extra == 'test'", specifier = ">=4.13" },
 ]
