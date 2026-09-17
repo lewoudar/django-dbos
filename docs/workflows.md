@@ -163,10 +163,7 @@ def resize_image(attachment_id: int, size: str) -> str: ...
 @task
 def process_upload(attachment_id: int) -> None:
     ctx = get_dbos_context()
-    handles = [
-        ctx.start_child_workflow(resize_image, attachment_id, size)
-        for size in ('thumbnail', 'medium', 'large')
-    ]
+    handles = [ctx.start_child_workflow(resize_image, attachment_id, size) for size in ('thumbnail', 'medium', 'large')]
     # optional: block until all children are done and collect their results
     for handle in handles:
         handle.get_result()
