@@ -85,11 +85,11 @@ from django.tasks import task
 def send_welcome_email(user_id: int) -> None: ...
 
 
-result = send_welcome_email.enqueue(user_id)     # sync
+result = send_welcome_email.enqueue(user_id)  # sync
 result = await send_welcome_email.aenqueue(user_id)  # async views
 
-result.status         # TaskResultStatus.READY / RUNNING / SUCCESSFUL / FAILED
-result.return_value    # only when SUCCESSFUL
+result.status  # TaskResultStatus.READY / RUNNING / SUCCESSFUL / FAILED
+result.return_value  # only when SUCCESSFUL
 ```
 
 - `.using(run_after=timezone.now() + timedelta(hours=1)).enqueue()` for deferred tasks — needs an *aware* datetime.
@@ -108,12 +108,12 @@ from django_dbos import dbos_params
 
 
 @dbos_params(
-    step_retries_allowed=True,   # retry the task function on failure
+    step_retries_allowed=True,  # retry the task function on failure
     step_max_attempts=5,
     step_backoff_rate=2.0,
     deduplication_id='nightly-cleanup',  # reject duplicate concurrent enqueues
-    workflow_timeout=3600,        # seconds, wall clock from worker pickup
-    max_recovery_attempts=10,     # DBOS recovery after worker crashes
+    workflow_timeout=3600,  # seconds, wall clock from worker pickup
+    max_recovery_attempts=10,  # DBOS recovery after worker crashes
 )
 @task
 def cleanup(): ...
@@ -145,8 +145,8 @@ from django_dbos import dbos_params, get_dbos_context
 @task
 def onboard_user(user_id: int) -> None:
     ctx = get_dbos_context()
-    ctx.run_step(send_welcome_email, user_id)      # checkpointed
-    ctx.sleep(86400)                                # durable sleep, worker can restart
+    ctx.run_step(send_welcome_email, user_id)  # checkpointed
+    ctx.sleep(86400)  # durable sleep, worker can restart
     ctx.run_step(send_followup_email, user_id)
 ```
 
@@ -224,6 +224,7 @@ Three ways to test, in order of how much you want to exercise:
 
 ```python
 from django_dbos.test import run_task, arun_task
+
 
 # 1. Run the task body directly, bypassing the backend entirely
 def test_send_email():
