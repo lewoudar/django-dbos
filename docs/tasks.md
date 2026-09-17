@@ -140,3 +140,6 @@ messages, fanning out with child workflows.
     is responsible for checkpointing its side effects through steps. Keep the
     default (single step) unless you need durable sleeps or multi-stage
     checkpointing.
+
+See [`examples/ninja_api`](https://github.com/lewoudar/django_dbos/tree/main/examples/ninja_api)
+for a runnable project that enqueues a task and polls its result.

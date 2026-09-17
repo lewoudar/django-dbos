@@ -160,6 +160,16 @@ python manage.py dbos_worker    # start executing tasks
 Your web processes only ever talk to the system database — they enqueue
 tasks, they never execute them.
 
+## Examples
+
+Two runnable projects in [`examples/`](examples/), each a standalone `uv`
+project you can `uv sync` and run on its own:
+
+- [`ninja_api`](examples/ninja_api) — a [Django Ninja](https://django-ninja.dev/)
+  API that enqueues a task and polls its status until it's done.
+- [`cron_report`](examples/cron_report) — a `@cron` task that fires on its
+  own once a worker is running, no external scheduler needed.
+
 ## Documentation
 
 Full documentation: https://github.com/lewoudar/django_dbos/tree/main/docs
