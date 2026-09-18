@@ -1,7 +1,8 @@
-"""Tests for the capacity heuristics and the dbos_status command."""
+"""Tests for the capacity heuristics and the dbos status command."""
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import socket
@@ -12,7 +13,8 @@ from io import StringIO
 from typing import Any
 
 import pytest
-from django.core.management import CommandError, call_command
+from click.exceptions import Exit
+from django.core.management import call_command
 from django.utils import timezone
 from sqlalchemy.exc import OperationalError
 
@@ -83,10 +85,16 @@ class TestAdviseQueue:
         assert advise_queue(_metrics(**overrides)) == expected
 
 
-def _status(*args: str) -> str:
-    """Run dbos_status and return its own output (DBOS logs would interleave on stdout)."""
+def status(*args: str) -> str:
+    """Run `dbos status` and return its own output (DBOS logs would interleave on real stdout).
+
+    django-click (2.5.0, the latest released version) does not yet support
+    `call_command(..., stdout=...)` (its `base_stealth_options` is empty, so
+    Django's own call_command rejects the kwarg) - redirect sys.stdout ourselves.
+    """
     out = StringIO()
-    call_command('dbos_status', *args, stdout=out)
+    with contextlib.redirect_stdout(out):
+        call_command('dbos', 'status', *args)
     return out.getvalue()
 
 
@@ -210,7 +218,7 @@ class TestCollect:
         assert 'some-worker' in report['executors']
 
     def test_command_json_output(self, dbos_environment: Any) -> None:
-        output = _status('--json')
+        output = status('--json')
         payload = json.loads(output)
         assert set(payload) == {
             'queues',
@@ -221,7 +229,7 @@ class TestCollect:
         assert set(payload['queues']) == {'default', 'emails'}
 
     def test_command_human_output(self, dbos_environment: Any) -> None:
-        output = _status()
+        output = status()
         assert 'Queue "default"' in output
         assert 'Workers:' in output
 
@@ -235,14 +243,14 @@ class TestCollect:
         )
         monkeypatch.setitem(sys.modules, 'psutil', fake_psutil)
         write_heartbeat('live-worker', queues=('default',), has_metrics=True)
-        output = _status()
+        output = status()
         assert (
             f'live-worker: {socket.gethostname()} pid {os.getpid()}, queues default, CPU 42.0%, RSS 1024.0 MB' in output
         )
 
     def test_human_output_reports_live_worker_without_metrics(self, dbos_environment: Any) -> None:
         write_heartbeat('plain-worker', has_metrics=False)
-        output = _status()
+        output = status()
         assert (
             f'plain-worker: {socket.gethostname()} pid {os.getpid()}, install django-dbos[metrics] for CPU/memory'
             in output
@@ -254,36 +262,39 @@ class TestCollect:
             status='RUNNING', queue_name='default', executor_id='ghost-worker', created_at=1, dequeued_at=2
         )
         mocker.patch('django_dbos.capacity._active_workflows', return_value=[ghost])
-        output = _status()
+        output = status()
         assert 'ghost-worker: NO HEARTBEAT (worker down, or django_dbos migrations not applied)' in output
 
     def test_human_output_flags_stale_heartbeat(self, dbos_environment: Any) -> None:
         write_heartbeat('dead-worker')
         WorkerHeartbeat.objects.update(last_seen_at=timezone.now() - timedelta(seconds=STALE_AFTER_SECONDS + 1))
-        output = _status()
+        output = status()
         assert f'dead-worker: {socket.gethostname()} pid {os.getpid()}, STALE (last seen' in output
 
     def test_human_output_with_no_worker_at_all(self, dbos_environment: Any, mocker) -> None:
         # Nothing active, no heartbeat: the section is empty.
         mocker.patch('django_dbos.capacity._active_workflows', return_value=[])
-        output = _status()
+        output = status()
         assert 'Workers:' in output
         assert '(none)' in output
 
     def test_unreachable_system_database_is_a_command_error(self, dbos_environment: Any, mocker) -> None:
         error = OperationalError('SELECT 1', {}, Exception('postgresql://user:hunter2@db/dbos: connection refused'))
         mocker.patch('django_dbos.capacity.get_client', side_effect=error)
-        with pytest.raises(CommandError, match='OperationalError') as excinfo:
-            _status()
-        assert 'hunter2' not in str(excinfo.value)
-        assert 'user:***@db' in str(excinfo.value)
+        err = StringIO()
+        with contextlib.redirect_stdout(StringIO()), contextlib.redirect_stderr(err), pytest.raises(Exit) as excinfo:
+            call_command('dbos', 'status')
+        assert excinfo.value.exit_code == 1
+        assert 'OperationalError' in err.getvalue()
+        assert 'hunter2' not in err.getvalue()
+        assert 'user:***@db' in err.getvalue()
 
     def test_human_output_with_queue_filter(self, dbos_environment: Any) -> None:
-        output = _status('--queues', 'emails')
+        output = status('--queues', 'emails')
         assert 'Queue "emails"' in output
         assert 'Queue "default"' not in output
 
     def test_json_output_with_queue_filter(self, dbos_environment: Any) -> None:
-        output = _status('--json', '--queues', 'emails')
+        output = status('--json', '--queues', 'emails')
         payload = json.loads(output)
         assert set(payload['queues']) == {'emails'}

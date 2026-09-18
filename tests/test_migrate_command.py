@@ -1,18 +1,23 @@
-"""Tests for the dbos_migrate management command."""
+"""Tests for the dbos migrate management command."""
 
 from __future__ import annotations
 
+import contextlib
 from io import StringIO
 from pathlib import Path
 
 import pytest
 from click.exceptions import Exit
-from django.core.management import CommandError, call_command
+from django.core.management import call_command
 
 
-def _migrate(*args: str) -> str:
+def migrate(*args: str) -> str:
+    # django-click (2.5.0, the latest released version) does not yet support
+    # `call_command(..., stdout=...)` (its `base_stealth_options` is empty, so
+    # Django's own call_command rejects the kwarg) - redirect sys.stdout ourselves.
     out = StringIO()
-    call_command('dbos_migrate', *args, stdout=out)
+    with contextlib.redirect_stdout(out):
+        call_command('dbos', 'migrate', *args)
     return out.getvalue()
 
 
@@ -25,7 +30,7 @@ class TestDbosMigrate:
         }
         run = mocker.patch('dbos.cli.migration.run_dbos_database_migrations')
 
-        output = _migrate('--app-role', 'app')
+        output = migrate('--app-role', 'app')
 
         run.assert_called_once_with('postgresql://user:hunter2@db/dbos_app', schema='custom', application_role='app')
         assert 'hunter2' not in output
@@ -39,7 +44,7 @@ class TestDbosMigrate:
         launch = mocker.patch('dbos.DBOS.launch')
         ensure_launched = mocker.patch('django_dbos.dbos_setup.ensure_launched')
 
-        _migrate()
+        migrate()
 
         launch.assert_not_called()
         ensure_launched.assert_not_called()
@@ -50,14 +55,20 @@ class TestDbosMigrate:
         # The SDK reports failures as a click Exit after echoing them.
         mocker.patch('dbos.cli.migration.run_dbos_database_migrations', side_effect=Exit(code=1))
 
-        with pytest.raises(CommandError, match='DBOS migrations failed'):
-            _migrate()
+        err = StringIO()
+        with contextlib.redirect_stdout(StringIO()), contextlib.redirect_stderr(err), pytest.raises(Exit) as excinfo:
+            call_command('dbos', 'migrate')
+        assert excinfo.value.exit_code == 1
+        assert 'DBOS migrations failed' in err.getvalue()
 
     def test_configuration_errors_are_command_errors(self, settings, monkeypatch):
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
         settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://db', 'QUEUES': {'x': {'nope': 1}}}
-        with pytest.raises(CommandError, match='unknown option'):
-            _migrate()
+        err = StringIO()
+        with contextlib.redirect_stdout(StringIO()), contextlib.redirect_stderr(err), pytest.raises(Exit) as excinfo:
+            call_command('dbos', 'migrate')
+        assert excinfo.value.exit_code == 1
+        assert 'unknown option' in err.getvalue()
 
     @pytest.mark.integration
     def test_creates_a_usable_system_database(self, settings, monkeypatch, tmp_path: Path):
@@ -69,7 +80,7 @@ class TestDbosMigrate:
         monkeypatch.setenv('DBOS_SYSTEM_DATABASE_URL', url)
         client.close_client()
         try:
-            _migrate()
+            migrate()
             assert client.get_client().list_workflows() == []
         finally:
             client.close_client()
