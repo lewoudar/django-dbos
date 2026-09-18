@@ -48,4 +48,3 @@
 - use the real zensical config at the repo root
 - clamp the workflow list page parameter
 - mask credentials in config errors and validate workflow names
-
