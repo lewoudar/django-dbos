@@ -41,7 +41,7 @@ jobs:
 
   integration:
     # Real system database (PostgreSQL via testcontainers on the runner's
-    # Docker), admin pages, cron, capacity, dbos_migrate and the two-process
+    # Docker), admin pages, cron, capacity, dbos migrate and the two-process
     # web/worker scenario.
     runs-on: ubuntu-latest
     permissions:

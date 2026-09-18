@@ -16,11 +16,11 @@ The expression uses the standard 5-field crontab syntax. A 6-field form with a
 leading seconds field is also accepted (DBOS supports sub-minute schedules).
 
 Schedules are managed by DBOS, not by the Django process: the worker registers
-them in the system database (idempotently, on `dbos_worker` startup) and DBOS
+them in the system database (idempotently, on `dbos worker` startup) and DBOS
 fires them even across restarts and deployments. Each firing runs the task's
 regular workflow (the one `.enqueue()` uses) as a child on the task's queue,
 so scheduled and enqueued executions share a workflow name in the admin and
-in `dbos_status`, and every `@dbos_params` option — step retries,
+in `dbos status`, and every `@dbos_params` option — step retries,
 `workflow_timeout`, `max_recovery_attempts` — applies to both:
 
 ```python
@@ -34,7 +34,7 @@ def nightly_report(): ...
     Scheduled tasks must not require arguments. django-dbos validates this when
     the module loads.
 
-Run `dbos_worker` without `--no-scheduler` so it registers and fires schedules.
+Run `dbos worker` without `--no-scheduler` so it registers and fires schedules.
 
 The code is the source of truth for schedules: on startup the worker creates
 the missing ones, re-creates those whose crontab, timezone or queue changed,

@@ -1,6 +1,4 @@
-"""Tests for the dbos_worker management command (mocked DBOS launch)."""
-
-from typing import Any
+"""Tests for the dbos worker management command (mocked DBOS launch)."""
 
 import pytest
 from django.core.management import call_command
@@ -20,16 +18,18 @@ def worker_mocks(mocker):
     }
 
 
-def _run_worker(**options: Any) -> str:
+def run_worker(*args: str) -> str:
+    import contextlib
     from io import StringIO
 
     out = StringIO()
-    call_command('dbos_worker', stdout=out, **options)
+    with contextlib.redirect_stdout(out):
+        call_command('dbos', 'worker', *args)
     return out.getvalue()
 
 
 def test_worker_default_run(dbos_environment, worker_mocks):
-    output = _run_worker()
+    output = run_worker()
 
     worker_mocks['autodiscover'].assert_called_once_with()
     worker_mocks['ensure_launched'].assert_called_once_with()
@@ -48,5 +48,5 @@ def test_worker_default_run(dbos_environment, worker_mocks):
 
 
 def test_worker_no_scheduler_flag_skips_cron_registration(dbos_environment, worker_mocks):
-    _run_worker(no_scheduler=True)
+    run_worker('--no-scheduler')
     worker_mocks['register_cron_schedules'].assert_not_called()

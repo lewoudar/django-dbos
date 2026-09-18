@@ -1,7 +1,7 @@
 """Management of the DBOS singleton in a worker process.
 
 DBOS uses a process-wide singleton (``dbos.DBOS``). This module wraps its
-creation, launch and teardown so the worker entry points (the ``dbos_worker``
+creation, launch and teardown so the worker entry points (the ``dbos worker``
 command, the ``dbos_system`` test fixture) share one idempotent lifecycle:
 
 - :func:`ensure_initialized` builds the singleton from the ``DJANGO_DBOS``
@@ -14,7 +14,7 @@ command, the ``dbos_system`` test fixture) share one idempotent lifecycle:
   between tests), waiting for in-flight workflows to finish first.
 
 Processes that only enqueue tasks or inspect the system database (web,
-admin, ``dbos_status``) never call these: they use ``client.get_client()``.
+admin, ``dbos status``) never call these: they use ``client.get_client()``.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ def _build_dbos_config() -> dict[str, Any]:
     run_migrations = settings_module.get_dbos_setting('RUN_MIGRATIONS')
     if run_migrations is not None:
         # False: launch verifies the schema instead of creating/migrating it
-        # (migrate out of band with `manage.py dbos_migrate`).
+        # (migrate out of band with `manage.py dbos migrate`).
         config['run_migrations'] = bool(run_migrations)
     scheduler_polling_interval = settings_module.get_dbos_setting('SCHEDULER_POLLING_INTERVAL_SEC')
     if scheduler_polling_interval is not None:

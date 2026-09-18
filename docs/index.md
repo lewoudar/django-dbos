@@ -53,8 +53,8 @@ worker heartbeats) and DBOS' (the system database) — then start a worker:
 
 ```bash
 python manage.py migrate
-python manage.py dbos_migrate
-python manage.py dbos_worker
+python manage.py dbos migrate
+python manage.py dbos worker
 ```
 
 That's it — every task enqueued through this backend is now durable. Your

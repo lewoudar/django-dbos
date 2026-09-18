@@ -16,4 +16,4 @@ class DjangoDbosConfig(AppConfig):
         admin.register_admin_sites()
         # Nothing DBOS-related happens here on purpose: a web process talks to
         # the system database through a DBOSClient created on first use (see
-        # client.py); only ``dbos_worker`` launches DBOS itself.
+        # client.py); only ``dbos worker`` launches DBOS itself.

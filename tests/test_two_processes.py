@@ -2,7 +2,7 @@
 
 This process plays the web application: it never initializes nor launches
 DBOS, it enqueues through the ``DBOSClient`` and polls the result. A
-subprocess plays ``dbos_worker`` (autodiscovery + launch) on its own SQLite
+subprocess plays ``dbos worker`` (autodiscovery + launch) on its own SQLite
 system database.
 """
 
@@ -49,7 +49,7 @@ dbos_setup.shutdown()
 
 @pytest.fixture
 def worker_process(tmp_path, monkeypatch):
-    """A dbos_worker-like subprocess on a fresh SQLite system database."""
+    """A dbos worker-like subprocess on a fresh SQLite system database."""
     system_database_url = f'sqlite:///{tmp_path / "systemdb.sqlite"}'
     # This process (the "web" side) targets the same system database through
     # a fresh client, and touches nothing DBOS-related besides the client.

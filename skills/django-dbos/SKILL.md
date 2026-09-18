@@ -51,9 +51,9 @@ DJANGO_DBOS = {
 ```
 
 ```bash
-python manage.py migrate        # django-dbos ships one small model (worker heartbeats)
-python manage.py dbos_migrate    # creates/migrates the DBOS system database
-python manage.py dbos_worker     # executes tasks — see "Processes" below
+python manage.py migrate       # django-dbos ships one small model (worker heartbeats)
+python manage.py dbos migrate  # creates/migrates the DBOS system database
+python manage.py dbos worker   # executes tasks — see "Processes" below
 ```
 
 Tasks live in each app's `tasks.py` (or `dbos_tasks.py`); the worker
@@ -64,15 +64,15 @@ autodiscovers them on startup, the same way Django autodiscovers `admin.py`.
 Two kinds of processes, never confuse them:
 
 - **Web processes, shell, management commands** — everything except
-  `dbos_worker` — only talk to the DBOS *system database* through a
-  `DBOSClient` (enqueue, read results, admin pages, `dbos_status`). They
+  `dbos worker` — only talk to the DBOS *system database* through a
+  `DBOSClient` (enqueue, read results, admin pages, `dbos status`). They
   **never execute a task**.
-- **`dbos_worker`** is the only process that runs task code: it registers
+- **`dbos worker`** is the only process that runs task code: it registers
   every known task as a DBOS workflow, then launches queue workers, the cron
   scheduler and crash recovery.
 
 If a task "does nothing" when enqueued, the first thing to check is whether
-`dbos_worker` is running and has that task's module imported (app installed,
+`dbos worker` is running and has that task's module imported (app installed,
 `tasks.py` not shadowed by an import error).
 
 ## Declaring tasks
@@ -201,11 +201,11 @@ def cleanup_expired_sessions(): ...
 ```
 
 - Scheduled tasks **must take no arguments** — validated at module load.
-- Schedules are managed by DBOS (registered by `dbos_worker` on startup,
+- Schedules are managed by DBOS (registered by `dbos worker` on startup,
   idempotently) and survive restarts/deploys; the code is the source of
   truth (schedules are created/updated/deleted to match `@cron` decorators
   on each worker boot).
-- Run `dbos_worker` without `--no-scheduler` for it to manage schedules (skip
+- Run `dbos worker` without `--no-scheduler` for it to manage schedules (skip
   it on secondary workers behind a load balancer if you run one dedicated
   scheduler instance).
 - Every `@dbos_params` option applies to scheduled firings too (they run the
@@ -271,7 +271,7 @@ actually about durability.
 - **`RUN_MIGRATIONS`** (default `True`): a worker creates/migrates the system
   database on every launch — convenient in dev, wrong in production (DDL
   rights on the worker role, migration races on first boot of a new
-  version). Set to `False` and run `python manage.py dbos_migrate` as an
+  version). Set to `False` and run `python manage.py dbos migrate` as an
   explicit release step, next to `migrate`.
 - **`EXECUTOR_ID`**: give each worker *instance* a stable identity (survives
   its own restarts, distinct from other instances) — crash recovery and
@@ -284,7 +284,7 @@ actually about durability.
   (superuser-only — they expose task inputs/outputs and can cancel/fork/
   delete workflows). Disable with `DJANGO_DBOS['ADMIN_ENABLED'] = False` if
   superusers aren't fully trusted with that.
-- `python manage.py dbos_status` (or `--json`) reports queue backlog,
+- `python manage.py dbos status` (or `--json`) reports queue backlog,
   running counts and a scale up/down/OK advice per queue, plus worker
   heartbeats (who's alive, `[metrics]` extra adds CPU/RSS) and workflows that
   exhausted their recovery attempts. Safe to run anywhere (it's a
@@ -294,8 +294,8 @@ actually about durability.
 ## Deployment checklist
 
 1. Two process kinds, scaled independently: web/commands (client only) vs.
-   `dbos_worker` (executes tasks).
-2. A release step running `migrate` then `dbos_migrate` before the new
+   `dbos worker` (executes tasks).
+2. A release step running `migrate` then `dbos migrate` before the new
    version serves, with `RUN_MIGRATIONS=False` so workers only verify the
    schema.
 3. A stable `EXECUTOR_ID` per worker instance (platform instance id/hostname
@@ -306,7 +306,7 @@ actually about durability.
 
 ## Common pitfalls
 
-- Enqueuing a task and nothing happens → check `dbos_worker` is running and
+- Enqueuing a task and nothing happens → check `dbos worker` is running and
   actually imports that app's `tasks.py` (autodiscovery failure is silent
   from the enqueuer's point of view).
 - `queue_name` used by a task but not declared in `DJANGO_DBOS['QUEUES']` →
