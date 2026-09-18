@@ -30,7 +30,7 @@ Then, in one terminal, start the worker — it creates the DBOS system
 database on first launch and is the only process that executes tasks:
 
 ```bash
-uv run manage.py dbos_worker
+uv run manage.py dbos worker
 ```
 
 In a second terminal, start the web process:
@@ -60,7 +60,7 @@ curl -s http://localhost:8000/api/tasks/<task_id>
 # {"task_id": "...", "status": "SUCCESSFUL", "result": {"word_count": 7, "char_count": 41}}
 ```
 
-Kill the `dbos_worker` process mid-sleep and restart it: the task resumes
+Kill the `dbos worker` process mid-sleep and restart it: the task resumes
 rather than losing the enqueue, which is the whole point of django-dbos over
 a plain in-memory task queue.
 

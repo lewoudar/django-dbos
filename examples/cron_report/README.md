@@ -34,7 +34,7 @@ Start the worker — it registers the schedule with DBOS on launch and is the
 only process that executes (and fires) tasks:
 
 ```bash
-uv run manage.py dbos_worker
+uv run manage.py dbos worker
 ```
 
 Within ~10 seconds you should see a line like this in its output, then again

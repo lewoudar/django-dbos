@@ -111,7 +111,7 @@ def schedule_name_for_task(task: DBOSTask) -> str:
 def register_cron_schedules() -> None:
     """Reconcile the DBOS schedules with the ``@cron`` tasks of this process.
 
-    Called by the ``dbos_worker`` command after DBOS launch. The code is the
+    Called by the ``dbos worker`` command after DBOS launch. The code is the
     source of truth: a schedule is created for every cron task, re-created
     when its crontab, timezone or queue changed, and deleted when its task no
     longer carries ``@cron`` (an orphan would keep firing a workflow no worker

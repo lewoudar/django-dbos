@@ -1,8 +1,8 @@
 """Worker heartbeats: liveness and load of worker processes, in the Django database.
 
-Each ``dbos_worker`` periodically upserts a :class:`~django_dbos.models.WorkerHeartbeat`
+Each ``dbos worker`` periodically upserts a :class:`~django_dbos.models.WorkerHeartbeat`
 row (process metrics via psutil when the ``[metrics]`` extra is installed)
-and deletes it on clean shutdown. Diagnostics (``dbos_status``, the admin)
+and deletes it on clean shutdown. Diagnostics (``dbos status``, the admin)
 read the rows back: a row whose ``last_seen_at`` is older than
 :data:`STALE_AFTER_SECONDS` belongs to a worker that died without cleaning up.
 

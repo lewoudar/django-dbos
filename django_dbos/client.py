@@ -4,13 +4,13 @@ DBOS distinguishes two kinds of processes:
 
 - the *application* (``DBOS`` singleton + ``DBOS.launch()``): registers
   workflow functions, dequeues and executes them, runs the scheduler and the
-  recovery of interrupted workflows. In django-dbos, that is ``dbos_worker``.
+  recovery of interrupted workflows. In django-dbos, that is ``dbos worker``.
 - *clients* (``dbos.DBOSClient``): talk to the system database only — enqueue
   workflows by name, read statuses, cancel/resume/fork, manage schedules.
   They never run workflow code.
 
 Everything outside the worker (web processes enqueuing tasks and reading
-results, the admin pages, ``dbos_status``) goes through the process-wide
+results, the admin pages, ``dbos status``) goes through the process-wide
 client returned by :func:`get_client`. That keeps a web process from
 launching DBOS' background threads — which would turn it into a worker.
 """

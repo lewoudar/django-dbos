@@ -79,7 +79,7 @@ or Settings › Pages — then every push to `main` deploys.
 
 ## Process model (do not regress)
 
-- Only `dbos_worker` (and the `dbos_system` test fixture) may call
+- Only `dbos worker` (and the `dbos_system` test fixture) may call
   `dbos_setup.ensure_launched()`: `DBOS.launch()` starts queue/scheduler/
   recovery threads, i.e. it turns the process into a worker. Everything else
   (backend enqueue/get_result, admin views, `capacity.collect`) goes through

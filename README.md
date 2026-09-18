@@ -116,7 +116,7 @@ installed, each firing checks in with
 - **Admin pages** — inspect every workflow (inputs, outputs, errors, step
   history), and cancel, resume, fork or delete them; manage schedules; see
   which workers are alive. Superuser-only.
-- **Worker capacity report** — `dbos_status` (or `capacity.collect()` from
+- **Worker capacity report** — `dbos status` (or `capacity.collect()` from
   Python) reports backlog, running count and per-worker load per queue, with
   a scale up/down/OK verdict you can plug into an autoscaler.
 - **Structured logging** — everything goes through
@@ -152,9 +152,9 @@ TASKS = {
 ```
 
 ```bash
-python manage.py migrate        # django-dbos' own table (worker heartbeats)
-python manage.py dbos_migrate   # the DBOS system database
-python manage.py dbos_worker    # start executing tasks
+python manage.py migrate       # django-dbos' own table (worker heartbeats)
+python manage.py dbos migrate  # the DBOS system database
+python manage.py dbos worker   # start executing tasks
 ```
 
 Your web processes only ever talk to the system database — they enqueue

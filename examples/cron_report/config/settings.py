@@ -74,7 +74,7 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Only manage.py dbos_worker executes tasks; other commands (migrate,
+# Only `manage.py dbos worker` executes tasks; other commands (migrate,
 # seed_signups, the admin) enqueue/read through a DBOSClient.
 TASKS = {
     'default': {

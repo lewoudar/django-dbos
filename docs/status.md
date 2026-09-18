@@ -1,10 +1,10 @@
 # Worker capacity
 
-The `dbos_status` management command reports on worker capacity so you can
+The `dbos status` management command reports on worker capacity so you can
 decide whether to scale your workers up, down or leave them as-is:
 
 ```bash
-python manage.py dbos_status
+python manage.py dbos status
 ```
 
 ```
@@ -125,10 +125,10 @@ instances.
 
 ```bash
 # machine-readable output (for alerting, cron checks, dashboards):
-python manage.py dbos_status --json
+python manage.py dbos status --json
 
 # restrict to specific queues:
-python manage.py dbos_status --queues=emails,reports
+python manage.py dbos status --queues=emails,reports
 ```
 
 ## From Python

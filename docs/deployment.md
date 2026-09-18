@@ -1,17 +1,17 @@
 # Deployment
 
 django-dbos does not care where it runs: it needs a PostgreSQL system
-database, one or more `dbos_worker` processes, and web processes that can
+database, one or more `dbos worker` processes, and web processes that can
 reach the same database. This page lists what a production setup should
 settle, then shows the same setup on a few platforms.
 
 ## Checklist
 
 1. **Two kinds of processes.** Web processes (and one-off commands) only talk
-   to the system database; `dbos_worker` processes execute tasks. Scale them
+   to the system database; `dbos worker` processes execute tasks. Scale them
    independently. See [Processes](configuration.md#processes).
 2. **A release step** that runs before the new version starts serving:
-   Django's `migrate` and django-dbos' `dbos_migrate`, with
+   Django's `migrate` and django-dbos' `dbos migrate`, with
    `DJANGO_DBOS["RUN_MIGRATIONS"] = False` so workers verify the schema
    instead of altering it. Platforms run *one* command there, so wrap what
    your release needs in a management command of your project:
@@ -26,7 +26,7 @@ settle, then shows the same setup on a few platforms.
 
         def handle(self, *args, **options):
             call_command('migrate', interactive=False)
-            call_command('dbos_migrate')
+            call_command('dbos', 'migrate')
     ```
 
     See [Migrating the system database](configuration.md#migrating-the-system-database).
@@ -66,7 +66,7 @@ The examples below only differ in *where* those values come from.
 ## fly.io
 
 Two [process groups](https://fly.io/docs/launch/processes/) share one image:
-`web` serves requests, `worker` runs `dbos_worker`. The
+`web` serves requests, `worker` runs `dbos worker`. The
 [release command](https://fly.io/docs/reference/configuration/#run-one-off-commands-before-releasing-a-deployment)
 runs the `release` command above on a temporary Machine, with the app's
 secrets, before each deploy.
@@ -82,7 +82,7 @@ app = "myproject"
 
 [processes]
   web = "gunicorn myproject.wsgi"
-  worker = "python manage.py dbos_worker"
+  worker = "python manage.py dbos worker"
 
 [http_service]
   internal_port = 8000
@@ -108,7 +108,7 @@ DJANGO_DBOS = {
 ```
 
 Scale each group on its own: `fly scale count web=2 worker=3`. To drive the
-`worker` count from the queues, poll `python manage.py dbos_status --json`
+`worker` count from the queues, poll `python manage.py dbos status --json`
 (or `capacity.collect()`) from a small scheduled job — smoothing the
 readings over a few minutes before scaling down.
 
@@ -125,7 +125,7 @@ relaunching).
 containers:
   - name: worker
     image: myproject:latest
-    command: ["python", "manage.py", "dbos_worker"]
+    command: ["python", "manage.py", "dbos", "worker"]
     env:
       - name: WORKER_INSTANCE_ID
         valueFrom:
@@ -146,7 +146,7 @@ containers:
     command: ["python", "manage.py", "release"]
 ```
 
-Stop workers with `SIGTERM` (the default): `dbos_worker` shuts DBOS down
+Stop workers with `SIGTERM` (the default): `dbos worker` shuts DBOS down
 cleanly and removes its heartbeat row. Give `terminationGracePeriodSeconds`
 at least the duration of your longest step.
 
@@ -176,7 +176,7 @@ services:
       release: {condition: service_completed_successfully}
   worker:
     image: myproject
-    command: python manage.py dbos_worker
+    command: python manage.py dbos worker
     environment:
       <<: *env
       WORKER_INSTANCE_ID: worker-1
@@ -191,7 +191,7 @@ replicas indistinguishable.
 ## Anywhere else
 
 Any platform works as long as it can run the `release` command before a
-version goes live and `dbos_worker` next to the web processes, inject the
+version goes live and `dbos worker` next to the web processes, inject the
 database URL, and expose
 something stable to name a worker instance (a hostname, a slot number, an
 instance id). If it exposes nothing, DBOS' default `"local"` still works:

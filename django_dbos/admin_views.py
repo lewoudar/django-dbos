@@ -331,7 +331,7 @@ def schedule_delete(request: HttpRequest, schedule_name: str) -> HttpResponse:
             'back_list_label': 'DBOS schedules',
             'object_kind': 'schedule',
             'object_id': schedule_name,
-            'warning': 'stops its cron firings (it is re-created on the next dbos_worker start if the task is still scheduled).',
+            'warning': 'stops its cron firings (it is re-created on the next `dbos worker` start if the task is still scheduled).',
         },
     )
 

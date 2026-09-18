@@ -4,7 +4,7 @@ DBOS keeps every workflow-related fact in its system database; what it does
 not know is which worker processes are *alive right now* — an idle worker
 leaves no trace there. Workers therefore push a heartbeat row into the
 Django database (see ``heartbeat.py``), which any process with the ORM can
-read: the ``dbos_status`` command, the admin, an autoscaling script.
+read: the ``dbos status`` command, the admin, an autoscaling script.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from django.db import models
 
 
 class WorkerHeartbeat(models.Model):
-    """Liveness and load of one ``dbos_worker`` process.
+    """Liveness and load of one ``dbos worker`` process.
 
     ``executor_id`` is the identity DBOS records on workflow rows (several
     processes may share it, e.g. the default ``"local"``); ``worker_id`` is

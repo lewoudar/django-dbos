@@ -57,7 +57,7 @@ class DBOSBackend(BaseTaskBackend):
 
     Tasks are enqueued as DBOS workflows on database-backed queues, through a
     ``DBOSClient`` that only talks to the system database; a separate worker
-    process (``manage.py dbos_worker``) executes them. Results are read back
+    process (``manage.py dbos worker``) executes them. Results are read back
     from the system database and exposed through the standard ``TaskResult``
     API.
     """

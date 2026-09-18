@@ -91,19 +91,19 @@ django-dbos follows DBOS' own split between an *application* and its *clients*:
 
 | Process | What it does with DBOS |
 | --- | --- |
-| Web (gunicorn, uvicorn, `runserver`), shell, other commands | A `DBOSClient` against the system database: enqueue tasks, read results, admin pages, `dbos_status`. Never executes a task. |
-| `dbos_worker` | The DBOS application: registers every task as a workflow, launches the queue workers, the scheduler and crash recovery, executes tasks. |
+| Web (gunicorn, uvicorn, `runserver`), shell, other commands | A `DBOSClient` against the system database: enqueue tasks, read results, admin pages, `dbos status`. Never executes a task. |
+| `dbos worker` | The DBOS application: registers every task as a workflow, launches the queue workers, the scheduler and crash recovery, executes tasks. |
 
 The client is created on first use and never runs schema migrations: the
 system database must exist before the first enqueue — either created by a
-worker's launch (the default) or by `manage.py dbos_migrate` (see
+worker's launch (the default) or by `manage.py dbos migrate` (see
 [Migrating the system database](#migrating-the-system-database)).
 
 The two sides also react differently to a lost system database, on purpose:
 a worker follows DBOS' default and **waits** for the connection to come back
 (pausing its workflows rather than failing them), while the client **fails
 fast** so a web request never hangs on it. The admin pages then show an
-error page and `dbos_status` exits with an error, both with a message where
+error page and `dbos status` exits with an error, both with a message where
 database passwords are masked.
 
 !!! warning
@@ -115,10 +115,10 @@ database passwords are masked.
 
 ## Launching workers
 
-Tasks are executed by the `dbos_worker` management command:
+Tasks are executed by the `dbos worker` management command:
 
 ```bash
-python manage.py dbos_worker
+python manage.py dbos worker
 ```
 
 The worker loads tasks from every installed app's `tasks` (or `dbos_tasks`)
@@ -141,8 +141,8 @@ Do it as an explicit release step instead, next to Django's own migrations:
 
 ```bash
 python manage.py migrate
-python manage.py dbos_migrate            # creates the database and applies DBOS' migrations
-python manage.py dbos_migrate --app-role app   # optionally grant the schema to your runtime role
+python manage.py dbos migrate            # creates the database and applies DBOS' migrations
+python manage.py dbos migrate --app-role app   # optionally grant the schema to your runtime role
 ```
 
 ```python
@@ -151,11 +151,11 @@ DJANGO_DBOS = {
 }
 ```
 
-`dbos_migrate` reads the URL and schema from `DJANGO_DBOS`, connects with a
+`dbos migrate` reads the URL and schema from `DJANGO_DBOS`, connects with a
 plain database handle (no worker, no background thread) and prints a
 credential-free summary. It is idempotent, so it belongs in whatever step
 runs before a new version starts serving — typically a `release` management
-command of your project that calls `migrate` then `dbos_migrate` (see
+command of your project that calls `migrate` then `dbos migrate` (see
 [Deployment](deployment.md)).
 
 ### Executor identity

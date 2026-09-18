@@ -77,7 +77,7 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Web process (runserver here) enqueues through the "dbos" backend and never
-# executes a task; `manage.py dbos_worker` is the process that does.
+# executes a task; `manage.py dbos worker` is the process that does.
 TASKS = {
     'default': {
         'BACKEND': 'django_dbos.backends.DBOSBackend',
