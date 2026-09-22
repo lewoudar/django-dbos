@@ -58,6 +58,47 @@ Django priorities (-100 to 100, higher first) map onto DBOS queue priorities.
 def urgent_task(): ...
 ```
 
+## Task context
+
+Django's `@task(takes_context=True)` prepends a `TaskContext` as the task
+function's first argument, carrying metadata about the current execution:
+
+```python
+from django.tasks import task
+
+
+@task(backend='dbos', takes_context=True)
+def send_welcome_email(context, user_id: int) -> None:
+    if context.attempt > 1:
+        logger.warning('retrying welcome email', user_id=user_id, attempt=context.attempt)
+    ...
+```
+
+`context.task_result` is the in-progress `TaskResult` for this execution;
+`context.attempt` is a shortcut for the number of attempts made so far.
+
+This is orthogonal to `@dbos_params(durable_operations=True)` (see
+[Durable workflows](#durable-workflows) below): `takes_context` only changes
+the function's first argument, so the two combine freely — Django's own
+attempt/result metadata stays available alongside DBOS' durable primitives:
+
+```python
+from django_dbos import dbos_params, get_dbos_context
+
+
+@dbos_params(durable_operations=True)
+@task(takes_context=True)
+def onboard_user(context, user_id: int) -> None:
+    ctx = get_dbos_context()
+    ctx.set_event('attempt', context.attempt)
+    ctx.run_step(send_welcome_email, user_id)
+```
+
+!!! note
+    `@cron` tasks skip the injected context argument when validating that the
+    function takes no required parameters, so `takes_context=True` combines
+    with `@cron` too.
+
 ## Task options
 
 DBOS-specific options are attached with `@dbos_params`:

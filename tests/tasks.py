@@ -5,7 +5,7 @@ import time
 
 from django.tasks import task
 
-from django_dbos import cron, dbos_params
+from django_dbos import cron, dbos_params, get_dbos_context
 
 results: dict[str, list[object]] = {'events': []}
 flaky_calls: list[int] = []
@@ -55,13 +55,20 @@ def record_step(event: str) -> str:
 @task(backend='dbos')
 @dbos_params(durable_operations=True)
 def durable_onboarding() -> list[str]:
-    from django_dbos import get_dbos_context
-
     ctx = get_dbos_context()
     ctx.run_step(record_step, 'step1', name='first_step')
     ctx.set_event('onboarded', True)
     ctx.run_step(record_step, 'step2', name='second_step')
     return results['events']  # type: ignore[return-value]
+
+
+@task(backend='dbos', takes_context=True)
+@dbos_params(durable_operations=True)
+def durable_context_task(context: object) -> dict[str, object]:
+    ctx = get_dbos_context()
+    ctx.run_step(record_step, 'durable-context-step')
+    ctx.set_event('attempt', context.attempt)
+    return {'attempt': context.attempt, 'events': list(results['events'])}
 
 
 @cron('* * * * * *')  # every second, for fast tests

@@ -14,6 +14,10 @@ works through each primitive with a realistic example.
     `timezone.now()`) inside `run_step`/`@DBOS.step`, never directly in the
     function body.
 
+`durable_operations` is independent of Django's own `takes_context=True` (see
+[Task context](tasks.md#task-context)) — a task can read `context.attempt`
+and call `get_dbos_context()` in the same function.
+
 ## Steps: `run_step` / `run_step_async`
 
 The bread and butter of a durable workflow: run a function once, checkpoint

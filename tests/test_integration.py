@@ -18,6 +18,7 @@ from .conftest import wait_for_result
 from .tasks import (
     add,
     async_add,
+    durable_context_task,
     durable_onboarding,
     failing_task,
     flaky_calls,
@@ -78,6 +79,13 @@ def test_durable_operations_in_task(dbos_environment):
     result = durable_onboarding.enqueue()
     result = wait_for_result(result, TaskResultStatus.SUCCESSFUL)
     assert result.return_value == ['step1', 'step2']
+
+
+def test_context_and_durable_operations_combine(dbos_environment):
+    tasks_module.results['events'] = []
+    result = durable_context_task.enqueue()
+    result = wait_for_result(result, TaskResultStatus.SUCCESSFUL)
+    assert result.return_value == {'attempt': 1, 'events': ['durable-context-step']}
 
 
 def test_cron_schedule_created_and_fires(dbos_environment):

@@ -11,7 +11,7 @@ from django.utils import timezone as dj_timezone
 import django_dbos.scheduling as cron_module
 from django_dbos.exceptions import ImproperlyConfiguredDbos
 from django_dbos.scheduling import _register_scheduled_workflow, normalize_crontab, schedule_name_for_task
-from tests.tasks import cron_task
+from tests.tasks import cron_task, durable_context_task
 
 
 @pytest.fixture(autouse=True)
@@ -58,6 +58,13 @@ class TestCronDecorator:
         registration = cron_module._registry[cron_task.module_path]
         assert registration.crontab == '0 */5 * * * *'
         assert schedule_name_for_task(cron_task) == (f'django_dbos.schedules.{cron_task.module_path}')
+
+    def test_context_and_durable_operations_task_registers(self):
+        # takes_context's injected first arg is skipped regardless of
+        # durable_operations; the function otherwise takes no arguments.
+        cron_module.cron('*/5 * * * *')(durable_context_task)
+
+        assert durable_context_task.module_path in cron_module._registry
 
 
 class TestDjangoTimezone:
