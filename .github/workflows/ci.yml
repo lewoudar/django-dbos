@@ -52,3 +52,18 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@ed21f2f24f8dd64503750218de024bcf64c7250a # v7.1.5
       - run: uv run pytest -m integration --dbos-system-db=postgres
+
+  coverage:
+    # Whole suite (unit + integration, subprocesses included) against
+    # PostgreSQL; fails under the [tool.coverage.report] fail_under floor.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@ed21f2f24f8dd64503750218de024bcf64c7250a # v7.1.5
+      - run: uv run coverage run -m pytest --dbos-system-db=postgres
+      - run: uv run coverage combine
+      - run: uv run coverage report --skip-covered --format=markdown >> "$GITHUB_STEP_SUMMARY"
