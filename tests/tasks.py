@@ -94,3 +94,11 @@ def slow_task() -> None:
 @task(backend='dbos')
 def slow_cron_task() -> None:
     time.sleep(2)
+
+
+# Scheduled-workflow body for the async cron path; deliberately not decorated
+# with @cron so it does not fire during the integration suite.
+@task(backend='dbos')
+async def async_cron_body() -> str:
+    await asyncio.sleep(0)
+    return 'async cron ran'

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib
+from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 from dbos import DBOS
@@ -11,7 +13,7 @@ from django.utils import timezone as dj_timezone
 import django_dbos.scheduling as cron_module
 from django_dbos.exceptions import ImproperlyConfiguredDbos
 from django_dbos.scheduling import _register_scheduled_workflow, normalize_crontab, schedule_name_for_task
-from tests.tasks import cron_task, durable_context_task
+from tests.tasks import async_cron_body, cron_task, durable_context_task
 
 
 @pytest.fixture(autouse=True)
@@ -41,9 +43,21 @@ class TestNormalizeCrontab:
 
 
 class TestCronDecorator:
-    def test_invalid_crontab_rejected(self):
+    @pytest.mark.parametrize(
+        'crontab',
+        [
+            pytest.param('not a crontab', id='wrong-field-count'),
+            pytest.param('99 * * * *', id='out-of-range-minute'),
+        ],
+    )
+    def test_invalid_crontab_rejected(self, crontab):
         with pytest.raises(ImproperlyConfiguredDbos):
-            cron_module.cron('not a crontab')
+            cron_module.cron(crontab)
+
+    def test_parameters_with_defaults_are_allowed(self):
+        def func(retries: int = 3, *args: object, verbose: bool = False, **kwargs: object) -> None: ...
+
+        cron_module._validate_cron_task(SimpleNamespace(func=func, takes_context=False, name='defaults'))
 
     def test_required_args_rejected_at_decoration(self):
         with pytest.raises(ImproperlyConfiguredDbos):
@@ -143,3 +157,12 @@ class TestRegisterCronSchedules:
             assert DBOS.get_schedule(foreign) is not None
         finally:
             DBOS.delete_schedule(foreign)
+
+
+@pytest.mark.integration
+def test_async_scheduled_workflow_runs_the_task(dbos_environment):
+    scheduled_workflow = _register_scheduled_workflow(async_cron_body)
+
+    handle = DBOS.start_workflow(scheduled_workflow, datetime.now(tz=UTC), None)
+
+    assert handle.get_result() == 'async cron ran'
