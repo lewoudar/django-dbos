@@ -133,7 +133,7 @@ patch = ["subprocess"]
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 85
+fail_under = 98
 exclude_also = [
     "if TYPE_CHECKING:",
 ]

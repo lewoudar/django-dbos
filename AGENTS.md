@@ -38,7 +38,7 @@ uv run cz bump                         # release (commitizen)
 
 ### Coverage
 
-Measured with branch coverage over `django_dbos`, floor **85 %** in
+Measured with branch coverage over `django_dbos`, floor **98 %** in
 `[tool.coverage.report]`. Always measure with `coverage run -m pytest`, **not**
 `pytest --cov`: the pytest plugin is imported by pytest before pytest-cov
 starts tracing, so module-level lines would be reported as uncovered.
