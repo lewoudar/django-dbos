@@ -14,6 +14,7 @@ venv/
 .ruff_cache/
 .nox/
 .coverage
+.coverage.*
 htmlcov/
 
 # Editors / OS
