@@ -50,3 +50,7 @@ class TestCheckSystemDatabaseEngine:
         assert len(infos) == 1
         assert infos[0].id == 'django_dbos.I001'
         assert 'SYSTEM_DATABASE_URL' in infos[0].hint
+
+
+def test_default_database_engine_reads_the_default_connection():
+    assert checks._default_database_engine() == 'django.db.backends.sqlite3'
