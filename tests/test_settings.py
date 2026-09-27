@@ -1,5 +1,7 @@
 """Tests for the DJANGO_DBOS setting resolution."""
 
+from types import SimpleNamespace
+
 import pytest
 from dbos import DBOSPortableJSONSerializer
 
@@ -83,6 +85,21 @@ class TestSystemDatabaseUrlResolution:
         assert url.startswith('sqlite:///')
         assert url.endswith('-dbos.sqlite') or url == 'sqlite:///:memory:'
 
+    @pytest.mark.parametrize(
+        'default_db',
+        [
+            pytest.param({'ENGINE': 'django.db.backends.dummy'}, id='dummy-engine'),
+            pytest.param({'ENGINE': 'django.db.backends.sqlite3'}, id='no-name'),
+        ],
+    )
+    def test_no_usable_django_database_raises(self, settings, monkeypatch, mocker, default_db):
+        # Patch the module-level seam, never django.conf.settings.DATABASES.
+        monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
+        settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': None}
+        mocker.patch.object(dbos_settings, 'settings', SimpleNamespace(DATABASES={'default': default_db}))
+        with pytest.raises(ImproperlyConfiguredDbos, match='No default Django database is configured'):
+            dbos_settings.resolve_system_database_url()
+
 
 class TestQueues:
     def test_default_queue(self, settings):
@@ -105,6 +122,16 @@ class TestQueues:
     def test_non_mapping_queues_raise(self, settings):
         settings.DJANGO_DBOS = {'QUEUES': ['emails']}
         with pytest.raises(ImproperlyConfiguredDbos):
+            dbos_settings.resolve_queues()
+
+    def test_names_colliding_once_stringified_raise(self, settings):
+        settings.DJANGO_DBOS = {'QUEUES': {1: None, '1': None}}
+        with pytest.raises(ImproperlyConfiguredDbos, match='Duplicate queue names'):
+            dbos_settings.resolve_queues()
+
+    def test_non_mapping_queue_capacity_raises(self, settings):
+        settings.DJANGO_DBOS = {'QUEUES': {'emails': {'capacity': 5}}}
+        with pytest.raises(ImproperlyConfiguredDbos, match="\\['emails'\\]\\['capacity'\\] must be a mapping"):
             dbos_settings.resolve_queues()
 
 
