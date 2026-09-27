@@ -1,6 +1,7 @@
 """Unit tests for worker heartbeats (Django database table)."""
 
 import sys
+import threading
 import types
 import uuid
 from datetime import timedelta
@@ -71,6 +72,14 @@ class TestWriteAndReadHeartbeat:
         assert heartbeat['cpu_percent'] == 12.5
         assert heartbeat['memory_rss_mb'] == 256.0
 
+    def test_metrics_requested_without_psutil_are_left_empty(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, 'psutil', None)  # makes `import psutil` fail
+
+        assert write_heartbeat(_unique_executor(), has_metrics=True) is True
+        (heartbeat,) = read_heartbeats()
+        assert heartbeat['cpu_percent'] is None
+        assert heartbeat['memory_rss_mb'] is None
+
     def test_delete_removes_own_row_only(self):
         mine, other = _unique_executor(), _unique_executor()
         write_heartbeat(mine)
@@ -83,6 +92,10 @@ class TestWriteAndReadHeartbeat:
     def test_database_failure_never_raises(self, mocker):
         mocker.patch.object(WorkerHeartbeat.objects, 'update_or_create', side_effect=DatabaseError('db down'))
         assert write_heartbeat(_unique_executor()) is False
+
+    def test_delete_failure_never_raises(self, mocker):
+        mocker.patch.object(WorkerHeartbeat.objects, 'filter', side_effect=DatabaseError('db down'))
+        delete_heartbeat(_unique_executor())
 
     def test_missing_table_reads_as_empty(self, mocker):
         mocker.patch.object(WorkerHeartbeat.objects, 'all', side_effect=DatabaseError('no such table'))
@@ -103,6 +116,24 @@ class TestHeartbeatThread:
         write.assert_called()
         assert write.call_args.kwargs['queues'] == ('default',)
         delete.assert_called_once_with(executor_id)
+
+    def test_thread_keeps_writing_every_interval(self, mocker):
+        mocker.patch('django_dbos.heartbeat.HEARTBEAT_INTERVAL_SECONDS', 0.01)
+        mocker.patch('django_dbos.heartbeat.delete_heartbeat')
+        written = threading.Event()
+        write = mocker.patch(
+            'django_dbos.heartbeat.write_heartbeat',
+            side_effect=lambda *a, **kw: write.call_count >= 3 and written.set(),
+        )
+
+        thread = HeartbeatThread(executor_id=_unique_executor())
+        thread.start()
+        try:
+            assert written.wait(timeout=5)
+        finally:
+            thread.stop()
+
+        assert write.call_count >= 3
 
     def test_stop_is_idempotent_before_start(self):
         thread = HeartbeatThread(executor_id=_unique_executor())
