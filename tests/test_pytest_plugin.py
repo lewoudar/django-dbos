@@ -25,6 +25,8 @@ USE_TZ = True
 TASKS_MODULE = """
 from django.tasks import task
 
+from django_dbos import dbos_params
+
 
 @task
 def add(a, b):
@@ -54,6 +56,27 @@ def with_context(context):
 @task(queue_name="ghost")
 def on_undeclared_queue():
     return "never"
+
+
+@task
+async def async_explode():
+    raise ValueError("async boom")
+
+
+@task
+def interrupt():
+    raise KeyboardInterrupt
+
+
+@task
+async def async_interrupt():
+    raise KeyboardInterrupt
+
+
+@dbos_params(durable_operations=True)
+@task
+def durable():
+    return "durable"
 """
 
 INLINE_TEST_SYNC = """
@@ -143,6 +166,72 @@ def test_get_result(dbos_inline):
     assert fetched.return_value == 2
 """
 
+INLINE_TEST_EDGE_CASES = """
+import asyncio
+
+import pytest
+from django.tasks import TaskResultStatus
+from django.tasks.exceptions import TaskResultDoesNotExist
+from tasks_app.tasks import add, async_explode, async_interrupt, interrupt
+
+
+def test_async_failure_is_a_failed_result(dbos_inline):
+    result = asyncio.run(async_explode.aenqueue())
+    assert result.status == TaskResultStatus.FAILED
+    assert 'async boom' in result.errors[0].traceback
+
+
+def test_unknown_result_id_raises(dbos_inline):
+    with pytest.raises(TaskResultDoesNotExist):
+        add.get_result('never-enqueued')
+
+
+def test_keyboard_interrupt_is_not_swallowed(dbos_inline):
+    with pytest.raises(KeyboardInterrupt):
+        interrupt.enqueue()
+
+
+def test_async_keyboard_interrupt_is_not_swallowed(dbos_inline):
+    with pytest.raises(KeyboardInterrupt):
+        asyncio.run(async_interrupt.aenqueue())
+"""
+
+#: Makes `PostgresContainer.start()` fail as it does when Docker is not running.
+UNAVAILABLE_POSTGRES_CONFTEST = """
+import os
+import sys
+import types
+
+module = types.ModuleType('testcontainers.community.postgres')
+
+
+class PostgresContainer:
+    def __init__(self, image):
+        pass
+
+    def start(self):
+        raise RuntimeError('Docker is not running')
+
+
+module.PostgresContainer = PostgresContainer
+sys.modules['testcontainers.community.postgres'] = module
+os.environ['DBOS_SYSTEM_DATABASE_URL'] = 'sqlite:///previous.sqlite'
+
+
+def pytest_unconfigure(config):
+    # Runs after the session fixtures are torn down.
+    print('DBOS_SYSTEM_DATABASE_URL after the session:', os.environ.get('DBOS_SYSTEM_DATABASE_URL'))
+"""
+
+SYSTEM_DB_TEST = """
+import os
+
+
+def test_uses_sqlite(dbos_system):
+    assert dbos_system.startswith('sqlite:///')
+    assert os.environ['DBOS_SYSTEM_DATABASE_URL'] == dbos_system
+"""
+
 
 def _make_project(pytester: pytest.Pytester) -> None:
     pytester.makepyfile(settings=SETTINGS)
@@ -169,6 +258,31 @@ class TestDbosInline:
         pytester.makepyfile(inline_test_source)
         result = pytester.runpytest_subprocess('--ds=settings', '-p', 'no:cacheprovider')
         result.assert_outcomes(passed=1)
+
+    def test_inline_edge_cases(self, pytester: pytest.Pytester):
+        _make_project(pytester)
+        pytester.makepyfile(INLINE_TEST_EDGE_CASES)
+        result = pytester.runpytest_subprocess('--ds=settings', '-p', 'no:cacheprovider')
+        result.assert_outcomes(passed=4)
+
+    def test_strict_mode_rejects_durable_operations(self, pytester: pytest.Pytester):
+        _make_project(pytester)
+        pytester.makepyfile(
+            """
+            from tasks_app.tasks import add, durable
+
+
+            def test_durable(dbos_inline):
+                durable.enqueue()
+
+
+            def test_regular_task_still_runs(dbos_inline):
+                assert add.enqueue(1, 2).return_value == 3
+            """
+        )
+        result = pytester.runpytest_subprocess('--ds=settings', '--dbos-inline-strict', '-p', 'no:cacheprovider')
+        result.assert_outcomes(failed=1, passed=1)
+        result.stdout.fnmatch_lines(['*uses durable operations*'])
 
     def test_strict_mode_rejects_deferred_tasks(self, pytester: pytest.Pytester):
         _make_project(pytester)
@@ -215,3 +329,38 @@ class TestDbosInline:
         pytester.makepyfile('def test_ok(): assert True')
         result = pytester.runpytest_subprocess('-p', 'no:cacheprovider')
         result.assert_outcomes(passed=1)
+
+
+class TestDbosSystem:
+    def test_sqlite_mode_never_starts_a_container(self, pytester: pytest.Pytester):
+        _make_project(pytester)
+        pytester.makepyfile(conftest=UNAVAILABLE_POSTGRES_CONFTEST)
+        pytester.makepyfile(SYSTEM_DB_TEST)
+        result = pytester.runpytest_subprocess(
+            '--ds=settings', '--dbos-system-db=sqlite', '-s', '-p', 'no:cacheprovider'
+        )
+        result.assert_outcomes(passed=1)
+        result.stdout.no_fnmatch_line('*Postgres unavailable*')
+
+    def test_auto_mode_falls_back_to_sqlite_and_restores_the_url(self, pytester: pytest.Pytester):
+        _make_project(pytester)
+        pytester.makepyfile(conftest=UNAVAILABLE_POSTGRES_CONFTEST)
+        pytester.makepyfile(SYSTEM_DB_TEST)
+        result = pytester.runpytest_subprocess('--ds=settings', '-s', '-p', 'no:cacheprovider')
+        result.assert_outcomes(passed=1)
+        result.stdout.fnmatch_lines(
+            [
+                '*Postgres unavailable (Docker is not running); using SQLite system database.*',
+                'DBOS_SYSTEM_DATABASE_URL after the session: sqlite:///previous.sqlite',
+            ]
+        )
+
+    def test_postgres_mode_skips_when_postgres_is_unavailable(self, pytester: pytest.Pytester):
+        _make_project(pytester)
+        pytester.makepyfile(conftest=UNAVAILABLE_POSTGRES_CONFTEST)
+        pytester.makepyfile(SYSTEM_DB_TEST)
+        result = pytester.runpytest_subprocess(
+            '--ds=settings', '--dbos-system-db=postgres', '-rs', '-p', 'no:cacheprovider'
+        )
+        result.assert_outcomes(skipped=1)
+        result.stdout.fnmatch_lines(['*Docker/Postgres unavailable: Docker is not running*'])

@@ -126,10 +126,14 @@ markers = [
 [tool.coverage.run]
 source = ["django_dbos"]
 branch = true
+# Also measure the subprocesses (pytester runs, two-process worker); each
+# process writes its own data file, merged with `coverage combine`.
+parallel = true
+patch = ["subprocess"]
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 85
+fail_under = 98
 exclude_also = [
     "if TYPE_CHECKING:",
 ]

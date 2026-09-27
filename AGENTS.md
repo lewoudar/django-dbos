@@ -28,7 +28,7 @@ monitors, admin pages and a worker-capacity report. Published on PyPI.
 ```sh
 uv run pytest                          # unit tests
 uv run pytest -m integration           # integration tests (Docker recommended)
-uv run coverage run -m pytest && uv run coverage report   # coverage, see note
+uv run coverage run -m pytest && uv run coverage combine && uv run coverage report   # coverage, see note
 uv run ruff check . && uv run ruff format --check .
 uv run pyrefly check --project-excludes 'examples/**'   # type check (examples/ are separate projects)
 uv run deptry django_dbos              # dependency hygiene (package only)
@@ -38,12 +38,14 @@ uv run cz bump                         # release (commitizen)
 
 ### Coverage
 
-Measured with branch coverage over `django_dbos`, floor **85 %** in
+Measured with branch coverage over `django_dbos`, floor **98 %** in
 `[tool.coverage.report]`. Always measure with `coverage run -m pytest`, **not**
 `pytest --cov`: the pytest plugin is imported by pytest before pytest-cov
-starts tracing, so module-level lines would be reported as uncovered. The
-plugin's own fixtures run inside pytester subprocesses and stay unmeasured;
-they are exercised by the plugin tests.
+starts tracing, so module-level lines would be reported as uncovered.
+Subprocesses (the plugin's pytester runs, the two-process worker) are measured
+too (`parallel = true`, `patch = ["subprocess"]`): each process writes its own
+`.coverage.*` file, so run `coverage combine` before `coverage report`. A
+subprocess killed abruptly writes no data.
 
 ### Test environment
 

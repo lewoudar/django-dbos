@@ -81,3 +81,32 @@ class TestGetClient:
         assert str(excinfo.value) == 'ValueError: cannot use postgresql://user:***@db/dbos'
         # Unchained on purpose: the cause would carry the unmasked DSN.
         assert excinfo.value.__cause__ is None
+
+    def test_configuration_errors_pass_through_unwrapped(self, settings, monkeypatch, mocker):
+        monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
+        settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://db', 'QUEUES': ['emails']}
+        client_cls = mocker.patch('dbos.DBOSClient')
+
+        with pytest.raises(ImproperlyConfiguredDbos, match=r"^DJANGO_DBOS\['QUEUES'\] must be a mapping"):
+            client.get_client()
+
+        client_cls.assert_not_called()
+
+    def test_client_created_by_a_concurrent_caller_is_reused(self, mocker):
+        # Double-checked locking: another thread may create the client while
+        # this one waits for the lock.
+        concurrent_client = object()
+
+        class RacingLock:
+            def __enter__(self):
+                client._client = concurrent_client
+
+            def __exit__(self, *exc_info):
+                return False
+
+        mocker.patch.object(client, '_client', None)  # restored by mocker even if the test fails
+        mocker.patch.object(client, '_client_lock', RacingLock())
+        create = mocker.patch.object(client, '_create_client')
+
+        assert client.get_client() is concurrent_client
+        create.assert_not_called()

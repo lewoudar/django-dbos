@@ -39,10 +39,11 @@ jobs:
       - run: uv python install ${{ matrix.python-version }}
       - run: uv run --python ${{ matrix.python-version }} pytest -m "not integration"
 
-  integration:
-    # Real system database (PostgreSQL via testcontainers on the runner's
-    # Docker), admin pages, cron, capacity, dbos migrate and the two-process
-    # web/worker scenario.
+  coverage:
+    # Whole suite against a real system database (PostgreSQL via
+    # testcontainers on the runner's Docker): unit tests plus admin pages,
+    # cron, capacity, dbos migrate and the two-process web/worker scenario.
+    # Subprocesses are measured too; fails under the fail_under floor.
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -51,4 +52,6 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@ed21f2f24f8dd64503750218de024bcf64c7250a # v7.1.5
-      - run: uv run pytest -m integration --dbos-system-db=postgres
+      - run: uv run coverage run -m pytest --dbos-system-db=postgres
+      - run: uv run coverage combine
+      - run: uv run coverage report --skip-covered --format=markdown >> "$GITHUB_STEP_SUMMARY"
