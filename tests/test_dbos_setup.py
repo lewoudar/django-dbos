@@ -139,6 +139,31 @@ class TestEnsureLaunched:
         assert calls == ['register', 'launch', 'queues']
         assert dbos_setup._launched is True
 
+    def test_second_call_is_a_noop(self, mocker):
+        mocker.patch.object(dbos_setup, '_initialized', True)
+        mocker.patch.object(dbos_setup, '_launched', True)
+        register = mocker.patch('django_dbos.tasks_registry.register_all_task_workflows')
+        launch = mocker.patch.object(dbos_setup.DBOS, 'launch')
+
+        dbos_setup.ensure_launched()
+
+        register.assert_not_called()
+        launch.assert_not_called()
+
+    def test_queue_configuration_errors_pass_through(self, mocker):
+        mocker.patch.object(dbos_setup, '_initialized', True)
+        mocker.patch.object(dbos_setup, '_launched', False)
+        mocker.patch('django_dbos.tasks_registry.register_all_task_workflows')
+        mocker.patch.object(dbos_setup.DBOS, 'launch')
+        error = ImproperlyConfiguredDbos('queue misconfigured')
+        mocker.patch.object(dbos_setup, '_register_queues', side_effect=error)
+
+        with pytest.raises(ImproperlyConfiguredDbos) as excinfo:
+            dbos_setup.ensure_launched()
+
+        assert excinfo.value is error
+        assert dbos_setup._launched is False
+
 
 class TestShutdown:
     def test_waits_for_in_flight_workflows_by_default(self, mocker):
