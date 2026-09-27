@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -76,6 +77,43 @@ class TestWorkflowPages:
         assert response.status_code == 200
         assert_text(response, 'tests.tasks.add')
         assert_text(response, 'task_body')
+
+    def test_workflow_detail_renders_unusual_values(self, admin_client, mocker):
+        # A step that never completed has no duration; outputs that are not
+        # JSON-serializable fall back to str(); schedule-fired workflows may
+        # carry ISO string timestamps.
+        circular: list[Any] = []
+        circular.append(circular)
+        status = SimpleNamespace(
+            workflow_id='wf-odd',
+            name='tests.tasks.add',
+            status='PENDING',
+            queue_name='default',
+            priority=0,
+            created_at='2026-01-01T00:00:00+00:00',
+            updated_at=None,
+            completed_at=None,
+            executor_id=None,
+            app_version=None,
+            schedule_name=None,
+            deduplication_id=None,
+            input=circular,
+            output=None,
+            error=None,
+        )
+        client = mocker.MagicMock()
+        client.retrieve_workflow.return_value.get_status.return_value = status
+        client.list_workflow_steps.return_value = [
+            {'function_id': 1, 'function_name': 'task_body', 'started_at_epoch_ms': 1_000},
+        ]
+        mocker.patch('django_dbos.admin_views.get_client', return_value=client)
+
+        response = admin_client.get('/admin/dbos/workflows/wf-odd/')
+
+        assert response.status_code == 200
+        assert response.context['steps'][0]['duration_ms'] is None
+        assert response.context['input'] == '[[...]]'
+        assert_text(response, '2026-01-01T00:00:00+00:00')
 
     @pytest.mark.parametrize('bad_page', ['abc', '-3'])
     def test_workflow_list_bad_page_inputs_render_page_1(self, admin_client, dbos_environment, bad_page):
@@ -184,6 +222,19 @@ class TestSchedulePages:
         assert response.status_code == 302
         assert response['Location'] == '/admin/dbos/schedules/'
         assert DBOS.get_schedule(name) is not None
+
+    def test_pause_then_resume_schedule(self, admin_client, dbos_environment):
+        register_cron_schedules()
+        name = 'django_dbos.schedules.tests.tasks.cron_task'
+
+        response = admin_client.post(f'/admin/dbos/schedules/{name}/pause/')
+        assert response.status_code == 302
+        assert response['Location'] == '/admin/dbos/schedules/'
+        assert DBOS.get_schedule(name)['status'] == 'PAUSED'
+
+        response = admin_client.post(f'/admin/dbos/schedules/{name}/resume/')
+        assert response.status_code == 302
+        assert DBOS.get_schedule(name)['status'] == 'ACTIVE'
 
 
 class TestAdminGating:
