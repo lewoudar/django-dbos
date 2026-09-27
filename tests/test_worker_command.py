@@ -1,5 +1,7 @@
 """Tests for the dbos worker management command (mocked DBOS launch)."""
 
+import signal
+
 import pytest
 from django.core.management import call_command
 
@@ -15,6 +17,8 @@ def worker_mocks(mocker):
         'heartbeat_cls': mocker.patch('django_dbos.heartbeat.HeartbeatThread'),
         'find_spec': mocker.patch('importlib.util.find_spec', return_value=None),
         'event_wait': mocker.patch('threading.Event.wait', return_value=True),
+        # Never install real handlers in the pytest process: they would outlive the test.
+        'signal': mocker.patch('signal.signal'),
     }
 
 
@@ -50,3 +54,22 @@ def test_worker_default_run(dbos_environment, worker_mocks):
 def test_worker_no_scheduler_flag_skips_cron_registration(dbos_environment, worker_mocks):
     run_worker('--no-scheduler')
     worker_mocks['register_cron_schedules'].assert_not_called()
+
+
+def test_worker_stops_on_sigterm_or_sigint(dbos_environment, worker_mocks, mocker):
+    handlers = {}
+    worker_mocks['signal'].side_effect = handlers.__setitem__
+    stop_event_set = mocker.patch('threading.Event.set')
+
+    def wait(timeout=None):
+        handlers[signal.SIGTERM](signal.SIGTERM, None)  # simulate `kill <pid>`
+        return True
+
+    worker_mocks['event_wait'].side_effect = wait
+
+    run_worker()
+
+    assert set(handlers) == {signal.SIGTERM, signal.SIGINT}
+    stop_event_set.assert_called_once_with()
+    worker_mocks['heartbeat_cls'].return_value.stop.assert_called_once_with()
+    worker_mocks['shutdown'].assert_called_once_with()

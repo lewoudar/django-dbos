@@ -233,6 +233,21 @@ class TestCollect:
         assert 'Queue "default"' in output
         assert 'Workers:' in output
 
+    def test_human_output_reports_waits_and_exhausted_recoveries(self, dbos_environment: Any, mocker) -> None:
+        collect = capacity.collect
+
+        def degraded_report(**kwargs: Any) -> dict[str, Any]:
+            report = collect(**kwargs)
+            report['queues']['default'] |= {'backlog_age_seconds': 42.4, 'max_queue_wait_ms': 1500}
+            report['max_recovery_attempts_exceeded'] = 2
+            return report
+
+        mocker.patch.object(capacity, 'collect', side_effect=degraded_report)
+        output = status()
+        assert 'Oldest waiting workflow: 42s' in output
+        assert 'Max queue wait (running): 1500 ms' in output
+        assert '2 workflow(s) exhausted their recovery attempts.' in output
+
     def test_human_output_reports_live_worker_with_metrics(
         self, dbos_environment: Any, monkeypatch: pytest.MonkeyPatch, mocker
     ) -> None:
