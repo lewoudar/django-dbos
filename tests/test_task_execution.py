@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from django.tasks import task
+from django.tasks import TaskContext, task
 
 from django_dbos import dbos_params
 from django_dbos.tasks_registry import aexecute_task_body, execute_task_body
@@ -37,6 +37,13 @@ def durable() -> None:
 async def async_recording_add(a: int, b: int) -> int:
     events.append('body')
     return a + b
+
+
+@dbos_params(durable_operations=True)
+@task(backend='dbos', takes_context=True)
+async def async_durable_context(context: TaskContext, a: int) -> list[object]:
+    events.append('body')
+    return context.task_result.args
 
 
 @pytest.fixture
@@ -74,4 +81,10 @@ class TestExecuteTaskBody:
 
     def test_async_task_recycles_connections(self, calls):
         assert asyncio.run(aexecute_task_body(async_recording_add, (2, 3), {})) == 5
+        assert calls == ['close', 'body', 'close']
+
+    def test_async_durable_task_with_context_runs_at_workflow_level(self, calls, mocker):
+        run_step_async = mocker.patch('django_dbos.tasks_registry.DBOS.run_step_async')
+        assert asyncio.run(aexecute_task_body(async_durable_context, (7,), {})) == [7]
+        run_step_async.assert_not_called()
         assert calls == ['close', 'body', 'close']
