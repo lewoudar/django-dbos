@@ -185,6 +185,32 @@ class TestCollect:
         assert set(report['queues']) == {'default', 'emails'}
         assert report['executors']['worker-1'] == {'running': 1, 'enqueued': 0}
 
+    def test_collect_tolerates_partial_workflow_timestamps(self, dbos_environment, mocker):
+        now_ms = timezone.now().timestamp() * 1000
+
+        def workflow(status, **fields):
+            values = {'queue_name': 'default', 'executor_id': None, 'created_at': None, 'dequeued_at': None}
+            return types.SimpleNamespace(status=status, **(values | fields))
+
+        mocker.patch(
+            'django_dbos.capacity._active_workflows',
+            return_value=[
+                workflow('ENQUEUED', created_at=now_ms - 120_000),  # oldest waiting
+                workflow('ENQUEUED', created_at=now_ms - 10_000),  # younger: does not lower the age
+                workflow('PENDING'),  # no created_at: counted, no age
+                workflow('RUNNING'),  # never dequeued: no queue wait
+                workflow('RUNNING', created_at=now_ms - 5_000, dequeued_at=now_ms - 4_500),
+                workflow('SUCCESS'),  # not an active status: ignored
+            ],
+        )
+
+        metrics = capacity.collect(queues=['default'])['queues']['default']
+
+        assert metrics['enqueued'] == 3
+        assert metrics['running'] == 2
+        assert 119 < metrics['backlog_age_seconds'] < 180
+        assert metrics['max_queue_wait_ms'] == 500
+
     def test_collect_filters_queues(self, dbos_environment):
         report = capacity.collect(queues=['emails'])
         assert list(report['queues']) == ['emails']
