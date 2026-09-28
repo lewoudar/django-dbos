@@ -174,3 +174,5 @@ rather than from the top.
 - [Cron scheduling](cron.md): run a task on a schedule.
 - [Testing](testing.md): run tasks synchronously in your test suite.
 - [Deployment](deployment.md): what to settle before going to production.
+- [Troubleshooting](troubleshooting.md): a task stays `READY`, an error you
+  don't understand.

@@ -21,6 +21,7 @@ nav = [
   { "Worker capacity" = "status.md" },
   { "Testing" = "testing.md" },
   { "Deployment" = "deployment.md" },
+  { "Troubleshooting" = "troubleshooting.md" },
 ]
 
 # extra_css = ["stylesheets/extra.css"]
