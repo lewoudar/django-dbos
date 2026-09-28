@@ -81,8 +81,12 @@ def send_welcome_email(context, user_id: int) -> None:
     ...
 ```
 
-`context.task_result` is the in-progress `TaskResult` for this execution;
-`context.attempt` is a shortcut for the number of attempts made so far.
+`context.task_result` is the in-progress `TaskResult` for this execution, read
+from the system database. `context.attempt` counts the executions of this
+task, current one included: `1` on the first run, `2` when a worker picks it
+up again after a crash, and so on. Step retries (`step_retries_allowed`)
+happen inside one execution and are not counted. Once the task is done,
+`result.attempts` reports the same number.
 
 This is orthogonal to `@dbos_params(durable_operations=True)` (see
 [Durable workflows](#durable-workflows) below): `takes_context` only changes
