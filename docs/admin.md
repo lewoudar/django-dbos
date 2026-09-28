@@ -24,8 +24,8 @@ Open **Home › DBOS workflows** (`/admin/dbos/workflows/`):
 
 | Action | Effect |
 | --- | --- |
-| Cancel | Marks the workflow CANCELLED (in-flight step is interrupted). |
-| Resume | Resumes a cancelled workflow. |
+| Cancel | Marks the workflow CANCELLED: a waiting task never runs, a running step still finishes but no further step starts (see [Cancelling a task](tasks.md#cancelling-a-task)). |
+| Resume | Resumes a cancelled workflow after its last completed step. |
 | Fork | Runs a copy of the workflow from step 0 and redirects to it. |
 | Delete | Permanently removes the workflow and its history (with a confirmation page). |
 

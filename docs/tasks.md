@@ -140,7 +140,7 @@ def cleanup(): ...
 | `step_backoff_rate` | `2.0` | Multiplier applied to the interval after each failure. |
 | `deduplication_id` | `None` | While a workflow with this ID is enqueued or running, further enqueues raise an error. |
 | `queue_partition_key` | `None` | Partition key for partitioned queues. |
-| `workflow_timeout` | `None` | Max wall-clock duration of the whole execution, in seconds, counted from the moment a worker starts it (time spent waiting in the queue or in `run_after` does not count). The task is cancelled at the deadline and its result reports `FAILED`. |
+| `workflow_timeout` | `None` | Max wall-clock duration of the whole execution, in seconds, counted from the moment a worker starts it (time spent waiting in the queue or in `run_after` does not count). The task is [cancelled](#cancelling-a-task) at the deadline and its result reports `FAILED` with a `TaskTimedOut` error. |
 | `max_recovery_attempts` | DBOS default | Recovery attempts after a worker crash. |
 | `durable_operations` | `False` | Enable durable primitives inside the task (see below). |
 
@@ -188,6 +188,50 @@ messages, fanning out with child workflows.
     is responsible for checkpointing its side effects through steps. Keep the
     default (single step) unless you need durable sleeps or multi-stage
     checkpointing.
+
+## Cancelling a task
+
+Django's tasks API has no cancellation, so django-dbos goes through the DBOS
+client — the same call as the **Cancel** button of the [admin](admin.md):
+
+```python
+from django_dbos.client import get_client
+
+get_client().cancel_workflow(result.id)
+```
+
+Python cannot stop a function mid-execution, so what a cancellation does
+depends on where the task is:
+
+| The task is... | Effect of the cancellation |
+| --- | --- |
+| waiting (in its queue, or for its `run_after` time) | It never runs. |
+| running, without `durable_operations` | The function **runs to its end**, side effects included; its outcome is discarded. |
+| running, with `durable_operations` | The step in progress finishes, then no further step starts. |
+
+To make a long task stop early when cancelled, split it into steps with
+[`durable_operations`](#durable-workflows): each step boundary is a point
+where the cancellation takes effect.
+
+A cancelled task's result is `FAILED`, with a
+`django_dbos.exceptions.TaskCancelled` error explaining why. A task stopped
+by its `workflow_timeout` is cancelled the same way, and reports
+`TaskTimedOut`, a subclass of `TaskCancelled`:
+
+```python
+from django.tasks import TaskResultStatus
+
+from django_dbos.exceptions import TaskCancelled
+
+result.refresh()
+if result.status == TaskResultStatus.FAILED and issubclass(result.errors[0].exception_class, TaskCancelled):
+    ...  # cancelled, or timed out
+```
+
+`get_client().resume_workflow(result.id)` (the admin's **Resume**) undoes a
+cancellation: the task continues after the last step that completed — from
+the start if none did. A step that finished after the cancellation is not
+run again: its result was recorded.
 
 See [`examples/ninja_api`](https://github.com/lewoudar/django-dbos/tree/main/examples/ninja_api)
 for a runnable project that enqueues a task and polls its result.
