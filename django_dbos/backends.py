@@ -13,7 +13,7 @@ from django.tasks.base import TaskError
 from django.tasks.exceptions import TaskResultDoesNotExist
 
 from .client import get_client
-from .exceptions import QueueNotDeclared, TaskCancelled, TaskTimedOut
+from .exceptions import MaxRecoveryAttemptsExceeded, QueueNotDeclared, TaskCancelled, TaskTimedOut
 from .logging import logger
 from .tasks import DBOSTask
 from .tasks_registry import task_from_workflow_name, workflow_name_for_task
@@ -169,6 +169,14 @@ def _cancellation_reason(status: Any) -> TaskCancelled:
     return TaskCancelled('The task was cancelled.')
 
 
+def _recovery_exhausted(status: Any) -> MaxRecoveryAttemptsExceeded:
+    """Why DBOS gave up on a workflow after repeated crashes: it stores no error for it either."""
+    return MaxRecoveryAttemptsExceeded(
+        f'The task was interrupted too many times ({status.recovery_attempts} execution or recovery '
+        'attempts): DBOS no longer recovers it.'
+    )
+
+
 def _build_task_result(workflow_id: str, status: Any) -> TaskResult:
     dbos_status = status.status
     if dbos_status not in _STATUS_MAPPING:
@@ -184,6 +192,8 @@ def _build_task_result(workflow_id: str, status: Any) -> TaskResult:
         errors = [_task_error(status.error)]
     elif dbos_status == 'CANCELLED':
         errors = [_task_error(_cancellation_reason(status))]
+    elif dbos_status == 'MAX_RECOVERY_ATTEMPTS_EXCEEDED':
+        errors = [_task_error(_recovery_exhausted(status))]
 
     inputs = status.input or {}
     enqueued_at = _epoch_to_datetime(status.created_at)

@@ -15,7 +15,7 @@ from django.tasks import TaskResultStatus
 from django.tasks.exceptions import TaskResultDoesNotExist
 
 from django_dbos.backends import _build_task_result
-from django_dbos.exceptions import TaskCancelled, TaskTimedOut
+from django_dbos.exceptions import MaxRecoveryAttemptsExceeded, TaskCancelled, TaskTimedOut
 from django_dbos.tasks_registry import workflow_name_for_task
 
 from .tasks import add, async_add
@@ -35,6 +35,7 @@ def make_status(**overrides):
         'updated_at': CREATED_AT_MS + 1_000,
         'workflow_timeout_ms': None,
         'workflow_deadline_epoch_ms': None,
+        'recovery_attempts': 1,
     }
     return SimpleNamespace(**(values | overrides))
 
@@ -165,6 +166,17 @@ class TestBuildTaskResult:
         [error] = result.errors
         assert error.exception_class is expected_class
         assert error.traceback == repr(expected_class(message))
+
+    def test_exhausted_recovery_reports_why(self):
+        # DBOS stores no error when it gives up after repeated crashes either.
+        status = make_status(status='MAX_RECOVERY_ATTEMPTS_EXCEEDED', output=None, recovery_attempts=3)
+
+        result = _build_task_result(WORKFLOW_ID, status)
+
+        assert result.status == TaskResultStatus.FAILED
+        [error] = result.errors
+        assert error.exception_class is MaxRecoveryAttemptsExceeded
+        assert '3 execution or recovery attempts' in error.traceback
 
     def test_unknown_dbos_status_is_not_exposed(self):
         with pytest.raises(TaskResultDoesNotExist):
