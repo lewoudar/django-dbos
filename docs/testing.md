@@ -73,16 +73,27 @@ PostgreSQL container is used when possible and SQLite is the fallback.
 ## structlog
 
 django-dbos logs through [structlog](https://www.structlog.org/) under the
-`django_dbos` logger. Use structlog's
-[testing utilities](https://www.structlog.org/en/stable/testing.html) to assert
-on log output:
+`django_dbos` logger. If your tasks log through structlog too, use its
+[testing utilities](https://www.structlog.org/en/stable/testing.html) to
+assert on what a task logged, combined with `dbos_inline` so the task
+actually runs:
 
 ```python
+import structlog
+from django.tasks import task
 from structlog.testing import capture_logs
 
+logger = structlog.get_logger()
 
-def test_enqueue_logs():
+
+@task
+def send_email(address: str) -> str:
+    logger.info('email sent', to=address)
+    return f'sent to {address}'
+
+
+def test_send_email_logs(dbos_inline):
     with capture_logs() as logs:
         send_email.enqueue('kevin@example.com')
-    assert any(event == 'enqueued task' for event in [log['event'] for log in logs])
+    assert {'event': 'email sent', 'to': 'kevin@example.com', 'log_level': 'info'} in logs
 ```
