@@ -127,9 +127,8 @@ cron scheduler, and shuts down gracefully on `SIGTERM`/`SIGINT`. It also
 pushes a heartbeat to the Django database (see [Worker capacity](status.md)),
 which is why django-dbos ships a migration.
 
-Use `--no-scheduler` to run a worker that does not manage cron schedules
-(useful when running several workers behind a load balancer and you want a
-dedicated scheduler).
+Every worker also takes part in [cron scheduling](cron.md): run as many
+workers as you like, each scheduled firing still executes once.
 
 ### Migrating the system database
 
