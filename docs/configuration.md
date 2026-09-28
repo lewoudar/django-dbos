@@ -32,7 +32,7 @@ DJANGO_DBOS = {
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `NAME` | `"django"` | DBOS application name. |
+| `NAME` | `DBOS_APPLICATION_NAME` env, else `"django"` | DBOS application name. |
 | `APPLICATION_VERSION` | auto | Application version recorded with workflow executions. By default DBOS derives it from the workflow source code. |
 | `SYSTEM_DATABASE_URL` | derived | URL of the DBOS system database (see above). |
 | `SYSTEM_DB_PREFIX` | `"dbos_"` | Prefix of the derived system database name. |
@@ -43,6 +43,8 @@ DJANGO_DBOS = {
 | `CAPACITY` | `{}` | Thresholds and advisor of the scaling advice (see [Worker capacity](status.md#thresholds)). |
 | `RUN_MIGRATIONS` | `True` | Whether workers create/migrate the system database on launch (see [Migrating the system database](#migrating-the-system-database)). |
 | `SCHEDULER_POLLING_INTERVAL_SEC` | `30.0` | How often the scheduler thread looks for new schedules. |
+| `ADMIN_ENABLED` | `True` | Register the DBOS pages in the Django admin (see [Admin](admin.md#options)). |
+| `ADMIN_SITE` | `["django.contrib.admin.site"]` | Admin sites (dotted paths) to register the pages on. |
 
 ## Serialization
 
@@ -69,7 +71,19 @@ workflows are in flight makes their stored data unreadable.
 
 Queues process task executions concurrently and are declared under
 `DJANGO_DBOS["QUEUES"]`. Queue names used by tasks (through `queue_name` or
-`TASKS[alias]["QUEUES"]`) must be declared here.
+`TASKS[alias]["QUEUES"]`) must be declared here, otherwise enqueuing raises
+`QueueNotDeclared`. Each queue maps to `None` (no options) or a dict of
+options:
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `worker_concurrency` | unlimited | Max executions of this queue running at once in one worker. |
+| `global_concurrency` | unlimited | Max executions of this queue running at once across all workers. |
+| `limiter` | none | Rate limit, `{'limit': n, 'period': seconds}`: at most `n` executions started per `period`. |
+| `polling_interval_sec` | `1.0` | How often workers check the queue for new executions. |
+| `capacity` | global thresholds | Per-queue thresholds of the scaling advice (django-dbos only, see [Worker capacity](status.md#thresholds)). |
+
+An unknown option is a configuration error, reported by `manage.py check`.
 
 ```python
 DJANGO_DBOS = {
