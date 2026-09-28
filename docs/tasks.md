@@ -19,14 +19,21 @@ result = send_welcome_email.enqueue(user_id)
 result = await send_welcome_email.aenqueue(user_id)
 ```
 
-`result` is a standard Django `TaskResult`; with `supports_get_result` backends
-you can poll it from anywhere:
+`result` is a standard Django `TaskResult`. Its state lives in the system
+database, so you can check on it later — from the same object or, with its
+`id`, from any other process:
 
 ```python
-result.refresh()
+result.refresh()  # reload the latest state
 result.status  # TaskResultStatus.READY / RUNNING / SUCCESSFUL / FAILED
 result.return_value  # only available when SUCCESSFUL
+
+result = send_welcome_email.get_result(result_id)  # e.g. in another request
 ```
+
+`READY` means waiting for a worker (or for its `run_after` time), `RUNNING`
+that a worker is executing it. A task that was cancelled from the admin, or
+that exhausted its recovery attempts, is `FAILED`.
 
 ## Database connections
 

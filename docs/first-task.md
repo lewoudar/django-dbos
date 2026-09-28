@@ -57,7 +57,8 @@ TaskResultStatus.READY
 ```
 
 `enqueue()` returns immediately with a `TaskResult`: the task is recorded in
-the system database, waiting for a worker. A moment later:
+the system database, waiting for a worker (`READY`). While a worker executes
+it, its status is `RUNNING`. A moment later:
 
 ```pycon
 >>> result.refresh()
