@@ -146,9 +146,13 @@ containers:
     command: ["python", "manage.py", "release"]
 ```
 
-Stop workers with `SIGTERM` (the default): `dbos worker` shuts DBOS down
-cleanly and removes its heartbeat row. Give `terminationGracePeriodSeconds`
-at least the duration of your longest step.
+Stop workers with `SIGTERM` (the default): `dbos worker` removes its
+heartbeat row, then waits **up to 10 seconds** for the tasks it is running to
+finish before disconnecting. A task still running after that is interrupted
+and recovered later from its last checkpoint — from the start for a task
+without `durable_operations` — like after a crash. Keep
+`terminationGracePeriodSeconds` above those 10 seconds (Kubernetes' default
+of 30 is fine) so the shutdown is not cut short by a `SIGKILL`.
 
 ## Docker Compose
 
