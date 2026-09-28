@@ -131,12 +131,17 @@ class TestEnsureLaunched:
             'django_dbos.tasks_registry.register_all_task_workflows',
             side_effect=lambda: calls.append('register'),
         )
+        # Every launched worker runs DBOS' scheduler and may dequeue a cron firing.
+        mocker.patch(
+            'django_dbos.scheduling.register_cron_workflows',
+            side_effect=lambda: calls.append('cron'),
+        )
         mocker.patch.object(dbos_setup.DBOS, 'launch', side_effect=lambda: calls.append('launch'))
         mocker.patch.object(dbos_setup, '_register_queues', side_effect=lambda: calls.append('queues'))
 
         dbos_setup.ensure_launched()
 
-        assert calls == ['register', 'launch', 'queues']
+        assert calls == ['register', 'cron', 'launch', 'queues']
         assert dbos_setup._launched is True
 
     def test_second_call_is_a_noop(self, mocker):

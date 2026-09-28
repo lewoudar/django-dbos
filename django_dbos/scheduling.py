@@ -9,9 +9,11 @@ Stack ``@cron`` on top of ``@task``::
     @task
     def cleanup(): ...
 
-Scheduled executions go through DBOS schedules: the worker process creates
-them in the system database (idempotently, see ``create_cron_schedules``) and
-DBOS fires them even if this process restarts.
+Scheduled executions go through DBOS schedules: every worker registers the
+scheduled workflows before launch (``register_cron_workflows``), then
+reconciles the schedules in the system database with the code
+(``register_cron_schedules``). DBOS fires them from any running worker, even
+across restarts.
 """
 
 from __future__ import annotations
@@ -106,6 +108,17 @@ def _validate_cron_task(task: DBOSTask) -> None:
 
 def schedule_name_for_task(task: DBOSTask) -> str:
     return f'{SCHEDULE_PREFIX}{task.module_path}'
+
+
+def register_cron_workflows() -> None:
+    """Register the workflow fired by each ``@cron`` task's schedule.
+
+    Called for every worker before ``DBOS.launch()``: DBOS runs its scheduler
+    in every launched process, so any worker may fire a schedule and dequeue
+    the firing — and can only execute it if the workflow is registered here.
+    """
+    for registration in _registry.values():
+        _register_scheduled_workflow(registration.task, registration.monitor_config)
 
 
 def register_cron_schedules() -> None:

@@ -106,9 +106,11 @@ def ensure_launched() -> None:
     with _instance_lock:
         if _launched:
             return
+        from .scheduling import register_cron_workflows
         from .tasks_registry import register_all_task_workflows
 
         register_all_task_workflows()
+        register_cron_workflows()
         try:
             DBOS.launch()
             # Queues persist to the system database (DBOS.register_queue), which

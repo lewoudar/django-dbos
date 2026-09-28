@@ -61,16 +61,13 @@ def migrate(app_role: str | None) -> None:
 
 
 @main.command()
-@click.option('--no-scheduler', is_flag=True, help='Do not process cron schedules in this process.')
-def worker(no_scheduler: bool) -> None:
+def worker() -> None:
     """Run the DBOS worker: execute Django tasks durably and process cron schedules."""
+    from django_dbos import scheduling
+
     discovery.autodiscover_tasks()
     dbos_setup.ensure_launched()
-
-    if not no_scheduler:
-        from django_dbos import scheduling
-
-        scheduling.register_cron_schedules()
+    scheduling.register_cron_schedules()
 
     stop_event = threading.Event()
 

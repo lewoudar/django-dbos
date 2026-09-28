@@ -51,11 +51,6 @@ def test_worker_default_run(dbos_environment, worker_mocks):
     assert 'Shutting down' in output
 
 
-def test_worker_no_scheduler_flag_skips_cron_registration(dbos_environment, worker_mocks):
-    run_worker('--no-scheduler')
-    worker_mocks['register_cron_schedules'].assert_not_called()
-
-
 def test_worker_stops_on_sigterm_or_sigint(dbos_environment, worker_mocks, mocker):
     handlers = {}
     worker_mocks['signal'].side_effect = handlers.__setitem__
