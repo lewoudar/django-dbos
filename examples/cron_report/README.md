@@ -62,6 +62,6 @@ you pause, resume or delete it. **Home › DBOS workflows** shows every
 individual firing as its own durable workflow execution.
 
 See [`../ninja_api`](../ninja_api) for the enqueue/poll pattern, and the
-[main documentation](https://github.com/lewoudar/django_dbos/tree/main/docs)
+[main documentation](https://github.com/lewoudar/django-dbos/tree/main/docs)
 for `@dbos_params` options (timeouts, retries) and optional Sentry cron
 monitoring.

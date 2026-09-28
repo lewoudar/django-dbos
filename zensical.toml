@@ -12,6 +12,7 @@ repo_name = "lewoudar/django-dbos"
 
 nav = [
   { "Home" = "index.md" },
+  { "Your first task" = "first-task.md" },
   { "Configuration" = "configuration.md" },
   { "Tasks" = "tasks.md" },
   { "Workflows" = "workflows.md" },
@@ -20,6 +21,7 @@ nav = [
   { "Worker capacity" = "status.md" },
   { "Testing" = "testing.md" },
   { "Deployment" = "deployment.md" },
+  { "Troubleshooting" = "troubleshooting.md" },
 ]
 
 # extra_css = ["stylesheets/extra.css"]

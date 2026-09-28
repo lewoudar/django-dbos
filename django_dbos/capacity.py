@@ -31,7 +31,9 @@ Advisor = Callable[[str, dict[str, Any], dict[str, float | int]], str]
 DEFAULT_SCALE_UP_BACKLOG_AGE_SECONDS = CAPACITY_THRESHOLD_DEFAULTS['SCALE_UP_BACKLOG_AGE_SECONDS']
 DEFAULT_SCALE_DOWN_MAX_RUNNING = CAPACITY_THRESHOLD_DEFAULTS['SCALE_DOWN_MAX_RUNNING']
 
-ACTIVE_STATUSES = ('ENQUEUED', 'PENDING', 'DELAYED', 'RUNNING')
+#: DBOS has no RUNNING status: ENQUEUED waits for a worker, PENDING is being
+#: executed, DELAYED waits for its ``run_after`` time.
+ACTIVE_STATUSES = ('ENQUEUED', 'PENDING', 'DELAYED')
 
 
 def _active_workflows(queues: list[str] | None) -> list[Any]:
@@ -138,7 +140,7 @@ def _ingest_workflow(
 
     if queue_metrics is None:
         pass
-    elif workflow_status in ('ENQUEUED', 'PENDING'):
+    elif workflow_status == 'ENQUEUED':
         queue_metrics['enqueued'] += 1
         if status.created_at is not None:
             age = (now - datetime.fromtimestamp(status.created_at / 1000, tz=UTC)).total_seconds()
@@ -147,15 +149,15 @@ def _ingest_workflow(
                 queue_metrics['backlog_age_seconds'] = age
     elif workflow_status == 'DELAYED':
         queue_metrics['delayed'] += 1
-    elif workflow_status == 'RUNNING':
+    elif workflow_status == 'PENDING':
         queue_metrics['running'] += 1
         if status.dequeued_at is not None and status.created_at is not None:
             queue_wait_ms = status.dequeued_at - status.created_at
             queue_metrics['max_queue_wait_ms'] = max(queue_metrics['max_queue_wait_ms'] or 0, queue_wait_ms)
 
-    if workflow_status in ('ENQUEUED', 'PENDING', 'RUNNING') and status.executor_id:
+    if workflow_status in ('ENQUEUED', 'PENDING') and status.executor_id:
         executor = executors.setdefault(status.executor_id, {'running': 0, 'enqueued': 0})
-        executor['running' if workflow_status == 'RUNNING' else 'enqueued'] += 1
+        executor['running' if workflow_status == 'PENDING' else 'enqueued'] += 1
 
 
 def advise_queue(

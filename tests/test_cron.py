@@ -91,6 +91,15 @@ class TestDjangoTimezone:
         assert cron_module._django_timezone() == 'UTC'
 
 
+def test_register_cron_workflows_registers_every_cron_task(mocker):
+    register = mocker.patch.object(cron_module, '_register_scheduled_workflow')
+    cron_module.cron('*/5 * * * *', sentry_monitor_config=None)(cron_task)
+
+    cron_module.register_cron_workflows()
+
+    register.assert_called_once_with(cron_task, None)
+
+
 @pytest.mark.integration
 class TestRegisterCronSchedules:
     @pytest.fixture

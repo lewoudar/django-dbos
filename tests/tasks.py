@@ -62,6 +62,11 @@ def durable_onboarding() -> list[str]:
     return results['events']  # type: ignore[return-value]
 
 
+@task(backend='dbos')
+def context_without_durable_operations() -> None:
+    get_dbos_context()  # runs as a step: durable_operations is missing
+
+
 @task(backend='dbos', takes_context=True)
 @dbos_params(durable_operations=True)
 def durable_context_task(context: object) -> dict[str, object]:

@@ -92,17 +92,23 @@ def generate_report(report_id: int) -> str:
 ```
 
 A view polling that same workflow (`result.id` from `.enqueue()`, or the
-workflow ID shown in the admin) doesn't need `durable_operations` or
-`get_dbos_context()` — `DBOS.get_event` works from anywhere:
+workflow ID shown in the admin) reads the event through django-dbos' client,
+the same `DBOSClient` the backend uses to enqueue tasks:
 
 ```python
-from dbos import DBOS
+from django_dbos.client import get_client
 
 
 def report_progress(request, workflow_id):
-    stage = DBOS.get_event(workflow_id, 'stage', timeout_seconds=1)
+    stage = get_client().get_event(workflow_id, 'stage', timeout_seconds=1)
     return JsonResponse({'stage': stage})
 ```
+
+!!! warning
+    Don't call `DBOS.get_event` / `DBOS.send` from a view: those need the
+    `DBOS` instance, which only exists in the `dbos worker` process (see
+    [Processes](configuration.md#processes)). In a web process they raise
+    `No DBOS was created yet`.
 
 `get_event` returns `None` if it times out waiting, rather than raising —
 useful here, since "no value yet" and "still on the first stage" both read as
@@ -130,15 +136,15 @@ def process_refund(order_id: int) -> str:
 ```
 
 The approval itself comes from outside the workflow — an admin action, say —
-using the *task's* workflow ID (`result.id`) and the plain `DBOS.send`, no
-workflow context required:
+using the *task's* workflow ID (`result.id`) and the client, no workflow
+context required:
 
 ```python
-from dbos import DBOS
+from django_dbos.client import get_client
 
 
 def approve_refund(request, workflow_id):
-    DBOS.send(workflow_id, True, topic='refund-approval')
+    get_client().send(workflow_id, True, topic='refund-approval')
 ```
 
 `recv` (unlike `get_event`) must be called from inside a running workflow —

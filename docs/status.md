@@ -26,10 +26,11 @@ a `DBOSClient` (the command never launches DBOS: it can run anywhere, a cron
 job or a web instance included). Only the *active* workflows — waiting or
 running, i.e. the backlog itself — are listed and aggregated:
 
-- **Backlog** per queue: workflows enqueued and waiting (ENQUEUED/PENDING), and
-  the age of the oldest waiting workflow.
-- **Running** per queue, plus the maximum queue wait time of running
-  workflows.
+- **Backlog** per queue: workflows waiting for a worker (DBOS status
+  `ENQUEUED`), and the age of the oldest one. Deferred tasks whose
+  `run_after` time has not come yet (`DELAYED`) are counted apart.
+- **Running** per queue: workflows being executed (DBOS status `PENDING`),
+  plus the longest time one of them waited in the queue before starting.
 - **Declared concurrency** (worker/global) as stored on the queue, so you can
   compare load with capacity at a glance.
 - **Per-executor load** (`executor_id` on workflow rows). Note that executors

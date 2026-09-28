@@ -26,12 +26,12 @@ if TYPE_CHECKING:
 #: DBOS scale while preserving the order.
 _PRIORITY_OFFSET = 101
 
-#: Workflow statuses DBOS uses, mapped onto Django's TaskResultStatus.
+#: Workflow statuses DBOS uses, mapped onto Django's TaskResultStatus. DBOS
+#: has no RUNNING status: a dequeued workflow being executed is PENDING.
 _STATUS_MAPPING: dict[str, TaskResultStatus] = {
     'DELAYED': TaskResultStatus.READY,
     'ENQUEUED': TaskResultStatus.READY,
-    'PENDING': TaskResultStatus.READY,
-    'RUNNING': TaskResultStatus.RUNNING,
+    'PENDING': TaskResultStatus.RUNNING,
     'SUCCESS': TaskResultStatus.SUCCESSFUL,
     'ERROR': TaskResultStatus.FAILED,
     'CANCELLED': TaskResultStatus.FAILED,

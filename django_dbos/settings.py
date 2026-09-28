@@ -5,8 +5,9 @@ Options not set there fall back to environment variables where DBOS supports
 them (``DBOS_SYSTEM_DATABASE_URL``, ...). When no URL is given at all, the
 system database URL is derived from the default Django database connection:
 
-- Postgres: same server, dedicated database ``<DBOS_SCHEMA_PREFIX><dbname>``
-  (DBOS creates it and runs its migrations on launch).
+- Postgres: same server, dedicated database ``<SYSTEM_DB_PREFIX><dbname>``
+  (created with DBOS' migrations by ``manage.py dbos migrate``, or on worker
+  launch unless ``RUN_MIGRATIONS`` is ``False``).
 - SQLite: a file next to the Django database.
 """
 
@@ -262,9 +263,10 @@ def _queue_config(name: str, options: Any) -> QueueConfig:
 def resolve_queues() -> tuple[QueueConfig, ...]:
     """Resolve declared DBOS queues.
 
-    Users declare extra queues in ``DJANGO_DBOS["QUEUES"]`` as a mapping of
-    queue name to queue options. The Django tasks backend also creates queues
-    on the fly for any queue listed in ``TASKS[alias]["QUEUES"]``.
+    Users declare queues in ``DJANGO_DBOS["QUEUES"]`` as a mapping of queue
+    name to queue options (``None`` for none); ``("default",)`` when unset.
+    Every queue a task targets (``TASKS[alias]["QUEUES"]``, ``queue_name``)
+    must be declared here: the backend raises ``QueueNotDeclared`` otherwise.
     """
     queues_setting = get_dbos_setting('QUEUES') or {}
     if not isinstance(queues_setting, dict):

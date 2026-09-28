@@ -96,4 +96,13 @@ def get_dbos_context() -> DbosTaskContext:
             'get_dbos_context() must be called from within a running task '
             'declared with @dbos_params(durable_operations=True).'
         )
+    if DBOS.step_id is not None:
+        # Without durable_operations the task body itself runs as a step:
+        # DBOS' workflow-level primitives would fail later with a bare
+        # AssertionError ("sleep() must be called from within a workflow").
+        raise NoActiveDbosContext(
+            'get_dbos_context() was called from inside a step: declare the task with '
+            '@dbos_params(durable_operations=True), and do not call it from a function '
+            'run by run_step() or decorated with @DBOS.step.'
+        )
     return DbosTaskContext(workflow_id=workflow_id)

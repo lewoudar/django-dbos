@@ -205,9 +205,9 @@ def cleanup_expired_sessions(): ...
   idempotently) and survive restarts/deploys; the code is the source of
   truth (schedules are created/updated/deleted to match `@cron` decorators
   on each worker boot).
-- Run `dbos worker` without `--no-scheduler` for it to manage schedules (skip
-  it on secondary workers behind a load balancer if you run one dedicated
-  scheduler instance).
+- There is no dedicated scheduler process: every `dbos worker` fires the
+  schedules, and each firing (deterministic ID) runs exactly once, however
+  many workers are running.
 - Every `@dbos_params` option applies to scheduled firings too (they run the
   same workflow `.enqueue()` would).
 - Optional Sentry cron monitors: `uv add django-dbos[sentry]`, then

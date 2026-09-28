@@ -178,7 +178,7 @@ class TestCollect:
     def test_queue_less_child_workflows_count_for_executors_only(self, dbos_environment, mocker):
         # A task workflow run inline by a cron parent has no queue of its own.
         child = types.SimpleNamespace(
-            status='RUNNING', queue_name=None, executor_id='worker-1', created_at=1, dequeued_at=None
+            status='PENDING', queue_name=None, executor_id='worker-1', created_at=1, dequeued_at=None
         )
         mocker.patch('django_dbos.capacity._active_workflows', return_value=[child])
         report = capacity.collect()
@@ -197,9 +197,9 @@ class TestCollect:
             return_value=[
                 workflow('ENQUEUED', created_at=now_ms - 120_000),  # oldest waiting
                 workflow('ENQUEUED', created_at=now_ms - 10_000),  # younger: does not lower the age
-                workflow('PENDING'),  # no created_at: counted, no age
-                workflow('RUNNING'),  # never dequeued: no queue wait
-                workflow('RUNNING', created_at=now_ms - 5_000, dequeued_at=now_ms - 4_500),
+                workflow('ENQUEUED'),  # no created_at: counted, no age
+                workflow('PENDING'),  # executing, never dequeued: no queue wait
+                workflow('PENDING', created_at=now_ms - 5_000, dequeued_at=now_ms - 4_500),
                 workflow('SUCCESS'),  # not an active status: ignored
             ],
         )
@@ -300,7 +300,7 @@ class TestCollect:
     def test_human_output_flags_executor_without_heartbeat(self, dbos_environment: Any, mocker) -> None:
         # An executor with active workflows but no heartbeat row at all.
         ghost = types.SimpleNamespace(
-            status='RUNNING', queue_name='default', executor_id='ghost-worker', created_at=1, dequeued_at=2
+            status='PENDING', queue_name='default', executor_id='ghost-worker', created_at=1, dequeued_at=2
         )
         mocker.patch('django_dbos.capacity._active_workflows', return_value=[ghost])
         output = status()

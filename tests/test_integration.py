@@ -10,6 +10,7 @@ from dbos import DBOS
 from django.tasks import TaskResultStatus
 from django.utils import timezone
 
+from django_dbos.context import NoActiveDbosContext
 from django_dbos.scheduling import register_cron_schedules
 from django_dbos.tasks_registry import workflow_name_for_task
 
@@ -18,6 +19,7 @@ from .conftest import wait_for_result
 from .tasks import (
     add,
     async_add,
+    context_without_durable_operations,
     durable_context_task,
     durable_onboarding,
     failing_task,
@@ -79,6 +81,12 @@ def test_durable_operations_in_task(dbos_environment):
     result = durable_onboarding.enqueue()
     result = wait_for_result(result, TaskResultStatus.SUCCESSFUL)
     assert result.return_value == ['step1', 'step2']
+
+
+def test_dbos_context_requires_durable_operations(dbos_environment):
+    result = context_without_durable_operations.enqueue()
+    result = wait_for_result(result, TaskResultStatus.FAILED)
+    assert result.errors[0].exception_class is NoActiveDbosContext
 
 
 def test_context_and_durable_operations_combine(dbos_environment):

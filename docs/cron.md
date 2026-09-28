@@ -34,7 +34,10 @@ def nightly_report(): ...
     Scheduled tasks must not require arguments. django-dbos validates this when
     the module loads.
 
-Run `dbos worker` without `--no-scheduler` so it registers and fires schedules.
+There is no separate scheduler process to run: every `dbos worker` fires the
+schedules. With several workers, each firing gets a deterministic ID (the
+schedule name and the firing time), so it is enqueued once and executed by
+exactly one of them.
 
 The code is the source of truth for schedules: on startup the worker creates
 the missing ones, re-creates those whose crontab, timezone or queue changed,
@@ -92,5 +95,5 @@ and are simply not monitored.
 
 Without `sentry-sdk` installed, everything is a no-op.
 
-See [`examples/cron_report`](https://github.com/lewoudar/django_dbos/tree/main/examples/cron_report)
+See [`examples/cron_report`](https://github.com/lewoudar/django-dbos/tree/main/examples/cron_report)
 for a runnable project built around `@cron`.

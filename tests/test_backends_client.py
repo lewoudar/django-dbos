@@ -70,7 +70,7 @@ class TestEnqueue:
     def test_already_running_result_keeps_its_timestamps(self, client):
         # A worker may pick the workflow up before get_status() runs: only
         # READY results are normalized to the enqueue time.
-        client.enqueue.return_value = sync_handle(make_status(status='RUNNING', output=None))
+        client.enqueue.return_value = sync_handle(make_status(status='PENDING', output=None))
 
         result = add.enqueue(1, 2)
 
@@ -120,6 +120,21 @@ class TestAsyncGetResult:
 
 
 class TestBuildTaskResult:
+    @pytest.mark.parametrize(
+        ('dbos_status', 'expected'),
+        [
+            ('ENQUEUED', TaskResultStatus.READY),
+            ('DELAYED', TaskResultStatus.READY),
+            ('PENDING', TaskResultStatus.RUNNING),  # DBOS' status of an executing workflow
+            ('SUCCESS', TaskResultStatus.SUCCESSFUL),
+            ('ERROR', TaskResultStatus.FAILED),
+            ('CANCELLED', TaskResultStatus.FAILED),
+            ('MAX_RECOVERY_ATTEMPTS_EXCEEDED', TaskResultStatus.FAILED),
+        ],
+    )
+    def test_status_mapping(self, dbos_status, expected):
+        assert _build_task_result(WORKFLOW_ID, make_status(status=dbos_status)).status == expected
+
     def test_unknown_dbos_status_is_not_exposed(self):
         with pytest.raises(TaskResultDoesNotExist):
             _build_task_result(WORKFLOW_ID, make_status(status='SOMETHING_NEW'))
@@ -131,7 +146,7 @@ class TestBuildTaskResult:
 
     def test_missing_timestamps_and_inputs(self):
         result = _build_task_result(
-            WORKFLOW_ID, make_status(status='RUNNING', created_at=None, input=None, output=None)
+            WORKFLOW_ID, make_status(status='PENDING', created_at=None, input=None, output=None)
         )
 
         assert result.status == TaskResultStatus.RUNNING
