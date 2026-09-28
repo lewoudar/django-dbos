@@ -11,21 +11,39 @@ uv add --group test "django-dbos[test]" pytest-django
 It provides two fixtures to test tasks through the tasks API. They expect
 Django to be configured, which pytest-django does for you.
 
+The examples on this page test this task:
+
+```python
+# myapp/tasks.py
+import structlog
+from django.tasks import task
+
+logger = structlog.get_logger()
+
+
+@task
+def send_email(address: str) -> str:
+    logger.info('email sent', to=address)
+    return f'sent to {address}'
+```
+
 ## Running task functions directly
 
 The simplest way to test a task body is to bypass the backend entirely:
 
 ```python
-from django_dbos.test import run_task, arun_task
+from django_dbos.test import run_task
+
+from myapp.tasks import send_email
 
 
 def test_send_email():
-    result = run_task(send_email, 'kevin@example.com')
-    assert result == 'sent to kevin@example.com'
+    assert run_task(send_email, 'kevin@example.com') == 'sent to kevin@example.com'
 ```
 
-`run_task` executes the function synchronously in-process (async task functions
-are bridged with `async_to_sync`).
+`run_task` executes the function synchronously in-process and returns its
+result; async task functions are bridged with `async_to_sync`, and
+`arun_task` is the variant to `await` in async tests.
 
 ## Inline mode: `dbos_inline`
 
@@ -34,6 +52,11 @@ synchronously in-process — no system database, no worker. The enqueue still
 returns a standard `TaskResult`, so you can assert on status and return value:
 
 ```python
+from django.tasks import TaskResultStatus
+
+from myapp.tasks import send_email
+
+
 def test_send_email(dbos_inline):
     result = send_email.enqueue('kevin@example.com')
     assert result.status == TaskResultStatus.SUCCESSFUL
@@ -58,17 +81,40 @@ recovery), use `dbos_system`: the fixture launches DBOS in-process on a system
 database — the current test process acts as the worker, while enqueues and
 result lookups go through the same `DBOSClient` path as in production.
 
+Tasks then run in the background, as in production: poll the result until
+it finishes.
+
 ```python
-def test_durable_sleep(dbos_system):
-    result = long_task.enqueue()
-    # poll result.refresh() until it succeeds
+import time
+
+from django.tasks import TaskResultStatus
+
+from myapp.tasks import send_email
+
+
+def wait_until_finished(result, timeout=30):
+    deadline = time.monotonic() + timeout
+    while not result.is_finished:
+        assert time.monotonic() < deadline, f'still {result.status} after {timeout}s'
+        time.sleep(0.2)
+        result.refresh()
+    return result
+
+
+def test_send_email_for_real(dbos_system):
+    result = wait_until_finished(send_email.enqueue('kevin@example.com'))
+    assert result.status == TaskResultStatus.SUCCESSFUL
+    assert result.return_value == 'sent to kevin@example.com'
 ```
 
-The system database is a SQLite file by default; pass
-`--dbos-system-db=postgres` to run a PostgreSQL container via
-`testcontainers[postgres]` (skipped if Docker is unavailable, an error if the
-`test` extra is not installed). With the default `--dbos-system-db=auto`, the
-PostgreSQL container is used when possible and SQLite is the fallback.
+The fixture is session-scoped: DBOS is launched once, with the tasks
+imported by then, and shared by every test that uses it.
+
+With the default `--dbos-system-db=auto`, the system database is a
+PostgreSQL container started through testcontainers when Docker is
+available, and a SQLite file otherwise. Force one with
+`--dbos-system-db=postgres` (the tests are skipped if Docker is unavailable)
+or `--dbos-system-db=sqlite`. The PostgreSQL modes need the `test` extra.
 
 ## structlog
 
@@ -79,17 +125,9 @@ assert on what a task logged, combined with `dbos_inline` so the task
 actually runs:
 
 ```python
-import structlog
-from django.tasks import task
 from structlog.testing import capture_logs
 
-logger = structlog.get_logger()
-
-
-@task
-def send_email(address: str) -> str:
-    logger.info('email sent', to=address)
-    return f'sent to {address}'
+from myapp.tasks import send_email
 
 
 def test_send_email_logs(dbos_inline):
