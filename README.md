@@ -177,7 +177,7 @@ project you can `uv sync` and run on its own:
 
 ## Documentation
 
-Full documentation: https://github.com/lewoudar/django_dbos/tree/main/docs
+Full documentation: https://github.com/lewoudar/django-dbos/tree/main/docs
 (a hosted version is coming once the repository goes public).
 
 ## License

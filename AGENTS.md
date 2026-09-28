@@ -60,7 +60,7 @@ subprocess killed abruptly writes no data.
 The Documentation workflow deploys `zensical build` to GitHub Pages. It is
 skipped while the repository is private (Pages needs a paid plan there).
 When the repository goes public, enable Pages **once** with the "GitHub
-Actions" source — `gh api -X POST repos/lewoudar/django_dbos/pages -f build_type=workflow`
+Actions" source — `gh api -X POST repos/lewoudar/django-dbos/pages -f build_type=workflow`
 or Settings › Pages — then every push to `main` deploys.
 
 ## Conventions

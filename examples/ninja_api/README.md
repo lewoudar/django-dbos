@@ -68,5 +68,5 @@ Interactive API docs are at http://localhost:8000/api/docs. The DBOS admin
 pages (workflow detail, step history, cancel/resume/fork) are at
 http://localhost:8000/admin/dbos/workflows/, for the superuser created above.
 
-See the [main documentation](https://github.com/lewoudar/django_dbos/tree/main/docs)
+See the [main documentation](https://github.com/lewoudar/django-dbos/tree/main/docs)
 for configuration options, cron scheduling and deployment.
