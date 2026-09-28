@@ -13,7 +13,7 @@ from django.tasks.base import TaskError
 from django.tasks.exceptions import TaskResultDoesNotExist
 
 from .client import get_client
-from .exceptions import QueueNotDeclared
+from .exceptions import QueueNotDeclared, TaskCancelled, TaskTimedOut
 from .logging import logger
 from .tasks import DBOSTask
 from .tasks_registry import task_from_workflow_name, workflow_name_for_task
@@ -152,6 +152,23 @@ def _normalize_fresh_result(result: TaskResult) -> TaskResult:
     return result
 
 
+def _task_error(error: BaseException) -> TaskError:
+    error_class = type(error)
+    return TaskError(exception_class_path=f'{error_class.__module__}.{error_class.__qualname__}', traceback=repr(error))
+
+
+def _cancellation_reason(status: Any) -> TaskCancelled:
+    """Why a CANCELLED workflow stopped: DBOS stores no error for it.
+
+    A workflow cancelled by its ``workflow_timeout`` was last updated at or
+    after its deadline; any other cancellation came from outside.
+    """
+    deadline = status.workflow_deadline_epoch_ms
+    if deadline is not None and status.updated_at is not None and status.updated_at >= deadline:
+        return TaskTimedOut(f'The task exceeded its workflow_timeout of {status.workflow_timeout_ms / 1000:g}s.')
+    return TaskCancelled('The task was cancelled.')
+
+
 def _build_task_result(workflow_id: str, status: Any) -> TaskResult:
     dbos_status = status.status
     if dbos_status not in _STATUS_MAPPING:
@@ -164,13 +181,9 @@ def _build_task_result(workflow_id: str, status: Any) -> TaskResult:
     django_status = _STATUS_MAPPING[dbos_status]
     errors = []
     if status.error is not None:
-        error_class = type(status.error)
-        errors = [
-            TaskError(
-                exception_class_path=f'{error_class.__module__}.{error_class.__qualname__}',
-                traceback=repr(status.error),
-            )
-        ]
+        errors = [_task_error(status.error)]
+    elif dbos_status == 'CANCELLED':
+        errors = [_task_error(_cancellation_reason(status))]
 
     inputs = status.input or {}
     enqueued_at = _epoch_to_datetime(status.created_at)

@@ -15,6 +15,7 @@ from django.tasks import TaskResultStatus
 from django.tasks.exceptions import TaskResultDoesNotExist
 
 from django_dbos.backends import _build_task_result
+from django_dbos.exceptions import TaskCancelled, TaskTimedOut
 from django_dbos.tasks_registry import workflow_name_for_task
 
 from .tasks import add, async_add
@@ -32,6 +33,8 @@ def make_status(**overrides):
         'output': 3,
         'created_at': CREATED_AT_MS,
         'updated_at': CREATED_AT_MS + 1_000,
+        'workflow_timeout_ms': None,
+        'workflow_deadline_epoch_ms': None,
     }
     return SimpleNamespace(**(values | overrides))
 
@@ -134,6 +137,34 @@ class TestBuildTaskResult:
     )
     def test_status_mapping(self, dbos_status, expected):
         assert _build_task_result(WORKFLOW_ID, make_status(status=dbos_status)).status == expected
+
+    @pytest.mark.parametrize(
+        ('fields', 'expected_class', 'message'),
+        [
+            pytest.param({}, TaskCancelled, 'The task was cancelled.', id='explicit-cancel'),
+            pytest.param(
+                # deadline set but not reached: cancelled from outside before its timeout
+                {'workflow_timeout_ms': 60_000, 'workflow_deadline_epoch_ms': CREATED_AT_MS + 60_000},
+                TaskCancelled,
+                'The task was cancelled.',
+                id='cancelled-before-its-deadline',
+            ),
+            pytest.param(
+                {'workflow_timeout_ms': 500, 'workflow_deadline_epoch_ms': CREATED_AT_MS + 500},
+                TaskTimedOut,
+                'The task exceeded its workflow_timeout of 0.5s.',
+                id='workflow-timeout',
+            ),
+        ],
+    )
+    def test_cancelled_workflow_reports_why(self, fields, expected_class, message):
+        # DBOS stores no error for a cancelled workflow: FAILED must not come without an explanation.
+        result = _build_task_result(WORKFLOW_ID, make_status(status='CANCELLED', output=None, **fields))
+
+        assert result.status == TaskResultStatus.FAILED
+        [error] = result.errors
+        assert error.exception_class is expected_class
+        assert error.traceback == repr(expected_class(message))
 
     def test_unknown_dbos_status_is_not_exposed(self):
         with pytest.raises(TaskResultDoesNotExist):
