@@ -227,7 +227,9 @@ def _build_task_result(workflow_id: str, status: Any) -> TaskResult:
         kwargs=dict(inputs.get('kwargs') or {}),
         backend=task.backend,
         errors=errors,
-        worker_ids=[],
+        # Django counts attempts as len(worker_ids). DBOS counts executions
+        # (recovery_attempts) but only keeps the latest executor.
+        worker_ids=[status.executor_id or ''] * (status.recovery_attempts or 0),
     )
     if django_status == TaskResultStatus.SUCCESSFUL and status.output is not None:
         object.__setattr__(result, '_return_value', status.output)

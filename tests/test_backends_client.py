@@ -38,6 +38,7 @@ def make_status(**overrides):
         'workflow_timeout_ms': None,
         'workflow_deadline_epoch_ms': None,
         'recovery_attempts': 1,
+        'executor_id': 'worker-1',
     }
     return SimpleNamespace(**(values | overrides))
 
