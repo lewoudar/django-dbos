@@ -118,6 +118,18 @@ The task did not fail on its own: it was cancelled.
 Either way, `get_client().resume_workflow(result.id)` (or **Resume** in the
 admin) picks it up again. See [Cancelling a task](tasks.md#cancelling-a-task).
 
+## A task is `FAILED` with `MaxRecoveryAttemptsExceeded`
+
+The task did not fail on its own either: the workers executing it were
+interrupted (crash, OOM, killed during a deploy) more times than its
+`max_recovery_attempts` allows, and DBOS stopped recovering it so that it
+cannot crash workers forever. `dbos status` counts these tasks
+("exhausted their recovery attempts").
+
+Find out why the workers died — often the task itself, using too much
+memory or time — then relaunch it with `get_client().resume_workflow(result.id)`
+(or **Resume** in the admin).
+
 ## A cancelled task kept running
 
 Expected: cancelling cannot interrupt Python code. A task without
