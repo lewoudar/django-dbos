@@ -20,6 +20,43 @@ standard `TaskResult` objects. Under the hood, executions are [DBOS](https://doc
 workflows recorded in a system database, which makes them fault-tolerant: if a worker crashes,
 tasks resume where they stopped.
 
+## How it works
+
+```mermaid
+flowchart LR
+    web["Web processes<br/>runserver, gunicorn, shell"]
+    worker["Worker processes<br/>manage.py dbos worker"]
+    sysdb[("DBOS system database<br/>queued tasks, results, progress")]
+    appdb[("Your Django database")]
+
+    web -- "enqueue(), get_result()" --> sysdb
+    worker -- "pick up tasks, record results" --> sysdb
+    web --> appdb
+    worker -- "ORM, as usual" --> appdb
+```
+
+Two kinds of processes share one **system database**:
+
+- your **web processes** enqueue tasks and read their results — they never
+  run a task themselves, so a slow task never blocks a request;
+- one or more **workers** (`python manage.py dbos worker`) take tasks from
+  the system database, run them, and record the outcome there.
+
+Because every task and its progress are written down before and while it
+runs, nothing lives only in a process's memory: a worker can crash or be
+redeployed, and another one (or the same, restarted) carries on.
+
+A few words used throughout this documentation:
+
+| Term | Meaning |
+| --- | --- |
+| **Task** | A function decorated with Django's `@task`. Enqueuing it creates an *execution*. |
+| **Workflow** | DBOS' name for an execution: every enqueued task runs as one workflow. The admin and `dbos status` talk about workflows. |
+| **Step** | A unit of work inside a workflow whose result is saved once it succeeds, so it is not redone after a crash. By default a whole task is one step. |
+| **System database** | The database where DBOS records workflows and steps — separate from your application data (see [Configuration](configuration.md#system-database)). |
+| **Queue** | A named line of waiting executions, with its own concurrency limits. Tasks go to the `default` queue unless told otherwise. |
+| **Worker** | A `dbos worker` process: it executes tasks from the queues. Run as many as your load needs. |
+
 ## Requirements
 
 - Python 3.12+
@@ -71,6 +108,10 @@ That's it — every task enqueued through this backend is now durable. Your
 web processes only talk to the DBOS system database; they never execute
 tasks. See [Configuration](configuration.md) for the database setup and the
 available options.
+
+New to background tasks? [Your first task](first-task.md) walks through
+writing, running and checking a task step by step, and crashes a worker on
+purpose to show what durability means.
 
 ## Examples
 
