@@ -46,7 +46,17 @@ TASKS = {
         'QUEUES': ['default', 'emails'],
     },
 }
+
+DJANGO_DBOS = {
+    # every queue a task can use must be declared here too
+    'QUEUES': {'default': None, 'emails': None},
+}
 ```
+
+`TASKS[...]["QUEUES"]` is what Django lets tasks target; `DJANGO_DBOS["QUEUES"]`
+is what DBOS workers actually process (with per-queue options such as
+concurrency, see [Queues](configuration.md#queues)). Enqueuing on a queue
+missing from the latter raises `QueueNotDeclared`.
 
 Apply the migrations — Django's (django-dbos ships one small table, for
 worker heartbeats) and DBOS' (the system database) — then start a worker:

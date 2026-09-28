@@ -149,6 +149,11 @@ TASKS = {
         'QUEUES': ['default', 'emails'],
     },
 }
+
+DJANGO_DBOS = {
+    # every queue a task can use must be declared here too
+    'QUEUES': {'default': None, 'emails': None},
+}
 ```
 
 ```bash
