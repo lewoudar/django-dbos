@@ -4,11 +4,31 @@
 
 A [DBOS](https://docs.dbos.dev/)-backed backend for Django's
 [tasks framework](https://docs.djangoproject.com/en/stable/topics/tasks/):
-background tasks that survive a worker crash and pick up exactly where they
-stopped, cron scheduling, optional Sentry monitoring, an admin UI to inspect
-and operate on tasks, and a worker capacity report to drive autoscaling.
+background tasks that survive a worker crash, cron scheduling, optional
+Sentry monitoring, an admin UI to inspect and operate on tasks, and a worker
+capacity report to drive autoscaling.
 
-## Why
+## At a glance
+
+If you know Django's tasks API, you already know django-dbos:
+
+```python
+from django.tasks import task
+
+
+@task
+def send_welcome_email(user_id: int) -> None: ...
+
+
+result = send_welcome_email.enqueue(user_id)  # durable by default
+result.status  # READY, RUNNING, SUCCESSFUL, FAILED — standard Django TaskResult
+```
+
+Each enqueued task is recorded in a database before it runs. If the worker
+executing it crashes, the task is not lost: it runs again once a worker is
+back.
+
+## Why DBOS
 
 Say you send a newsletter to 10,000 users:
 
@@ -26,10 +46,11 @@ With most task backends, if the worker is killed at email #6,000 — a deploy,
 an OOM, a spot instance reclaimed — the retry restarts the task from #1.
 6,000 people get the same email twice.
 
-With django-dbos, one decorator and a defined step turn the loop into a
+With django-dbos, one option and one call per email turn the loop into a
 durable, checkpointed workflow:
 
 ```python
+from django.tasks import task
 from django_dbos import dbos_params, get_dbos_context
 
 
@@ -41,50 +62,14 @@ def send_newsletter(campaign_id: int) -> None:
         ctx.run_step(send_one_email, user_id, campaign_id, name=f'email-{user_id}')
 ```
 
-Each `run_step` call is recorded in the system database as it completes. Kill
-the worker at #6,000, restart it anywhere, and the task resumes at #6,001 —
-no duplicate sends, no external state to reconcile, no idempotency keys to
-invent yourself.
+Each `run_step` call is recorded in the system database as it completes.
+Kill the worker at #6,000, restart it, and the task resumes from there: the
+5,999 emails already sent are skipped, and only the one in flight at the
+moment of the crash may go out again. No external state to reconcile, no
+idempotency keys to invent yourself.
 
-`run_step` is for functions you don't control the definition of, or that need
-a name computed per call (like `f'email-{user_id}'` above). If you own the
-function, DBOS's own `@DBOS.step` decorator works too — call it like a
-regular function and it checkpoints automatically as long as it runs inside
-a `durable_operations` task:
-
-```python
-from dbos import DBOS
-from django_dbos import dbos_params
-
-
-@DBOS.step()
-def send_one_email(user_id: int, campaign_id: int) -> None: ...
-
-
-@dbos_params(durable_operations=True)
-@task
-def send_newsletter(campaign_id: int) -> None:
-    for user_id in User.objects.values_list('id', flat=True):
-        send_one_email(user_id, campaign_id)
-```
-
-You don't need any of this for a simple task — `@task` alone already gives
-you a workflow that DBOS retries as a whole on crash:
-
-```python
-@task
-def send_welcome_email(user_id: int) -> None: ...
-
-
-result = send_welcome_email.enqueue(user_id)  # durable by default
-result.status  # READY, RUNNING, SUCCESSFUL, FAILED — standard Django TaskResult
-```
-
-`durable_operations` is there for the tasks where restarting from zero is the
-wrong kind of retry.
-
-Cron schedules are just `@task`s with a firing time attached — same durability,
-same retries, same admin page:
+Cron schedules are just `@task`s with a firing time attached — same
+durability, same retries, same admin page:
 
 ```python
 from django_dbos import cron
@@ -96,20 +81,23 @@ from django_dbos import cron
 def nightly_report() -> None: ...
 ```
 
-Schedules are registered in DBOS itself (not in the Django process), so they
-keep firing across restarts and deploys — and with the `sentry` extra
-installed, each firing checks in with
-[Sentry Crons](https://docs.sentry.io/product/crons/) automatically.
+Schedules are stored in the system database, so they keep firing across
+restarts and deploys — and with the `sentry` extra installed, each firing
+checks in with [Sentry Crons](https://docs.sentry.io/product/crons/)
+automatically.
 
 ## What you get
 
 - **Durable tasks** — every `.enqueue()` becomes a DBOS workflow: automatic
-  retries on crash, step retries with backoff, deferred execution
+  recovery after a crash, step retries with backoff, deferred execution
   (`run_after`), deduplication, priorities and workflow timeouts, all through
   Django's own `Task` / `TaskResult` API.
-- **Cron scheduling** — `@cron('0 3 * * *')` on top of `@task`. Schedules
-  live in DBOS itself, so they fire across restarts and deployments, not
-  only while a scheduler process happens to be running.
+- **Durable workflows** *(opt-in)* — checkpointed steps, durable sleeps that
+  survive restarts, progress events, messages between workflows and child
+  workflows, from inside a task.
+- **Cron scheduling** — `@cron('0 3 * * *')` on top of `@task`. Every worker
+  fires the schedules, each firing runs once, and no separate scheduler
+  process is needed.
 - **Sentry cron monitoring** *(optional)* — scheduled tasks check in with
   [Sentry Crons](https://docs.sentry.io/product/crons/) automatically, no
   monitor to configure by hand.
@@ -162,23 +150,35 @@ python manage.py dbos migrate  # the DBOS system database
 python manage.py dbos worker   # start executing tasks
 ```
 
-Your web processes only ever talk to the system database — they enqueue
-tasks, they never execute them.
+Put your tasks in a `tasks.py` module of an installed app: that is where the
+worker looks for them. Your web processes only ever talk to the system
+database — they enqueue tasks, they never execute them.
+
+New to background tasks? [Your first task](https://github.com/lewoudar/django-dbos/blob/main/docs/first-task.md) walks through
+writing, running and checking one, step by step.
 
 ## Examples
 
-Two runnable projects in [`examples/`](examples/), each a standalone `uv`
+Two runnable projects in [`examples/`](https://github.com/lewoudar/django-dbos/tree/main/examples/), each a standalone `uv`
 project you can `uv sync` and run on its own:
 
-- [`ninja_api`](examples/ninja_api) — a [Django Ninja](https://django-ninja.dev/)
+- [`ninja_api`](https://github.com/lewoudar/django-dbos/tree/main/examples/ninja_api) — a [Django Ninja](https://django-ninja.dev/)
   API that enqueues a task and polls its status until it's done.
-- [`cron_report`](examples/cron_report) — a `@cron` task that fires on its
+- [`cron_report`](https://github.com/lewoudar/django-dbos/tree/main/examples/cron_report) — a `@cron` task that fires on its
   own once a worker is running, no external scheduler needed.
 
 ## Documentation
 
-Full documentation: https://github.com/lewoudar/django-dbos/tree/main/docs
-(a hosted version is coming once the repository goes public).
+The full documentation lives in [`docs/`](https://github.com/lewoudar/django-dbos/tree/main/docs/) (a hosted version is coming
+once the repository goes public). Good places to start:
+
+- [Your first task](https://github.com/lewoudar/django-dbos/blob/main/docs/first-task.md) — a hands-on walkthrough.
+- [Tasks](https://github.com/lewoudar/django-dbos/blob/main/docs/tasks.md) and [Workflows](https://github.com/lewoudar/django-dbos/blob/main/docs/workflows.md) — options,
+  retries, durable primitives.
+- [Cron scheduling](https://github.com/lewoudar/django-dbos/blob/main/docs/cron.md) — schedules and Sentry monitors.
+- [Deployment](https://github.com/lewoudar/django-dbos/blob/main/docs/deployment.md) — what to settle before production.
+- [Troubleshooting](https://github.com/lewoudar/django-dbos/blob/main/docs/troubleshooting.md) — the errors you are most
+  likely to meet.
 
 ## License
 
