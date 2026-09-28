@@ -28,8 +28,7 @@ STATUS_BADGES = {
     'SUCCESS': 'success',
     'ERROR': 'error',
     'MAX_RECOVERY_ATTEMPTS_EXCEEDED': 'error',
-    'RUNNING': 'info',
-    'PENDING': 'info',
+    'PENDING': 'info',  # DBOS' status of an executing workflow
     'ENQUEUED': 'neutral',
     'DELAYED': 'neutral',
     'CANCELLED': 'warning',
