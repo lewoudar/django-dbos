@@ -121,8 +121,6 @@ class DBOSBackend(BaseTaskBackend):
             options['delay_seconds'] = delay_seconds
         if params.deduplication_id is not None:
             options['deduplication_id'] = params.deduplication_id
-        if params.queue_partition_key is not None:
-            options['queue_partition_key'] = params.queue_partition_key
         if params.workflow_timeout is not None:
             options['workflow_timeout'] = params.workflow_timeout
         return options  # type: ignore[return-value]
