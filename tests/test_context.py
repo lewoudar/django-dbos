@@ -86,6 +86,14 @@ class TestGetDbosContext:
         with pytest.raises(NoActiveDbosContext):
             get_dbos_context()
 
+    def test_raises_inside_a_step(self, mocker):
+        # A task without durable_operations runs its whole body as a step.
+        mocker.patch('django_dbos.context.DBOS.workflow_id', 'wf-123')
+        mocker.patch('django_dbos.context.DBOS.step_id', 1)
+        with pytest.raises(NoActiveDbosContext, match='durable_operations=True'):
+            get_dbos_context()
+
     def test_returns_context_with_workflow_id(self, mocker):
         mocker.patch('django_dbos.context.DBOS.workflow_id', 'wf-123')
+        mocker.patch('django_dbos.context.DBOS.step_id', None)
         assert get_dbos_context().workflow_id == 'wf-123'
