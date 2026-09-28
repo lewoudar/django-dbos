@@ -25,14 +25,14 @@ tasks resume where they stopped.
 ```mermaid
 flowchart LR
     web["Web processes<br/>runserver, gunicorn, shell"]
-    worker["Worker processes<br/>manage.py dbos worker"]
     sysdb[("DBOS system database<br/>queued tasks, results, progress")]
     appdb[("Your Django database")]
+    worker["Worker processes<br/>manage.py dbos worker"]
 
-    web -- "enqueue(), get_result()" --> sysdb
-    worker -- "pick up tasks, record results" --> sysdb
-    web --> appdb
-    worker -- "ORM, as usual" --> appdb
+    web <-- "enqueue tasks,<br/>read results" --> sysdb
+    web -- "ORM, as usual" --- appdb
+    sysdb <-- "pick up tasks,<br/>record results" --> worker
+    appdb -- "ORM, as usual" --- worker
 ```
 
 Two kinds of processes share one **system database**:
