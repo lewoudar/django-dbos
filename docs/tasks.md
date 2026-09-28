@@ -67,7 +67,7 @@ function's first argument, carrying metadata about the current execution:
 from django.tasks import task
 
 
-@task(backend='dbos', takes_context=True)
+@task(takes_context=True)
 def send_welcome_email(context, user_id: int) -> None:
     if context.attempt > 1:
         logger.warning('retrying welcome email', user_id=user_id, attempt=context.attempt)
