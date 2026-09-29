@@ -28,6 +28,7 @@ from asgiref.sync import sync_to_async
 from dbos import DBOS, StepOptions
 from django.db import close_old_connections
 
+from .exceptions import describe_error
 from .logging import logger
 from .params_dataclass import DbosTaskParams
 from .tasks import DBOSTask, known_tasks
@@ -80,7 +81,48 @@ def _step_options(params: DbosTaskParams) -> StepOptions:
 
 
 def _build_task_context(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
-    """Build a Django ``TaskContext`` for a currently-running task."""
+    """Build a Django ``TaskContext`` for a currently-running task.
+
+    Its ``task_result`` is read from the system database, so ``attempt``
+    counts this task's executions (crash recoveries included). The read goes
+    through the client, not ``DBOS.get_workflow_status``: inside a workflow,
+    the latter is checkpointed and would replay a stale count after a crash.
+    """
+    from .backends import _build_task_result
+    from .client import get_client
+
+    workflow_id = DBOS.workflow_id or ''
+    try:
+        status = get_client().retrieve_workflow(workflow_id).get_status()
+        return _context_for(_build_task_result(workflow_id, status))
+    except Exception as exc:  # noqa: BLE001 - a failed read must not fail the task itself
+        logger.warning('could not read the task status, context.attempt defaults to 1', error=describe_error(exc))
+        return _fallback_task_context(task, args, kwargs)
+
+
+async def _abuild_task_context(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    """Async variant of :func:`_build_task_context` (the sync client read refuses a running event loop)."""
+    from .backends import _build_task_result
+    from .client import get_client
+
+    workflow_id = DBOS.workflow_id or ''
+    try:
+        handle = await get_client().retrieve_workflow_async(workflow_id)
+        status = await handle.get_status()
+        return _context_for(_build_task_result(workflow_id, status))
+    except Exception as exc:  # noqa: BLE001 - a failed read must not fail the task itself
+        logger.warning('could not read the task status, context.attempt defaults to 1', error=describe_error(exc))
+        return _fallback_task_context(task, args, kwargs)
+
+
+def _context_for(result: Any) -> Any:
+    from django.tasks import TaskContext
+
+    return TaskContext(task_result=result)
+
+
+def _fallback_task_context(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    """A context built without the system database: a single attempt, timestamps of now."""
     from datetime import datetime
 
     from django.tasks import TaskContext, TaskResult, TaskResultStatus
@@ -141,7 +183,7 @@ def execute_task_body(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str, A
 async def aexecute_task_body(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     """Async variant of :func:`execute_task_body`."""
     if task.takes_context:
-        args = (_build_task_context(task, args, kwargs), *args)
+        args = (await _abuild_task_context(task, args, kwargs), *args)
     if task.dbos_params.durable_operations:
         return await _acall_with_fresh_connections(task.func, *args, **kwargs)
     return await DBOS.run_step_async(

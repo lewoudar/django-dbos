@@ -15,6 +15,7 @@ from django.tasks import TaskResultStatus
 from django.tasks.exceptions import TaskResultDoesNotExist
 
 from django_dbos.backends import _build_task_result
+from django_dbos.exceptions import MaxRecoveryAttemptsExceeded, TaskCancelled, TaskTimedOut
 from django_dbos.tasks_registry import workflow_name_for_task
 
 from .tasks import add, async_add
@@ -32,8 +33,19 @@ def make_status(**overrides):
         'output': 3,
         'created_at': CREATED_AT_MS,
         'updated_at': CREATED_AT_MS + 1_000,
+        'dequeued_at': CREATED_AT_MS + 200,
+        'completed_at': CREATED_AT_MS + 1_000,
+        'workflow_timeout_ms': None,
+        'workflow_deadline_epoch_ms': None,
+        'recovery_attempts': 1,
+        'executor_id': 'worker-1',
     }
     return SimpleNamespace(**(values | overrides))
+
+
+def ms(value):
+    """A result timestamp as epoch milliseconds, to compare with DBOS' values."""
+    return None if value is None else round(value.timestamp() * 1000)
 
 
 def not_found():
@@ -68,20 +80,27 @@ class TestEnqueue:
             add.enqueue(1, 2)
 
     def test_already_running_result_keeps_its_timestamps(self, client):
-        # A worker may pick the workflow up before get_status() runs: only
-        # READY results are normalized to the enqueue time.
-        client.enqueue.return_value = sync_handle(make_status(status='PENDING', output=None))
+        # A worker may pick the workflow up before get_status() runs.
+        client.enqueue.return_value = sync_handle(make_status(status='PENDING', output=None, completed_at=None))
 
         result = add.enqueue(1, 2)
 
         assert result.status == TaskResultStatus.RUNNING
-        assert result.started_at == result.enqueued_at
-        assert result.enqueued_at.timestamp() * 1000 == CREATED_AT_MS
+        assert ms(result.enqueued_at) == CREATED_AT_MS
+        assert ms(result.started_at) == ms(result.last_attempted_at) == CREATED_AT_MS + 200
+        assert result.finished_at is None
 
 
 class TestAsyncEnqueue:
     def test_aenqueue_returns_a_fresh_ready_result(self, client):
-        status = make_status(status='ENQUEUED', name=workflow_name_for_task(async_add), output=None)
+        status = make_status(
+            status='ENQUEUED',
+            name=workflow_name_for_task(async_add),
+            output=None,
+            dequeued_at=None,
+            completed_at=None,
+            recovery_attempts=0,
+        )
         client.enqueue_async = AsyncMock(return_value=async_handle(status))
 
         result = asyncio.run(async_add.aenqueue(5, 6))
@@ -91,8 +110,9 @@ class TestAsyncEnqueue:
         assert client.enqueue_async.call_args.args[1:] == (5, 6)
         assert result.id == WORKFLOW_ID
         assert result.status == TaskResultStatus.READY
+        assert ms(result.enqueued_at) == CREATED_AT_MS
         assert result.started_at is None
-        assert result.last_attempted_at == result.enqueued_at
+        assert result.last_attempted_at is None
 
     def test_aenqueue_workflow_vanishing_raises(self, client):
         client.enqueue_async = AsyncMock(return_value=async_handle(error=not_found()))
@@ -135,6 +155,45 @@ class TestBuildTaskResult:
     def test_status_mapping(self, dbos_status, expected):
         assert _build_task_result(WORKFLOW_ID, make_status(status=dbos_status)).status == expected
 
+    @pytest.mark.parametrize(
+        ('fields', 'expected_class', 'message'),
+        [
+            pytest.param({}, TaskCancelled, 'The task was cancelled.', id='explicit-cancel'),
+            pytest.param(
+                # deadline set but not reached: cancelled from outside before its timeout
+                {'workflow_timeout_ms': 60_000, 'workflow_deadline_epoch_ms': CREATED_AT_MS + 60_000},
+                TaskCancelled,
+                'The task was cancelled.',
+                id='cancelled-before-its-deadline',
+            ),
+            pytest.param(
+                {'workflow_timeout_ms': 500, 'workflow_deadline_epoch_ms': CREATED_AT_MS + 500},
+                TaskTimedOut,
+                'The task exceeded its workflow_timeout of 0.5s.',
+                id='workflow-timeout',
+            ),
+        ],
+    )
+    def test_cancelled_workflow_reports_why(self, fields, expected_class, message):
+        # DBOS stores no error for a cancelled workflow: FAILED must not come without an explanation.
+        result = _build_task_result(WORKFLOW_ID, make_status(status='CANCELLED', output=None, **fields))
+
+        assert result.status == TaskResultStatus.FAILED
+        [error] = result.errors
+        assert error.exception_class is expected_class
+        assert error.traceback == repr(expected_class(message))
+
+    def test_exhausted_recovery_reports_why(self):
+        # DBOS stores no error when it gives up after repeated crashes either.
+        status = make_status(status='MAX_RECOVERY_ATTEMPTS_EXCEEDED', output=None, recovery_attempts=3)
+
+        result = _build_task_result(WORKFLOW_ID, status)
+
+        assert result.status == TaskResultStatus.FAILED
+        [error] = result.errors
+        assert error.exception_class is MaxRecoveryAttemptsExceeded
+        assert '3 execution or recovery attempts' in error.traceback
+
     def test_unknown_dbos_status_is_not_exposed(self):
         with pytest.raises(TaskResultDoesNotExist):
             _build_task_result(WORKFLOW_ID, make_status(status='SOMETHING_NEW'))
@@ -144,9 +203,62 @@ class TestBuildTaskResult:
         with pytest.raises(TaskResultDoesNotExist):
             _build_task_result(WORKFLOW_ID, make_status(name=name))
 
+    @pytest.mark.parametrize(
+        ('fields', 'started', 'finished'),
+        [
+            pytest.param(
+                {'status': 'ENQUEUED', 'dequeued_at': None, 'completed_at': None, 'recovery_attempts': 0},
+                None,
+                None,
+                id='waiting',
+            ),
+            pytest.param({'status': 'PENDING', 'completed_at': None}, 200, None, id='running'),
+            pytest.param({}, 200, 1_000, id='successful'),
+            pytest.param(
+                # a cron firing runs the task as a child started on the spot, without a queue
+                {'dequeued_at': None},
+                0,
+                1_000,
+                id='never-queued',
+            ),
+            pytest.param(
+                {
+                    'status': 'CANCELLED',
+                    'dequeued_at': None,
+                    'recovery_attempts': 0,
+                    'completed_at': CREATED_AT_MS + 50,
+                },
+                None,
+                50,
+                id='cancelled-before-starting',
+            ),
+            pytest.param(
+                # cancelling clears dequeued_at: the creation time is the best estimate left
+                {'status': 'CANCELLED', 'dequeued_at': None},
+                0,
+                1_000,
+                id='cancelled-while-running',
+            ),
+            pytest.param(
+                # DBOS sets no completed_at when it gives up recovering a workflow
+                {'status': 'MAX_RECOVERY_ATTEMPTS_EXCEEDED', 'completed_at': None, 'recovery_attempts': 3},
+                200,
+                1_000,
+                id='recovery-exhausted',
+            ),
+        ],
+    )
+    def test_timestamps(self, fields, started, finished):
+        result = _build_task_result(WORKFLOW_ID, make_status(output=None, **fields))
+
+        assert ms(result.enqueued_at) == CREATED_AT_MS
+        assert ms(result.started_at) == (None if started is None else CREATED_AT_MS + started)
+        assert result.last_attempted_at == result.started_at
+        assert ms(result.finished_at) == (None if finished is None else CREATED_AT_MS + finished)
+
     def test_missing_timestamps_and_inputs(self):
         result = _build_task_result(
-            WORKFLOW_ID, make_status(status='PENDING', created_at=None, input=None, output=None)
+            WORKFLOW_ID, make_status(status='PENDING', created_at=None, dequeued_at=None, input=None, output=None)
         )
 
         assert result.status == TaskResultStatus.RUNNING

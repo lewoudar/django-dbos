@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -13,7 +12,7 @@ from django.tasks.base import TaskError
 from django.tasks.exceptions import TaskResultDoesNotExist
 
 from .client import get_client
-from .exceptions import QueueNotDeclared
+from .exceptions import MaxRecoveryAttemptsExceeded, QueueNotDeclared, TaskCancelled, TaskTimedOut
 from .logging import logger
 from .tasks import DBOSTask
 from .tasks_registry import task_from_workflow_name, workflow_name_for_task
@@ -78,7 +77,7 @@ class DBOSBackend(BaseTaskBackend):
             status = handle.get_status()
         except dbos_error.DBOSNonExistentWorkflowError as exc:
             raise TaskResultDoesNotExist(handle.workflow_id) from exc
-        return _normalize_fresh_result(_build_task_result(handle.workflow_id, status))
+        return _build_task_result(handle.workflow_id, status)
 
     async def aenqueue(self, task: DBOSTask, args: Any, kwargs: Any) -> TaskResult:
         self.validate_task(task)
@@ -90,7 +89,7 @@ class DBOSBackend(BaseTaskBackend):
             status = await handle.get_status()
         except dbos_error.DBOSNonExistentWorkflowError as exc:
             raise TaskResultDoesNotExist(handle.workflow_id) from exc
-        return _normalize_fresh_result(_build_task_result(handle.workflow_id, status))
+        return _build_task_result(handle.workflow_id, status)
 
     def get_result(self, result_id: str) -> TaskResult:
         try:
@@ -122,8 +121,6 @@ class DBOSBackend(BaseTaskBackend):
             options['delay_seconds'] = delay_seconds
         if params.deduplication_id is not None:
             options['deduplication_id'] = params.deduplication_id
-        if params.queue_partition_key is not None:
-            options['queue_partition_key'] = params.queue_partition_key
         if params.workflow_timeout is not None:
             options['workflow_timeout'] = params.workflow_timeout
         return options  # type: ignore[return-value]
@@ -144,12 +141,51 @@ class DBOSBackend(BaseTaskBackend):
         logger.debug('enqueued task', task_name=task.name, queue=task.queue_name, workflow_id=workflow_id)
 
 
-def _normalize_fresh_result(result: TaskResult) -> TaskResult:
-    """Just-enqueued results: normalize timestamps to the enqueue time."""
-    if result.status == TaskResultStatus.READY:
-        now = datetime.now(tz=UTC)
-        result = replace(result, enqueued_at=now, started_at=None, finished_at=None, last_attempted_at=now)
-    return result
+def _task_error(error: BaseException) -> TaskError:
+    error_class = type(error)
+    return TaskError(exception_class_path=f'{error_class.__module__}.{error_class.__qualname__}', traceback=repr(error))
+
+
+def _cancellation_reason(status: Any) -> TaskCancelled:
+    """Why a CANCELLED workflow stopped: DBOS stores no error for it.
+
+    A workflow cancelled by its ``workflow_timeout`` was last updated at or
+    after its deadline; any other cancellation came from outside.
+    """
+    deadline = status.workflow_deadline_epoch_ms
+    if deadline is not None and status.updated_at is not None and status.updated_at >= deadline:
+        return TaskTimedOut(f'The task exceeded its workflow_timeout of {status.workflow_timeout_ms / 1000:g}s.')
+    return TaskCancelled('The task was cancelled.')
+
+
+def _recovery_exhausted(status: Any) -> MaxRecoveryAttemptsExceeded:
+    """Why DBOS gave up on a workflow after repeated crashes: it stores no error for it either."""
+    return MaxRecoveryAttemptsExceeded(
+        f'The task was interrupted too many times ({status.recovery_attempts} execution or recovery '
+        'attempts): DBOS no longer recovers it.'
+    )
+
+
+def _started_at(status: Any) -> datetime | None:
+    """When the task started, or ``None`` if it never did.
+
+    ``dequeued_at`` is when a worker took the workflow from its queue (its
+    latest dequeue, after a recovery). A started workflow without one either
+    never went through a queue — a cron firing runs the task as a child
+    started on the spot — or was cancelled, which clears it: its creation time
+    is the best estimate left. ``recovery_attempts`` counts the executions, so
+    it tells whether the workflow started at all.
+    """
+    if status.dequeued_at is not None:
+        return _epoch_to_datetime(status.dequeued_at)
+    if status.recovery_attempts:
+        return _epoch_to_datetime(status.created_at)
+    return None
+
+
+def _finished_at(status: Any) -> datetime | None:
+    """When a finished task finished: DBOS sets no ``completed_at`` when it gives up recovering it."""
+    return _epoch_to_datetime(status.completed_at if status.completed_at is not None else status.updated_at)
 
 
 def _build_task_result(workflow_id: str, status: Any) -> TaskResult:
@@ -164,36 +200,34 @@ def _build_task_result(workflow_id: str, status: Any) -> TaskResult:
     django_status = _STATUS_MAPPING[dbos_status]
     errors = []
     if status.error is not None:
-        error_class = type(status.error)
-        errors = [
-            TaskError(
-                exception_class_path=f'{error_class.__module__}.{error_class.__qualname__}',
-                traceback=repr(status.error),
-            )
-        ]
+        errors = [_task_error(status.error)]
+    elif dbos_status == 'CANCELLED':
+        errors = [_task_error(_cancellation_reason(status))]
+    elif dbos_status == 'MAX_RECOVERY_ATTEMPTS_EXCEEDED':
+        errors = [_task_error(_recovery_exhausted(status))]
 
     inputs = status.input or {}
-    enqueued_at = _epoch_to_datetime(status.created_at)
-    started_at = enqueued_at if django_status != TaskResultStatus.READY else None
+    started_at = _started_at(status)
     finished_at = (
-        _epoch_to_datetime(status.updated_at)
-        if django_status in (TaskResultStatus.SUCCESSFUL, TaskResultStatus.FAILED)
-        else None
+        _finished_at(status) if django_status in (TaskResultStatus.SUCCESSFUL, TaskResultStatus.FAILED) else None
     )
 
     result = TaskResult(
         task=task,
         id=workflow_id,
         status=django_status,
-        enqueued_at=enqueued_at,
+        enqueued_at=_epoch_to_datetime(status.created_at),
         started_at=started_at,
         finished_at=finished_at,
-        last_attempted_at=finished_at or started_at or enqueued_at,
+        # DBOS only keeps the latest dequeue: it is the start of the last attempt too.
+        last_attempted_at=started_at,
         args=list(inputs.get('args') or []),
         kwargs=dict(inputs.get('kwargs') or {}),
         backend=task.backend,
         errors=errors,
-        worker_ids=[],
+        # Django counts attempts as len(worker_ids). DBOS counts executions
+        # (recovery_attempts) but only keeps the latest executor.
+        worker_ids=[status.executor_id or ''] * (status.recovery_attempts or 0),
     )
     if django_status == TaskResultStatus.SUCCESSFUL and status.output is not None:
         object.__setattr__(result, '_return_value', status.output)

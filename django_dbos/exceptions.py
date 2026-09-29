@@ -17,6 +17,25 @@ class QueueNotDeclared(DjangoDbosError):
     """The task was enqueued on a queue that is not declared."""
 
 
+class TaskCancelled(DjangoDbosError):
+    """The task was cancelled before completing (admin, ``DBOSClient.cancel_workflow``).
+
+    Reported in ``TaskResult.errors`` of a ``FAILED`` result: Django has no
+    cancelled status of its own.
+    """
+
+
+class TaskTimedOut(TaskCancelled):
+    """The task was cancelled by DBOS because it exceeded its ``workflow_timeout``."""
+
+
+class MaxRecoveryAttemptsExceeded(DjangoDbosError):
+    """The task was interrupted (worker crashes) more times than ``max_recovery_attempts`` allows.
+
+    DBOS stops recovering it; reported in ``TaskResult.errors`` of a ``FAILED`` result.
+    """
+
+
 #: A DSN with credentials embedded in an error message, e.g.
 #: ``postgresql+psycopg://user:secrets@host/db``. Drivers and ORMs may include
 #: one in connection errors; the password is masked before showing the message.

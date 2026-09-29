@@ -46,7 +46,7 @@ class TestHelpers:
 
 class TestEnqueueOptions:
     def test_options_carry_every_dbos_param(self):
-        task = dbos_params(deduplication_id='dedup', queue_partition_key='tenant-1', workflow_timeout=90)(add)
+        task = dbos_params(deduplication_id='dedup', workflow_timeout=90)(add)
         task = task.using(priority=50, run_after=timezone.now() + timedelta(seconds=30))
         options = add.get_backend()._enqueue_options(task)
 
@@ -55,7 +55,6 @@ class TestEnqueueOptions:
         assert options['priority'] == 51
         assert 0 < options['delay_seconds'] <= 30
         assert options['deduplication_id'] == 'dedup'
-        assert options['queue_partition_key'] == 'tenant-1'
         assert options['workflow_timeout'] == 90
 
     def test_options_omit_unset_params(self):

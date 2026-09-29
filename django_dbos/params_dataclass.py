@@ -22,8 +22,6 @@ class DbosTaskParams:
         deduplication_id: Prevents duplicate enqueues on a queue: while a
             workflow with this ID is enqueued or running, further enqueues
             raise an error.
-        queue_partition_key: Enqueue on a partitioned queue (requires a
-            partition-enabled queue).
         workflow_timeout: Max wall-clock duration of the whole workflow, in
             seconds.
         durable_operations: Run the task function at workflow level instead of
@@ -39,6 +37,5 @@ class DbosTaskParams:
     step_interval_seconds: float = 1.0
     step_backoff_rate: float = 2.0
     deduplication_id: str | None = None
-    queue_partition_key: str | None = None
     workflow_timeout: float | None = None
     durable_operations: bool = False

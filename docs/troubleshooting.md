@@ -105,6 +105,39 @@ except dbos_error.DBOSQueueDeduplicatedError:
 The ID is set on the decorator, so it is the same for every enqueue of that
 task: at most one execution of it can be pending at any time.
 
+## A task is `FAILED` with `TaskCancelled` or `TaskTimedOut`
+
+The task did not fail on its own: it was cancelled.
+
+- **`TaskTimedOut`** — it ran longer than its `workflow_timeout` (see
+  [Task options](tasks.md#options-reference)). Raise the timeout, or split
+  the work into several tasks.
+- **`TaskCancelled`** — someone cancelled it, from the admin or with
+  `get_client().cancel_workflow()`.
+
+Either way, `get_client().resume_workflow(result.id)` (or **Resume** in the
+admin) picks it up again. See [Cancelling a task](tasks.md#cancelling-a-task).
+
+## A task is `FAILED` with `MaxRecoveryAttemptsExceeded`
+
+The task did not fail on its own either: the workers executing it were
+interrupted (crash, OOM, killed during a deploy) more times than its
+`max_recovery_attempts` allows, and DBOS stopped recovering it so that it
+cannot crash workers forever. `dbos status` counts these tasks
+("exhausted their recovery attempts").
+
+Find out why the workers died — often the task itself, using too much
+memory or time — then relaunch it with `get_client().resume_workflow(result.id)`
+(or **Resume** in the admin).
+
+## A cancelled task kept running
+
+Expected: cancelling cannot interrupt Python code. A task without
+`durable_operations` runs its function to the end, side effects included,
+and only its outcome is discarded; a `durable_operations` task finishes its
+current step, then stops. To make a long task stop early, split it into
+steps — see [Cancelling a task](tasks.md#cancelling-a-task).
+
 ## `TaskResultDoesNotExist`
 
 `task.get_result(result_id)` was given an ID that the system database does

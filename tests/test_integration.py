@@ -10,7 +10,9 @@ from dbos import DBOS
 from django.tasks import TaskResultStatus
 from django.utils import timezone
 
+from django_dbos.client import get_client
 from django_dbos.context import NoActiveDbosContext
+from django_dbos.exceptions import TaskCancelled, TaskTimedOut
 from django_dbos.scheduling import register_cron_schedules
 from django_dbos.tasks_registry import workflow_name_for_task
 
@@ -116,6 +118,16 @@ def test_workflow_timeout_cancels_an_enqueued_task(dbos_environment):
     status = DBOS.get_workflow_status(result.id)
     assert status is not None
     assert str(status.status) == 'CANCELLED'
+    assert result.errors[0].exception_class is TaskTimedOut
+
+
+def test_cancelled_task_reports_task_cancelled(dbos_environment):
+    # Deferred, so the cancellation lands before any worker starts it.
+    result = add.using(run_after=timezone.now() + timedelta(seconds=30)).enqueue(1, 2)
+    get_client().cancel_workflow(result.id)
+
+    result = wait_for_result(result, TaskResultStatus.FAILED)
+    assert result.errors[0].exception_class is TaskCancelled
 
 
 def test_workflow_timeout_applies_to_cron_firings(dbos_environment):

@@ -25,7 +25,6 @@ def dbos_params(
     step_interval_seconds: float = 1.0,
     step_backoff_rate: float = 2.0,
     deduplication_id: str | None = None,
-    queue_partition_key: str | None = None,
     workflow_timeout: float | None = None,
     durable_operations: bool = False,
 ) -> Any:
@@ -44,7 +43,6 @@ def dbos_params(
         step_interval_seconds=step_interval_seconds,
         step_backoff_rate=step_backoff_rate,
         deduplication_id=deduplication_id,
-        queue_partition_key=queue_partition_key,
         workflow_timeout=workflow_timeout,
         durable_operations=durable_operations,
     )
