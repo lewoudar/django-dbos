@@ -8,7 +8,13 @@ import pytest
 
 from django_dbos import checks, discovery
 from django_dbos import tasks as tasks_module
-from django_dbos.checks import check_dbos_settings, check_system_database_engine, check_task_modules
+from django_dbos.checks import (
+    check_dbos_settings,
+    check_declared_queues,
+    check_system_database_engine,
+    check_task_modules,
+    check_unknown_settings,
+)
 from tests import tasks as test_tasks
 
 
@@ -60,6 +66,88 @@ class TestCheckSystemDatabaseEngine:
 
 def test_default_database_engine_reads_the_default_connection():
     assert checks._default_database_engine() == 'django.db.backends.sqlite3'
+
+
+class TestCheckUnknownSettings:
+    def test_known_keys_report_nothing(self, settings):
+        settings.DJANGO_DBOS = {'QUEUES': {'default': None}, 'EXECUTOR_ID': 'worker-1'}
+        assert check_unknown_settings() == []
+
+    def test_a_setting_that_is_not_a_mapping_is_left_to_e001(self, settings):
+        settings.DJANGO_DBOS = ['QUEUES']
+        assert check_unknown_settings() == []
+
+    def test_a_typo_suggests_the_closest_key(self, settings):
+        settings.DJANGO_DBOS = {'QUEUE': {'default': None}}
+
+        errors = check_unknown_settings()
+
+        assert len(errors) == 1
+        assert errors[0].id == 'django_dbos.E003'
+        assert "'QUEUE'" in errors[0].msg
+        assert errors[0].hint == "Did you mean 'QUEUES'?"
+
+    def test_an_unrelated_key_lists_the_valid_ones(self, settings):
+        settings.DJANGO_DBOS = {'COLOUR': 'blue'}
+
+        errors = check_unknown_settings()
+
+        assert len(errors) == 1
+        assert errors[0].hint.startswith('Valid keys: NAME, ')
+
+
+DBOS_BACKEND = 'django_dbos.backends.DBOSBackend'
+
+
+class TestCheckDeclaredQueues:
+    @pytest.fixture(autouse=True)
+    def tasks(self, mocker):
+        mocker.patch.object(checks, '_known_tasks', return_value=(test_tasks.add, test_tasks.send_email))
+
+    def test_declared_queues_report_nothing(self):
+        assert check_declared_queues() == []
+
+    def test_undeclared_queue_of_a_backend_reports_an_error(self, settings):
+        settings.DJANGO_DBOS = {'QUEUES': {'default': None}}
+
+        errors = check_declared_queues()
+
+        assert len(errors) == 1
+        assert errors[0].id == 'django_dbos.E002'
+        assert errors[0].msg.startswith("Queue 'emails' of TASKS['dbos'] is not declared")
+        assert errors[0].hint == "Add it to DJANGO_DBOS['QUEUES'], for example {'emails': None}."
+
+    def test_implicit_default_queue_must_be_declared(self, settings):
+        settings.TASKS = {'dbos': {'BACKEND': DBOS_BACKEND}}
+        settings.DJANGO_DBOS = {'QUEUES': {'emails': None}}
+
+        errors = check_declared_queues()
+
+        assert [error.msg.split(' of ')[0] for error in errors] == ["Queue 'default'"]
+
+    def test_backend_accepting_any_queue_checks_the_tasks(self, settings, mocker):
+        mocker.patch.object(discovery, 'autodiscover_tasks', side_effect=ImportError('reported by E004'))
+        settings.TASKS = {'dbos': {'BACKEND': DBOS_BACKEND, 'QUEUES': []}}
+        settings.DJANGO_DBOS = {'QUEUES': {'default': None}}
+
+        errors = check_declared_queues()
+
+        assert len(errors) == 1
+        assert errors[0].msg.startswith("Queue 'emails' of task 'tests.tasks.send_email' is not declared")
+
+    def test_other_and_invalid_backends_are_ignored(self, settings):
+        settings.TASKS = {
+            'default': {'BACKEND': 'django.tasks.backends.immediate.ImmediateBackend', 'QUEUES': ['nowhere']},
+            'missing': {'BACKEND': 'no.such.Backend'},
+            'incomplete': {},
+            'not_a_class': {'BACKEND': 'django_dbos.checks.check_declared_queues'},
+        }
+        settings.DJANGO_DBOS = {'QUEUES': {'default': None}}
+        assert check_declared_queues() == []
+
+    def test_invalid_queues_setting_is_left_to_e001(self, settings):
+        settings.DJANGO_DBOS = {'QUEUES': ['emails']}
+        assert check_declared_queues() == []
 
 
 def placeholder() -> None:

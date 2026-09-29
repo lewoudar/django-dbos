@@ -26,6 +26,23 @@ DEFAULT_SYSTEM_DB_PREFIX = 'dbos_'
 
 DEFAULT_QUEUES = ('default',)
 
+#: Every key ``DJANGO_DBOS`` accepts; the system checks report any other one.
+KNOWN_SETTINGS = (
+    'NAME',
+    'APPLICATION_VERSION',
+    'SYSTEM_DATABASE_URL',
+    'SYSTEM_DB_PREFIX',
+    'SYSTEM_DB_SCHEMA',
+    'QUEUES',
+    'EXECUTOR_ID',
+    'SERIALIZER',
+    'CAPACITY',
+    'RUN_MIGRATIONS',
+    'SCHEDULER_POLLING_INTERVAL_SEC',
+    'ADMIN_ENABLED',
+    'ADMIN_SITE',
+)
+
 
 def get_dbos_setting(key: str, default: Any = None) -> Any:
     """Read a ``DJANGO_DBOS`` setting key."""

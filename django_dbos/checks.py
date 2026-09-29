@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import difflib
 import sys
 from typing import Any
 
@@ -54,8 +56,86 @@ def check_system_database_engine(app_configs: Any = None, **kwargs: Any) -> list
     ]
 
 
+@register()
+def check_unknown_settings(app_configs: Any = None, **kwargs: Any) -> list[CheckMessage]:
+    """Report ``DJANGO_DBOS`` keys django-dbos does not read: a typo would be silently ignored."""
+    from . import settings as settings_module
+
+    user_settings = getattr(settings, settings_module.SETTING_NAME, None)
+    if not isinstance(user_settings, dict):
+        return []
+    errors: list[CheckMessage] = []
+    for key in user_settings:
+        if key in settings_module.KNOWN_SETTINGS:
+            continue
+        matches = difflib.get_close_matches(str(key), settings_module.KNOWN_SETTINGS, n=1)
+        hint = (
+            f"Did you mean '{matches[0]}'?" if matches else f'Valid keys: {", ".join(settings_module.KNOWN_SETTINGS)}.'
+        )
+        errors.append(Error(f'{settings_module.SETTING_NAME}: unknown key {key!r}.', id='django_dbos.E003', hint=hint))
+    return errors
+
+
+def _dbos_backend_queues() -> dict[str, set[str]]:
+    """The queues each ``TASKS`` alias using the DBOS backend accepts (an empty set accepts any)."""
+    from django.tasks.base import DEFAULT_TASK_QUEUE_NAME
+    from django.utils.module_loading import import_string
+
+    from .backends import DBOSBackend
+
+    backends: dict[str, set[str]] = {}
+    for alias, params in (getattr(settings, 'TASKS', None) or {}).items():
+        try:
+            backend_class = import_string(params['BACKEND'])
+        except (ImportError, KeyError, TypeError):
+            continue  # an invalid backend is Django's own checks' business
+        if isinstance(backend_class, type) and issubclass(backend_class, DBOSBackend):
+            backends[alias] = set(params.get('QUEUES', [DEFAULT_TASK_QUEUE_NAME]))
+    return backends
+
+
 def _known_tasks() -> tuple[DBOSTask, ...]:
     return known_tasks()
+
+
+@register()
+def check_declared_queues(app_configs: Any = None, **kwargs: Any) -> list[CheckMessage]:
+    """Every queue a DBOS task can be enqueued on must be declared in ``DJANGO_DBOS["QUEUES"]``.
+
+    A backend listing its queues is checked through that list; a backend
+    accepting any queue (``QUEUES: []``) through the tasks known so far.
+    """
+    from . import settings as settings_module
+
+    try:
+        declared = {queue.name for queue in settings_module.resolve_queues()}
+    except ImproperlyConfiguredDbos:
+        return []  # reported by django_dbos.E001
+
+    def undeclared(queue: str, owner: str) -> Error:
+        return Error(
+            f"Queue {queue!r} of {owner} is not declared in {settings_module.SETTING_NAME}['QUEUES']: "
+            'enqueuing a task on it raises QueueNotDeclared.',
+            id='django_dbos.E002',
+            hint=f"Add it to {settings_module.SETTING_NAME}['QUEUES'], for example {{{queue!r}: None}}.",
+        )
+
+    backends = _dbos_backend_queues()
+    errors: list[CheckMessage] = [
+        undeclared(queue, f'TASKS[{alias!r}]')
+        for alias, queues in backends.items()
+        for queue in sorted(queues - declared)
+    ]
+    open_aliases = {alias for alias, queues in backends.items() if not queues}
+    if open_aliases:
+        with contextlib.suppress(Exception):  # a failing import is reported by django_dbos.E004
+            discovery.autodiscover_tasks()
+        errors.extend(
+            undeclared(task.queue_name, f"task '{task.module_path}'")
+            for task in _known_tasks()
+            if task.backend in open_aliases and task.queue_name not in declared
+        )
+    return errors
 
 
 def _is_discovered(task: DBOSTask, discovered: list[str], exposed: set[str]) -> bool:
