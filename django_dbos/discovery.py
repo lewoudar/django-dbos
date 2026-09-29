@@ -12,13 +12,16 @@ from .logging import logger
 TASK_MODULE_NAMES = ('tasks', 'dbos_tasks')
 
 
-def autodiscover_tasks() -> None:
+def autodiscover_tasks() -> list[str]:
     """Import each installed app's ``tasks``/``dbos_tasks`` module.
 
     Importing the module evaluates its ``@task`` decorators, which is required
     before enqueueing (workflows are registered lazily) and lets the worker
     and the cron scheduler see every declared task.
+
+    Returns the names of the imported modules.
     """
+    imported: list[str] = []
     for app_config in apps.get_app_configs():
         for module_name in TASK_MODULE_NAMES:
             module = f'{app_config.name}.{module_name}'
@@ -28,4 +31,6 @@ def autodiscover_tasks() -> None:
                 if module_has_submodule(app_config.module, module_name):
                     raise
                 continue
+            imported.append(module)
         logger.debug('autodiscovered tasks', app=app_config.name)
+    return imported

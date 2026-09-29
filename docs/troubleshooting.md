@@ -20,7 +20,9 @@ The task was recorded in the system database, but no worker executed it.
       executions.
 
 `python manage.py dbos status` shows the backlog of every queue, which tells
-you at a glance whether executions pile up.
+you at a glance whether executions pile up. `python manage.py check` reports
+tasks defined outside the modules the worker imports
+([`django_dbos.W001`](#system-checks)).
 
 ## `QueueNotDeclared` when enqueuing
 
@@ -36,6 +38,9 @@ DJANGO_DBOS = {
     'QUEUES': {'default': None, 'emails': None},
 }
 ```
+
+`python manage.py check` reports undeclared queues before any enqueue
+([`django_dbos.E002`](#system-checks)).
 
 ## A database error on the first enqueue
 
@@ -144,10 +149,13 @@ steps — see [Cancelling a task](tasks.md#cancelling-a-task).
 not know — a typo, an ID from another environment, or an execution deleted
 from the admin. Handle it like a missing object (for example with a 404).
 
-## System check errors
+## System checks
 
 Django's system checks — `manage.py check`, also run by `runserver` and
-`migrate` — validate the `DJANGO_DBOS` setting:
+`migrate` — catch most of the problems above before anything runs. Errors
+make `check` fail and stop `runserver`; warnings are only displayed, unless
+you pass `--fail-level WARNING`. Silence a warning that does not apply to
+you with `SILENCED_SYSTEM_CHECKS`.
 
 - **`django_dbos.E001`** — the setting is invalid: an unknown queue option,
   a malformed `CAPACITY` threshold, a `SERIALIZER` that cannot be imported...
@@ -157,6 +165,37 @@ Django's system checks — `manage.py check`, also run by `runserver` and
     (django_dbos.E001) DJANGO_DBOS['QUEUES']['default']: unknown option(s) concurency. Valid options: worker_concurrency, global_concurrency, limiter, polling_interval_sec, capacity.
     ```
 
+- **`django_dbos.E002`** — a queue tasks can be enqueued on is not declared
+  in `DJANGO_DBOS["QUEUES"]`; enqueuing would raise
+  [`QueueNotDeclared`](#queuenotdeclared-when-enqueuing). The queues come
+  from `TASKS[alias]["QUEUES"]` (`["default"]` when it is not set) or, when
+  a backend accepts any queue (`"QUEUES": []`), from the tasks' `queue_name`.
+- **`django_dbos.E003`** — `DJANGO_DBOS` holds a key django-dbos does not
+  know, most likely a typo that would otherwise be silently ignored:
+
+    ```
+    (django_dbos.E003) DJANGO_DBOS: unknown key 'QUEUE'.
+        HINT: Did you mean 'QUEUES'?
+    ```
+
+- **`django_dbos.E004`** — a `tasks.py` or `dbos_tasks.py` module cannot be
+  imported. The check imports them as the worker does, so the error shows
+  up in `runserver` rather than when the worker refuses to start.
+- **`django_dbos.W001`** — a task is defined in a module the worker does not
+  import, so [it stays `READY` forever](#a-task-stays-ready-forever). Move
+  it into (or import it from) the `tasks.py` or `dbos_tasks.py` module of an
+  installed app. The check only sees the tasks the checking process has
+  imported (through your URLs and views, typically): it cannot catch every
+  case.
+- **`django_dbos.W002`** — the system database is an in-memory SQLite
+  database, usually derived from an in-memory Django database. Every
+  process gets its own, so the worker never sees what the web process
+  enqueues. Use a file-based database or set `SYSTEM_DATABASE_URL`.
+- **`django_dbos.W003`** (`--deploy` only) — no `SERIALIZER` is set, so task
+  data is stored with pickle. See [Serialization](configuration.md#serialization).
+- **`django_dbos.W004`** (`--deploy` only) — no `EXECUTOR_ID` (nor
+  `DBOS__VMID`) is set, so every worker is `"local"`. See
+  [Executor identity](configuration.md#executor-identity).
 - **`django_dbos.I001`** — your default database is neither PostgreSQL nor
   SQLite, so django-dbos cannot derive the system database URL from it. Set
   `DJANGO_DBOS["SYSTEM_DATABASE_URL"]` or the `DBOS_SYSTEM_DATABASE_URL`

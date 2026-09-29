@@ -30,6 +30,9 @@ DJANGO_DBOS = {
 
 ## Options
 
+`DJANGO_DBOS` accepts the keys below; `manage.py check` reports any other
+one (`django_dbos.E003`, see [System checks](troubleshooting.md#system-checks)).
+
 | Key | Default | Description |
 | --- | --- | --- |
 | `NAME` | `DBOS_APPLICATION_NAME` env, else `"django"` | DBOS application name. |

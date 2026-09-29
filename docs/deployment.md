@@ -45,6 +45,17 @@ settle, then shows the same setup on a few platforms.
    your system database, or switch to `dbos.DBOSPortableJSONSerializer`. See
    [Serialization](configuration.md#serialization).
 6. `DEBUG = False`, as with any Django deployment.
+7. **Run the deployment checks** in CI or in the release step:
+
+    ```sh
+    python manage.py check --deploy --fail-level WARNING
+    ```
+
+    django-dbos adds its own ([System checks](troubleshooting.md#system-checks)),
+    among them `django_dbos.W003` (pickle) and `django_dbos.W004` (no
+    executor ID) for points 3 and 5. Warnings do not fail `check` without
+    `--fail-level WARNING`. Silence a warning you accepted with
+    `SILENCED_SYSTEM_CHECKS`, for example `['django_dbos.W003']`.
 
 A settings module covering the lot:
 

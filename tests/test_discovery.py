@@ -36,8 +36,9 @@ def make_app(tmp_path, monkeypatch, mocker):
 def test_imports_tasks_and_dbos_tasks_modules(make_app):
     make_app('discovery_both', {'tasks': 'LOADED = True', 'dbos_tasks': 'LOADED = True'})
 
-    discovery.autodiscover_tasks()
+    imported = discovery.autodiscover_tasks()
 
+    assert imported == ['discovery_both.tasks', 'discovery_both.dbos_tasks']
     assert 'discovery_both.tasks' in sys.modules
     assert 'discovery_both.dbos_tasks' in sys.modules
 
