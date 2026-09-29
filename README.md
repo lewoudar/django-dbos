@@ -157,6 +157,20 @@ database — they enqueue tasks, they never execute them.
 New to background tasks? [Your first task](https://github.com/lewoudar/django-dbos/blob/main/docs/first-task.md) walks through
 writing, running and checking one, step by step.
 
+## Using an AI coding agent
+
+django-dbos ships an [agent skill](https://github.com/lewoudar/django-dbos/tree/main/skills/django-dbos)
+that teaches AI coding agents (Claude Code, Codex, Cursor, OpenCode, Pi...)
+how to write tasks, workflows and cron schedules with it. Install it with the
+[`skills`](https://github.com/vercel-labs/skills) CLI:
+
+```bash
+npx skills add lewoudar/django-dbos --skill django-dbos
+```
+
+[AI agents](https://github.com/lewoudar/django-dbos/blob/main/docs/ai-agents.md) has the command for each agent
+and how to install the skill by hand.
+
 ## Examples
 
 Two runnable projects in [`examples/`](https://github.com/lewoudar/django-dbos/tree/main/examples/), each a standalone `uv`

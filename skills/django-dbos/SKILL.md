@@ -1,6 +1,6 @@
 ---
 name: django-dbos
-description: Use django-dbos, a DBOS-backed backend for Django's django.tasks framework (durable background tasks, cron scheduling, admin pages, worker-capacity reporting). Use this skill when adding or reviewing background tasks, `@task`/`@cron` functions, queue configuration, or `TASKS = {..., "BACKEND": "django_dbos.backends.DBOSBackend"}` in a Django project, or when the project already depends on django-dbos and you're asked to add a durable workflow, a scheduled job, or to test/deploy one.
+description: 'Use django-dbos, a DBOS-backed backend for Django''s django.tasks framework (durable background tasks, cron scheduling, admin pages, worker-capacity reporting). Use this skill when adding or reviewing background tasks, `@task`/`@cron` functions, queue configuration, or `TASKS = {..., "BACKEND": "django_dbos.backends.DBOSBackend"}` in a Django project, or when the project already depends on django-dbos and you''re asked to add a durable workflow, a scheduled job, or to test/deploy one.'
 license: MIT
 metadata:
   author: lewoudar
