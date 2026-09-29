@@ -164,9 +164,12 @@ class TestCheckInMemorySystemDatabase:
 
     @pytest.mark.parametrize(
         'dbos_settings',
-        [{'SYSTEM_DATABASE_URL': 'sqlite:///:memory:'}, {}],  # explicit, derived from the in-memory test database
+        [{'SYSTEM_DATABASE_URL': 'sqlite:///:memory:'}, {}],  # explicit, derived from an in-memory Django database
     )
-    def test_in_memory_database_reports_a_warning(self, settings, dbos_settings):
+    def test_in_memory_database_reports_a_warning(self, settings, mocker, dbos_settings):
+        # pytest-django renames the test database once a test uses it: pin the default database.
+        in_memory = {'ENGINE': 'django.db.backends.sqlite3', 'NAME': ':memory:'}
+        mocker.patch.object(settings_module, '_django_database_settings', return_value=in_memory)
         settings.DJANGO_DBOS = dbos_settings
 
         warnings = check_in_memory_system_database()
@@ -286,5 +289,6 @@ class TestCheckTaskModules:
         assert 'hunter2' not in errors[0].msg
 
 
-def test_known_tasks_are_the_tasks_declared_in_this_process():
-    assert test_tasks.add in checks._known_tasks()
+def test_known_tasks_are_the_tasks_declared_in_this_process(monkeypatch):
+    monkeypatch.setattr(tasks_module, '_known_tasks', {test_tasks.add.module_path: test_tasks.add})
+    assert checks._known_tasks() == (test_tasks.add,)
