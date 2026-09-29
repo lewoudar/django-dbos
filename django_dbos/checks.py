@@ -8,7 +8,7 @@ import sys
 from typing import Any
 
 from django.conf import settings
-from django.core.checks import CheckMessage, Error, Info, Warning, register
+from django.core.checks import CheckMessage, Error, Info, Tags, Warning, register
 
 from . import discovery
 from .exceptions import ImproperlyConfiguredDbos, describe_error
@@ -52,6 +52,61 @@ def check_system_database_engine(app_configs: Any = None, **kwargs: Any) -> list
             'The default Django database engine does not allow django-dbos to derive a DBOS system database URL.',
             id='django_dbos.I001',
             hint=f"Set {settings_module.SETTING_NAME}['SYSTEM_DATABASE_URL'] or DBOS_SYSTEM_DATABASE_URL.",
+        )
+    ]
+
+
+@register()
+def check_in_memory_system_database(app_configs: Any = None, **kwargs: Any) -> list[CheckMessage]:
+    """An in-memory SQLite system database lives in one process: web and worker never share it."""
+    from . import settings as settings_module
+
+    try:
+        url = settings_module.resolve_system_database_url()
+    except ImproperlyConfiguredDbos:
+        return []  # reported by django_dbos.E001
+    if not (url.startswith('sqlite') and ':memory:' in url):
+        return []
+    return [
+        Warning(
+            'The DBOS system database is an in-memory SQLite database: each process gets its own, '
+            'so tasks enqueued by the web process never reach the worker.',
+            id='django_dbos.W002',
+            hint=f"Use a file-based Django database, or set {settings_module.SETTING_NAME}['SYSTEM_DATABASE_URL'].",
+        )
+    ]
+
+
+@register(Tags.security, deploy=True)
+def check_serializer(app_configs: Any = None, **kwargs: Any) -> list[CheckMessage]:
+    from . import settings as settings_module
+
+    if settings_module.get_dbos_setting('SERIALIZER') is not None:
+        return []
+    return [
+        Warning(
+            'No SERIALIZER is set: DBOS stores task arguments, results and errors with pickle, so anyone '
+            'able to write to the system database can run code in your workers and web processes.',
+            id='django_dbos.W003',
+            hint=f"Set {settings_module.SETTING_NAME}['SERIALIZER'] = 'dbos.DBOSPortableJSONSerializer' "
+            'if your task arguments and results are plain data.',
+        )
+    ]
+
+
+@register(deploy=True)
+def check_executor_id(app_configs: Any = None, **kwargs: Any) -> list[CheckMessage]:
+    from . import settings as settings_module
+
+    if settings_module.resolve_executor_id() is not None:
+        return []
+    return [
+        Warning(
+            'No executor ID is set: every worker is named "local", so workflow records, '
+            '`dbos status` and recovery on restart cannot tell the workers apart.',
+            id='django_dbos.W004',
+            hint=f"Give each worker a stable identity with {settings_module.SETTING_NAME}['EXECUTOR_ID'] "
+            'or the DBOS__VMID environment variable (the machine or pod name).',
         )
     ]
 

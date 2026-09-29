@@ -5,16 +5,23 @@ import sys
 import types
 
 import pytest
+from django.core.checks import Tags
+from django.core.checks.registry import registry
 
 from django_dbos import checks, discovery
+from django_dbos import settings as settings_module
 from django_dbos import tasks as tasks_module
 from django_dbos.checks import (
     check_dbos_settings,
     check_declared_queues,
+    check_executor_id,
+    check_in_memory_system_database,
+    check_serializer,
     check_system_database_engine,
     check_task_modules,
     check_unknown_settings,
 )
+from django_dbos.exceptions import ImproperlyConfiguredDbos
 from tests import tasks as test_tasks
 
 
@@ -148,6 +155,64 @@ class TestCheckDeclaredQueues:
     def test_invalid_queues_setting_is_left_to_e001(self, settings):
         settings.DJANGO_DBOS = {'QUEUES': ['emails']}
         assert check_declared_queues() == []
+
+
+class TestCheckInMemorySystemDatabase:
+    @pytest.fixture(autouse=True)
+    def no_env_url(self, monkeypatch):
+        monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
+
+    @pytest.mark.parametrize(
+        'dbos_settings',
+        [{'SYSTEM_DATABASE_URL': 'sqlite:///:memory:'}, {}],  # explicit, derived from the in-memory test database
+    )
+    def test_in_memory_database_reports_a_warning(self, settings, dbos_settings):
+        settings.DJANGO_DBOS = dbos_settings
+
+        warnings = check_in_memory_system_database()
+
+        assert len(warnings) == 1
+        assert warnings[0].id == 'django_dbos.W002'
+
+    @pytest.mark.parametrize('url', ['sqlite:///db.sqlite3-dbos.sqlite', 'postgresql://db/dbos_app'])
+    def test_shared_database_reports_nothing(self, settings, url):
+        settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': url}
+        assert check_in_memory_system_database() == []
+
+    def test_unresolvable_url_is_left_to_e001(self, mocker):
+        mocker.patch.object(
+            settings_module, 'resolve_system_database_url', side_effect=ImproperlyConfiguredDbos('no database')
+        )
+        assert check_in_memory_system_database() == []
+
+
+class TestDeploymentChecks:
+    @pytest.fixture(autouse=True)
+    def no_env(self, monkeypatch):
+        monkeypatch.delenv('DBOS__VMID', raising=False)
+
+    def test_they_only_run_with_deploy(self):
+        deploy_checks = set(registry.get_checks(include_deployment_checks=True))
+        default_checks = set(registry.get_checks())
+        assert {check_serializer, check_executor_id} <= deploy_checks - default_checks
+
+    def test_serializer_check_is_a_security_check(self):
+        assert Tags.security in check_serializer.tags
+
+    def test_defaults_report_pickle_and_the_executor_id(self, settings):
+        settings.DJANGO_DBOS = {}
+        assert [message.id for message in check_serializer()] == ['django_dbos.W003']
+        assert [message.id for message in check_executor_id()] == ['django_dbos.W004']
+
+    def test_configured_deployment_reports_nothing(self, settings):
+        settings.DJANGO_DBOS = {'SERIALIZER': 'dbos.DBOSPortableJSONSerializer', 'EXECUTOR_ID': 'worker-1'}
+        assert check_serializer() == []
+        assert check_executor_id() == []
+
+    def test_executor_id_from_the_environment(self, settings, monkeypatch):
+        settings.DJANGO_DBOS = {}
+        monkeypatch.setenv('DBOS__VMID', 'machine-1')
+        assert check_executor_id() == []
 
 
 def placeholder() -> None:
