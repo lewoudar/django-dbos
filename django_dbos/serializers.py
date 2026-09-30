@@ -110,17 +110,17 @@ class MsgspecMsgpackSerializer(Serializer):
         self._encoder = msgspec.msgpack.Encoder(enc_hook=self._enc_hook)
         self._decoder = msgspec.msgpack.Decoder(ext_hook=self._ext_hook)
         # Encode and decode the payload carried by an exception's extension type.
-        self._payload_encoder = msgspec.msgpack.Encoder()
-        self._payload_decoder = msgspec.msgpack.Decoder(ErrorPayload)
+        self._error_payload_encoder = msgspec.msgpack.Encoder()
+        self._error_payload_decoder = msgspec.msgpack.Decoder(ErrorPayload)
 
     def _enc_hook(self, value: Any) -> Any:
         if isinstance(value, BaseException):
-            return msgspec.msgpack.Ext(_ERROR_EXT_CODE, self._payload_encoder.encode(_error_payload(value)))
+            return msgspec.msgpack.Ext(_ERROR_EXT_CODE, self._error_payload_encoder.encode(_error_payload(value)))
         raise _unsupported(value)
 
     def _ext_hook(self, code: int, data: memoryview) -> Any:
         if code == _ERROR_EXT_CODE:
-            return _error_from_payload(self._payload_decoder.decode(data))
+            return _error_from_payload(self._error_payload_decoder.decode(data))
         return msgspec.msgpack.Ext(code, bytes(data))
 
     def serialize(self, data: Any) -> str:
