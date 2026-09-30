@@ -192,7 +192,9 @@ you with `SILENCED_SYSTEM_CHECKS`.
   process gets its own, so the worker never sees what the web process
   enqueues. Use a file-based database or set `SYSTEM_DATABASE_URL`.
 - **`django_dbos.W003`** (`--deploy` only) — no `SERIALIZER` is set, so task
-  data is stored with pickle. See [Serialization](configuration.md#serialization).
+  data is stored with pickle. Switch to a safe serializer, for example
+  `django_dbos.serializers.MsgspecJSONSerializer`; see
+  [Serialization](configuration.md#serialization).
 - **`django_dbos.W004`** (`--deploy` only) — no `EXECUTOR_ID` (nor
   `DBOS__VMID`) is set, so every worker is `"local"`. See
   [Executor identity](configuration.md#executor-identity).
