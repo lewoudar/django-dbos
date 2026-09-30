@@ -1,5 +1,7 @@
 """Tests for the msgspec serializers."""
 
+import base64
+import importlib
 import sys
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -7,6 +9,7 @@ from decimal import Decimal
 import msgspec
 import pytest
 
+from django_dbos.checks import check_dbos_settings
 from django_dbos.exceptions import ImproperlyConfiguredDbos, TaskFailure
 from django_dbos.serializers import MsgspecJSONSerializer, MsgspecMsgpackSerializer
 
@@ -76,6 +79,38 @@ class TestExceptions:
         value = {'__django_dbos_error__': {'type': 'x', 'message': 'y'}, 'other': 1}
         assert serializer.deserialize(serializer.serialize(value)) == value
 
+    @pytest.mark.parametrize(
+        'payload',
+        [{'type': 'x'}, {'type': 1, 'message': 'y'}, 'not a mapping'],
+        ids=['missing-field', 'wrong-type', 'not-a-mapping'],
+    )
+    def test_json_data_that_merely_looks_like_an_error_is_left_alone(self, payload):
+        serializer = MsgspecJSONSerializer()
+        value = {'__django_dbos_error__': payload}
+        assert serializer.deserialize(serializer.serialize(value)) == value
+
+    @pytest.mark.parametrize(
+        ('serializer_class', 'encode'),
+        [
+            (MsgspecJSONSerializer, lambda payload: msgspec.json.encode({'__django_dbos_error__': payload}).decode()),
+            (
+                MsgspecMsgpackSerializer,
+                lambda payload: base64.b64encode(
+                    msgspec.msgpack.encode(msgspec.msgpack.Ext(1, msgspec.msgpack.encode(payload)))
+                ).decode(),
+            ),
+        ],
+        ids=['json', 'msgpack'],
+    )
+    def test_traceback_is_optional(self, serializer_class, encode):
+        error = serializer_class().deserialize(encode({'type': 'builtins.ValueError', 'message': 'boom'}))
+        assert (error.exception_class_path, error.message, error.traceback) == ('builtins.ValueError', 'boom', '')
+
+    def test_msgpack_rejects_a_corrupted_error(self):
+        corrupted = msgspec.msgpack.encode(msgspec.msgpack.Ext(1, msgspec.msgpack.encode({'type': 'x'})))
+        with pytest.raises(msgspec.ValidationError, match='message'):
+            MsgspecMsgpackSerializer().deserialize(base64.b64encode(corrupted).decode())
+
     def test_msgpack_finds_nested_exceptions(self):
         serializer = MsgspecMsgpackSerializer()
         [error] = serializer.deserialize(serializer.serialize([ValueError('boom')]))
@@ -102,8 +137,23 @@ def test_names(serializer_class, name):
     assert serializer_class().name() == name
 
 
-@pytest.mark.parametrize('serializer_class', SERIALIZERS)
-def test_missing_msgspec_tells_how_to_install_it(monkeypatch, serializer_class):
+@pytest.fixture()
+def without_msgspec(monkeypatch):
+    """msgspec is not installed and django_dbos.serializers not imported yet."""
     monkeypatch.setitem(sys.modules, 'msgspec', None)
+    monkeypatch.delitem(sys.modules, 'django_dbos.serializers')
+
+
+def test_missing_msgspec_tells_how_to_install_it(without_msgspec):
     with pytest.raises(ImproperlyConfiguredDbos, match=r'django-dbos\[msgspec\]'):
-        serializer_class()
+        importlib.import_module('django_dbos.serializers')
+
+
+def test_missing_msgspec_is_reported_by_the_system_checks(without_msgspec, settings, monkeypatch):
+    monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
+    settings.DJANGO_DBOS = {'SERIALIZER': 'django_dbos.serializers.MsgspecJSONSerializer'}
+
+    [error] = check_dbos_settings()
+
+    assert error.id == 'django_dbos.E001'
+    assert 'django-dbos[msgspec]' in error.msg

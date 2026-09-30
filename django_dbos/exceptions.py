@@ -37,11 +37,15 @@ class MaxRecoveryAttemptsExceeded(DjangoDbosError):
 
 
 class TaskFailure(DjangoDbosError):
-    """An exception read back from the system database by a msgspec serializer.
+    """A task's exception read back from the system database without its original class.
 
-    The original exception class is never imported (that is what makes the
-    serializer safe, unlike pickle): its dotted path, message and formatted
-    traceback are kept instead, and ``TaskResult.errors`` reports them.
+    A safe serializer stores an exception as its class's dotted path, its
+    message and its formatted traceback, and reads it back as this exception:
+    unlike pickle, it never imports the original class. ``TaskResult.errors``
+    reports the original class path and traceback.
+
+    The msgspec serializers (``django_dbos.serializers``) produce it; any
+    serializer storing errors the same way can reuse it.
     """
 
     def __init__(self, exception_class_path: str, message: str, traceback: str = '') -> None:

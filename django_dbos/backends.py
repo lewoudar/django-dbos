@@ -143,7 +143,7 @@ class DBOSBackend(BaseTaskBackend):
 
 def _task_error(error: BaseException) -> TaskError:
     if isinstance(error, TaskFailure):
-        # Read back by a msgspec serializer: the original class and traceback were kept.
+        # Stored without its class by a safe serializer: report the original class and traceback.
         return TaskError(
             exception_class_path=error.exception_class_path,
             traceback=error.traceback or f'{error.exception_class_path}: {error.message}',
