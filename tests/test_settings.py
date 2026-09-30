@@ -219,6 +219,11 @@ class TestSerializerResolution:
         settings.DJANGO_DBOS = {'SERIALIZER': DBOSPortableJSONSerializer if value == 'class' else value}
         assert isinstance(dbos_settings.resolve_serializer(), DBOSPortableJSONSerializer)
 
+    @pytest.mark.parametrize('name', ['MsgspecJSONSerializer', 'MsgspecMsgpackSerializer'])
+    def test_msgspec_serializers_resolve_from_their_path(self, settings, name):
+        settings.DJANGO_DBOS = {'SERIALIZER': f'django_dbos.serializers.{name}'}
+        assert type(dbos_settings.resolve_serializer()).__name__ == name
+
     def test_instance_is_used_as_is(self, settings):
         instance = DBOSPortableJSONSerializer()
         settings.DJANGO_DBOS = {'SERIALIZER': instance}
