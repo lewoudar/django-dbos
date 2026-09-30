@@ -1,6 +1,7 @@
 """Tests for the msgspec serializers."""
 
 import base64
+import importlib
 import sys
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -8,6 +9,7 @@ from decimal import Decimal
 import msgspec
 import pytest
 
+from django_dbos.checks import check_dbos_settings
 from django_dbos.exceptions import ImproperlyConfiguredDbos, TaskFailure
 from django_dbos.serializers import MsgspecJSONSerializer, MsgspecMsgpackSerializer
 
@@ -135,8 +137,23 @@ def test_names(serializer_class, name):
     assert serializer_class().name() == name
 
 
-@pytest.mark.parametrize('serializer_class', SERIALIZERS)
-def test_missing_msgspec_tells_how_to_install_it(monkeypatch, serializer_class):
+@pytest.fixture()
+def without_msgspec(monkeypatch):
+    """msgspec is not installed and django_dbos.serializers not imported yet."""
     monkeypatch.setitem(sys.modules, 'msgspec', None)
+    monkeypatch.delitem(sys.modules, 'django_dbos.serializers')
+
+
+def test_missing_msgspec_tells_how_to_install_it(without_msgspec):
     with pytest.raises(ImproperlyConfiguredDbos, match=r'django-dbos\[msgspec\]'):
-        serializer_class()
+        importlib.import_module('django_dbos.serializers')
+
+
+def test_missing_msgspec_is_reported_by_the_system_checks(without_msgspec, settings, monkeypatch):
+    monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
+    settings.DJANGO_DBOS = {'SERIALIZER': 'django_dbos.serializers.MsgspecJSONSerializer'}
+
+    [error] = check_dbos_settings()
+
+    assert error.id == 'django_dbos.E001'
+    assert 'django-dbos[msgspec]' in error.msg
