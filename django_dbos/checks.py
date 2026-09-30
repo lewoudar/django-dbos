@@ -88,8 +88,9 @@ def check_serializer(app_configs: Any = None, **kwargs: Any) -> list[CheckMessag
             'No SERIALIZER is set: DBOS stores task arguments, results and errors with pickle, so anyone '
             'able to write to the system database can run code in your workers and web processes.',
             id='django_dbos.W003',
-            hint=f"Set {settings_module.SETTING_NAME}['SERIALIZER'] = 'dbos.DBOSPortableJSONSerializer' "
-            'if your task arguments and results are plain data.',
+            hint=f"If your task arguments and results are plain data, set {settings_module.SETTING_NAME}['SERIALIZER'] "
+            "to 'django_dbos.serializers.MsgspecJSONSerializer' (extra django-dbos[msgspec]) "
+            "or 'dbos.DBOSPortableJSONSerializer'.",
         )
     ]
 

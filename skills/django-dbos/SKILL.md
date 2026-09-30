@@ -335,8 +335,13 @@ actually about durability.
   rate limiter, scaling thresholds).
 - **Serialization**: pickle by default — fine, but treat the system database
   as trusted (anyone who can write to it can run code in your workers).
-  Switch to `'SERIALIZER': 'dbos.DBOSPortableJSONSerializer'` when task
-  args/results are plain data.
+  When task args/results are plain data, prefer
+  `'SERIALIZER': 'django_dbos.serializers.MsgspecJSONSerializer'` (extra
+  `django-dbos[msgspec]`: safe and the fastest; `MsgspecMsgpackSerializer`
+  also keeps aware datetimes and bytes). Tuples/sets come back as lists,
+  Decimal/UUID/dates as strings; failed tasks still report the original
+  exception class and traceback. `dbos.DBOSPortableJSONSerializer` is the
+  slower dependency-free option.
 - **`RUN_MIGRATIONS`** (default `True`): a worker creates/migrates the system
   database on every launch — convenient in dev, wrong in production (DDL
   rights on the worker role, migration races on first boot of a new

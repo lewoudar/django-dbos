@@ -41,6 +41,8 @@ sentry = ["sentry-sdk>=2.19"]
 metrics = ["psutil>=7.0"]
 # What the shipped pytest plugin (dbos_inline / dbos_system fixtures) imports at runtime.
 test = ["pytest>=8.4", "testcontainers[postgres]>=4.13"]
+# Fast, safe serializers (django_dbos.serializers).
+msgspec = ["msgspec>=0.21"]
 
 [dependency-groups]
 dev = [
@@ -55,6 +57,7 @@ dev = [
 ]
 test = [
     "model-bakery>=1.20",
+    "msgspec>=0.21",
     "pytest>=8.4",
     "pytest-cov>=7.0",
     "pytest-django>=4.11",

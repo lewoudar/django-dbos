@@ -12,7 +12,7 @@ from django.tasks.base import TaskError
 from django.tasks.exceptions import TaskResultDoesNotExist
 
 from .client import get_client
-from .exceptions import MaxRecoveryAttemptsExceeded, QueueNotDeclared, TaskCancelled, TaskTimedOut
+from .exceptions import MaxRecoveryAttemptsExceeded, QueueNotDeclared, TaskCancelled, TaskFailure, TaskTimedOut
 from .logging import logger
 from .tasks import DBOSTask
 from .tasks_registry import task_from_workflow_name, workflow_name_for_task
@@ -142,6 +142,12 @@ class DBOSBackend(BaseTaskBackend):
 
 
 def _task_error(error: BaseException) -> TaskError:
+    if isinstance(error, TaskFailure):
+        # Read back by a msgspec serializer: the original class and traceback were kept.
+        return TaskError(
+            exception_class_path=error.exception_class_path,
+            traceback=error.traceback or f'{error.exception_class_path}: {error.message}',
+        )
     error_class = type(error)
     return TaskError(exception_class_path=f'{error_class.__module__}.{error_class.__qualname__}', traceback=repr(error))
 

@@ -42,7 +42,8 @@ settle, then shows the same setup on a few platforms.
    tables in their own `dbos` schema is fine and avoids creating a second
    database on platforms where that is awkward.
 5. **Serialization.** Decide whether pickle (the default) is acceptable for
-   your system database, or switch to `dbos.DBOSPortableJSONSerializer`. See
+   your system database, or switch to a safe serializer such as
+   `django_dbos.serializers.MsgspecJSONSerializer`. See
    [Serialization](configuration.md#serialization).
 6. `DEBUG = False`, as with any Django deployment.
 7. **Run the deployment checks** in CI or in the release step:
@@ -67,7 +68,7 @@ DJANGO_DBOS = {
     'SYSTEM_DATABASE_URL': os.environ['DBOS_SYSTEM_DATABASE_URL'],
     'EXECUTOR_ID': os.environ.get('WORKER_INSTANCE_ID'),
     'RUN_MIGRATIONS': False,
-    'SERIALIZER': 'dbos.DBOSPortableJSONSerializer',
+    'SERIALIZER': 'django_dbos.serializers.MsgspecJSONSerializer',  # django-dbos[msgspec]
     'QUEUES': {'default': None, 'emails': {'worker_concurrency': 4}},
 }
 ```

@@ -15,7 +15,7 @@ from django.tasks import TaskResultStatus
 from django.tasks.exceptions import TaskResultDoesNotExist
 
 from django_dbos.backends import _build_task_result
-from django_dbos.exceptions import MaxRecoveryAttemptsExceeded, TaskCancelled, TaskTimedOut
+from django_dbos.exceptions import MaxRecoveryAttemptsExceeded, TaskCancelled, TaskFailure, TaskTimedOut
 from django_dbos.tasks_registry import workflow_name_for_task
 
 from .tasks import add, async_add
@@ -193,6 +193,21 @@ class TestBuildTaskResult:
         [error] = result.errors
         assert error.exception_class is MaxRecoveryAttemptsExceeded
         assert '3 execution or recovery attempts' in error.traceback
+
+    @pytest.mark.parametrize(
+        ('traceback', 'expected'),
+        [('Traceback ...\nValueError: boom\n', 'Traceback ...\nValueError: boom\n'), ('', 'builtins.ValueError: boom')],
+        ids=['with-traceback', 'without-traceback'],
+    )
+    def test_error_read_by_a_msgspec_serializer_reports_the_original_class(self, traceback, expected):
+        error = TaskFailure('builtins.ValueError', 'boom', traceback)
+
+        result = _build_task_result(WORKFLOW_ID, make_status(status='ERROR', output=None, error=error))
+
+        [task_error] = result.errors
+        assert task_error.exception_class_path == 'builtins.ValueError'
+        assert task_error.exception_class is ValueError
+        assert task_error.traceback == expected
 
     def test_unknown_dbos_status_is_not_exposed(self):
         with pytest.raises(TaskResultDoesNotExist):

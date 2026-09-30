@@ -36,6 +36,24 @@ class MaxRecoveryAttemptsExceeded(DjangoDbosError):
     """
 
 
+class TaskFailure(DjangoDbosError):
+    """An exception read back from the system database by a msgspec serializer.
+
+    The original exception class is never imported (that is what makes the
+    serializer safe, unlike pickle): its dotted path, message and formatted
+    traceback are kept instead, and ``TaskResult.errors`` reports them.
+    """
+
+    def __init__(self, exception_class_path: str, message: str, traceback: str = '') -> None:
+        super().__init__(exception_class_path, message, traceback)
+        self.exception_class_path = exception_class_path
+        self.message = message
+        self.traceback = traceback
+
+    def __str__(self) -> str:
+        return self.message
+
+
 #: A DSN with credentials embedded in an error message, e.g.
 #: ``postgresql+psycopg://user:secrets@host/db``. Drivers and ORMs may include
 #: one in connection errors; the password is masked before showing the message.

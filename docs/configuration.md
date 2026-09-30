@@ -55,15 +55,38 @@ Task arguments, results and errors are stored in the system database with
 DBOS' serializer, which is **pickle** by default. Pickle accepts any Python
 object but is not safe against untrusted data: anyone able to write to the
 system database can run code in your workers and in every process reading
-results. Treat the system database as a trusted store — or switch to
-DBOS' portable JSON serializer when your task arguments and results are
-plain data (JSON scalars, lists, dicts, datetimes, ...):
+results. Treat the system database as a trusted store, or pick a safe
+serializer:
+
+| `SERIALIZER` | Safe | Speed | Stored as | Values that come back as they were |
+| --- | --- | --- | --- | --- |
+| `None` (DBOS' pickle) | no | fast | base64 pickle | any Python object |
+| `'django_dbos.serializers.MsgspecJSONSerializer'` | yes | fastest | JSON | JSON types |
+| `'django_dbos.serializers.MsgspecMsgpackSerializer'` | yes | fast | base64 msgpack | JSON types, aware `datetime`, `bytes` |
+| `'dbos.DBOSPortableJSONSerializer'` | yes | slow | JSON | JSON types |
+
+On a 1000-row payload, a round trip takes about 0.36 ms with msgspec JSON,
+0.56 ms with msgspec msgpack, 0.78 ms with pickle and 2.9 ms with DBOS'
+portable JSON.
+
+The msgspec serializers need the `msgspec` extra:
+
+```bash
+uv add "django-dbos[msgspec]"
+```
 
 ```python
 DJANGO_DBOS = {
-    'SERIALIZER': 'dbos.DBOSPortableJSONSerializer',
+    'SERIALIZER': 'django_dbos.serializers.MsgspecJSONSerializer',
 }
 ```
+
+With any safe serializer, task arguments and results must be plain data.
+Tuples and sets come back as lists; `Decimal`, `UUID`, dates, times, enums
+and naive datetimes come back as strings; dataclasses as dicts. With the
+msgspec serializers, a failed task's `TaskResult.errors` still reports the
+original exception class and its traceback; the class itself is never
+imported when the error is read back.
 
 `SERIALIZER` accepts a dotted path, a `dbos.Serializer` subclass or an
 instance (a custom serializer implements `serialize()` / `deserialize()`).
