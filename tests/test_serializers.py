@@ -1,5 +1,6 @@
 """Tests for the msgspec serializers."""
 
+import base64
 import sys
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -75,6 +76,38 @@ class TestExceptions:
         serializer = MsgspecJSONSerializer()
         value = {'__django_dbos_error__': {'type': 'x', 'message': 'y'}, 'other': 1}
         assert serializer.deserialize(serializer.serialize(value)) == value
+
+    @pytest.mark.parametrize(
+        'payload',
+        [{'type': 'x'}, {'type': 1, 'message': 'y'}, 'not a mapping'],
+        ids=['missing-field', 'wrong-type', 'not-a-mapping'],
+    )
+    def test_json_data_that_merely_looks_like_an_error_is_left_alone(self, payload):
+        serializer = MsgspecJSONSerializer()
+        value = {'__django_dbos_error__': payload}
+        assert serializer.deserialize(serializer.serialize(value)) == value
+
+    @pytest.mark.parametrize(
+        ('serializer_class', 'encode'),
+        [
+            (MsgspecJSONSerializer, lambda payload: msgspec.json.encode({'__django_dbos_error__': payload}).decode()),
+            (
+                MsgspecMsgpackSerializer,
+                lambda payload: base64.b64encode(
+                    msgspec.msgpack.encode(msgspec.msgpack.Ext(1, msgspec.msgpack.encode(payload)))
+                ).decode(),
+            ),
+        ],
+        ids=['json', 'msgpack'],
+    )
+    def test_traceback_is_optional(self, serializer_class, encode):
+        error = serializer_class().deserialize(encode({'type': 'builtins.ValueError', 'message': 'boom'}))
+        assert (error.exception_class_path, error.message, error.traceback) == ('builtins.ValueError', 'boom', '')
+
+    def test_msgpack_rejects_a_corrupted_error(self):
+        corrupted = msgspec.msgpack.encode(msgspec.msgpack.Ext(1, msgspec.msgpack.encode({'type': 'x'})))
+        with pytest.raises(msgspec.ValidationError, match='message'):
+            MsgspecMsgpackSerializer().deserialize(base64.b64encode(corrupted).decode())
 
     def test_msgpack_finds_nested_exceptions(self):
         serializer = MsgspecMsgpackSerializer()

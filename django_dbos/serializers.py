@@ -27,6 +27,7 @@ serializer: its name is stored with every workflow.
 from __future__ import annotations
 
 import base64
+import functools
 import traceback
 from typing import Any
 
@@ -50,21 +51,34 @@ def _import_msgspec() -> Any:
     return msgspec
 
 
-def _error_payload(exc: BaseException) -> dict[str, str]:
+@functools.cache
+def _error_payload_type() -> Any:
+    """The msgspec ``Struct`` storing an exception, built once (msgspec is an optional dependency)."""
+    msgspec = _import_msgspec()
+
+    class ErrorPayload(msgspec.Struct, frozen=True):
+        type: str
+        message: str
+        traceback: str = ''
+
+    return ErrorPayload
+
+
+def _error_payload(exc: BaseException) -> Any:
     error_class = type(exc)
-    return {
-        'type': f'{error_class.__module__}.{error_class.__qualname__}',
-        'message': str(exc),
-        'traceback': ''.join(traceback.format_exception(exc)),
-    }
+    return _error_payload_type()(
+        type=f'{error_class.__module__}.{error_class.__qualname__}',
+        message=str(exc),
+        traceback=''.join(traceback.format_exception(exc)),
+    )
 
 
 def _unsupported(value: Any) -> TypeError:
     return TypeError(f'Objects of type {type(value).__qualname__} cannot be serialized by the msgspec serializers.')
 
 
-def _error_from_payload(payload: dict[str, Any]) -> TaskFailure:
-    return TaskFailure(str(payload['type']), str(payload['message']), str(payload.get('traceback') or ''))
+def _error_from_payload(payload: Any) -> TaskFailure:
+    return TaskFailure(payload.type, payload.message, payload.traceback)
 
 
 class MsgspecJSONSerializer(Serializer):
@@ -74,6 +88,9 @@ class MsgspecJSONSerializer(Serializer):
         msgspec = _import_msgspec()
         self._encoder = msgspec.json.Encoder(enc_hook=self._enc_hook)
         self._decoder = msgspec.json.Decoder()
+        self._convert = msgspec.convert
+        self._validation_error = msgspec.ValidationError
+        self._payload_type = _error_payload_type()
 
     @staticmethod
     def _enc_hook(value: Any) -> Any:
@@ -88,7 +105,10 @@ class MsgspecJSONSerializer(Serializer):
         value = self._decoder.decode(serialized_data)
         # DBOS stores an exception on its own: the marker is only looked for at the top level.
         if isinstance(value, dict) and len(value) == 1 and _ERROR_KEY in value:
-            return _error_from_payload(value[_ERROR_KEY])
+            try:
+                return _error_from_payload(self._convert(value[_ERROR_KEY], self._payload_type))
+            except self._validation_error:
+                pass  # data that merely looks like an error: returned as is
         return value
 
     def name(self) -> str:
@@ -105,7 +125,7 @@ class MsgspecMsgpackSerializer(Serializer):
         self._decoder = msgspec.msgpack.Decoder(ext_hook=self._ext_hook)
         # Encode and decode the payload carried by an exception's extension type.
         self._payload_encoder = msgspec.msgpack.Encoder()
-        self._payload_decoder = msgspec.msgpack.Decoder(dict[str, str])
+        self._payload_decoder = msgspec.msgpack.Decoder(_error_payload_type())
 
     def _enc_hook(self, value: Any) -> Any:
         if isinstance(value, BaseException):
