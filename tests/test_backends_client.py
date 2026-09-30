@@ -199,7 +199,7 @@ class TestBuildTaskResult:
         [('Traceback ...\nValueError: boom\n', 'Traceback ...\nValueError: boom\n'), ('', 'builtins.ValueError: boom')],
         ids=['with-traceback', 'without-traceback'],
     )
-    def test_error_read_by_a_msgspec_serializer_reports_the_original_class(self, traceback, expected):
+    def test_error_stored_without_its_class_reports_the_original_one(self, traceback, expected):
         error = TaskFailure('builtins.ValueError', 'boom', traceback)
 
         result = _build_task_result(WORKFLOW_ID, make_status(status='ERROR', output=None, error=error))
