@@ -24,6 +24,23 @@ _OPT_OUT_HINT = (
     'separately with `manage.py dbos migrate`)'
 )
 
+#: Seconds before a connection attempt to a PostgreSQL system database gives up.
+CONNECT_TIMEOUT_SEC = 10
+
+
+def _with_connect_timeout(url: str) -> str:
+    """Add libpq's ``connect_timeout`` to a PostgreSQL URL that sets none.
+
+    The SDK connects without one: an unreachable server would block the
+    migration (hence ``manage.py migrate``) indefinitely instead of failing.
+    """
+    import sqlalchemy as sa
+
+    parsed = sa.make_url(url)
+    if not parsed.drivername.startswith(('postgresql', 'cockroachdb')) or 'connect_timeout' in parsed.query:
+        return url
+    return parsed.update_query_dict({'connect_timeout': str(CONNECT_TIMEOUT_SEC)}).render_as_string(hide_password=False)
+
 
 def migrate_system_database(*, echo: Callable[[str], object], app_role: str | None = None) -> None:
     """Create the DBOS system database if needed and apply DBOS' schema migrations.
@@ -42,7 +59,9 @@ def migrate_system_database(*, echo: Callable[[str], object], app_role: str | No
     schema = resolved.dbos_system_schema or 'dbos'
     echo(f'Migrating the DBOS system database {scrub_credentials(resolved.system_database_url)} (schema {schema!r})')
     try:
-        run_dbos_database_migrations(resolved.system_database_url, schema=schema, application_role=app_role)
+        run_dbos_database_migrations(
+            _with_connect_timeout(resolved.system_database_url), schema=schema, application_role=app_role
+        )
     except Exception as exc:  # noqa: BLE001 - the SDK reports its own failure as a click Exit; keep the chain out of the output
         raise CommandError(f'DBOS migrations failed: {describe_error(exc)}') from None
 

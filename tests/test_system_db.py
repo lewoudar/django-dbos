@@ -50,7 +50,7 @@ class TestMigrateAfterDjangoMigrate:
 
         send(stdout=out)
 
-        run.assert_called_once_with(system_database_url, schema='dbos', application_role=None)
+        run.assert_called_once_with(f'{system_database_url}?connect_timeout=10', schema='dbos', application_role=None)
         assert 'hunter2' not in out.getvalue()
         assert 'user:***@db/dbos_app' in out.getvalue()
         assert 'up to date' in out.getvalue()
@@ -140,3 +140,27 @@ def test_creates_a_usable_system_database(settings, monkeypatch, mocker, tmp_pat
         assert client.get_client().list_workflows() == []
     finally:
         client.close_client()
+
+
+class TestConnectTimeout:
+    @pytest.mark.parametrize(
+        ('url', 'expected'),
+        [
+            pytest.param(
+                'postgresql+psycopg://user:p%40ss@db:5432/dbos_app',
+                'postgresql+psycopg://user:p%40ss@db:5432/dbos_app?connect_timeout=10',
+                id='added',
+            ),
+            pytest.param(
+                'postgresql://db/dbos_app?sslmode=require',
+                'postgresql://db/dbos_app?connect_timeout=10&sslmode=require',
+                id='kept-query',
+            ),
+            pytest.param(
+                'postgresql://db/dbos_app?connect_timeout=3', 'postgresql://db/dbos_app?connect_timeout=3', id='own'
+            ),
+            pytest.param('sqlite:///dbos.sqlite', 'sqlite:///dbos.sqlite', id='sqlite'),
+        ],
+    )
+    def test_with_connect_timeout(self, url, expected):
+        assert system_db._with_connect_timeout(url) == expected
