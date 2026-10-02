@@ -94,7 +94,17 @@ class TestMigrateAfterDjangoMigrate:
 
         with pytest.raises(CommandError, match="MIGRATE_WITH_DJANGO'] = False") as excinfo:
             send(stdout=StringIO())
-        assert 'DBOS migrations failed' in str(excinfo.value)
+        assert 'DBOS migrations failed: see the error above' in str(excinfo.value)
+
+    def test_other_failures_are_described(self, system_database_url, mocker):
+        mocker.patch(
+            'dbos.cli.migration.run_dbos_database_migrations',
+            side_effect=RuntimeError('boom at postgresql://user:hunter2@db/dbos_app'),
+        )
+
+        with pytest.raises(CommandError, match='DBOS migrations failed: RuntimeError: boom') as excinfo:
+            send(stdout=StringIO())
+        assert 'hunter2' not in str(excinfo.value)
 
     def test_configuration_error_names_the_opt_out(self, system_database_url, settings, run):
         settings.DJANGO_DBOS = {'QUEUES': {'x': {'nope': 1}}, 'SYSTEM_DATABASE_URL': 'postgresql://db'}

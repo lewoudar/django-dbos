@@ -63,7 +63,9 @@ def migrate_system_database(*, echo: Callable[[str], object], app_role: str | No
             _with_connect_timeout(resolved.system_database_url), schema=schema, application_role=app_role
         )
     except Exception as exc:  # noqa: BLE001 - the SDK reports its own failure as a click Exit; keep the chain out of the output
-        raise CommandError(f'DBOS migrations failed: {describe_error(exc)}') from None
+        # The SDK prints the actual error, then raises an Exit without a message.
+        detail = describe_error(exc) if str(exc) else 'see the error above'
+        raise CommandError(f'DBOS migrations failed: {detail}') from None
 
 
 def _is_test_database(alias: str) -> bool:
