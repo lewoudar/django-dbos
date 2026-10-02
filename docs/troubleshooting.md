@@ -54,7 +54,8 @@ With PostgreSQL, an error saying the system database or its `dbos` schema
 does not exist.
 
 Web processes never create the system database: it is created by
-`python manage.py dbos migrate`, or by the first worker start (unless
+`python manage.py migrate` (unless `MIGRATE_WITH_DJANGO` is `False`),
+`python manage.py dbos migrate`, or the first worker start (unless
 `RUN_MIGRATIONS` is `False`). Run one of them before enqueuing. See
 [Migrating the system database](configuration.md#migrating-the-system-database).
 

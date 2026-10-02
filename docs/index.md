@@ -95,12 +95,12 @@ is what DBOS workers actually process (with per-queue options such as
 concurrency, see [Queues](configuration.md#queues)). Enqueuing on a queue
 missing from the latter raises `QueueNotDeclared`.
 
-Apply the migrations — Django's (django-dbos ships one small table, for
-worker heartbeats) and DBOS' (the system database) — then start a worker:
+Apply the migrations — `migrate` runs Django's (django-dbos ships one small
+table, for worker heartbeats), then creates and migrates DBOS' system
+database — and start a worker:
 
 ```bash
 python manage.py migrate
-python manage.py dbos migrate
 python manage.py dbos worker
 ```
 

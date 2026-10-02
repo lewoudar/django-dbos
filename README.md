@@ -149,8 +149,7 @@ DJANGO_DBOS = {
 ```
 
 ```bash
-python manage.py migrate       # django-dbos' own table (worker heartbeats)
-python manage.py dbos migrate  # the DBOS system database
+python manage.py migrate       # Django's migrations, then the DBOS system database
 python manage.py dbos worker   # start executing tasks
 ```
 

@@ -89,6 +89,10 @@ or Settings › Pages — then every push to `main` deploys.
 - The worker registers every known task (`tasks.known_tasks()`, filled by
   `DBOSTask.__post_init__`) as a workflow *before* launch; clients enqueue by
   workflow name and never hold workflow code.
+- `manage.py migrate` migrates the system database through a `post_migrate`
+  receiver (`system_db.migrate_after_django_migrate`): a plain
+  `SystemDatabase` handle, never `ensure_launched()`. It must stay skipped for
+  `flush` (no `plan`), non-default aliases and test databases.
 - Worker heartbeats live in the `WorkerHeartbeat` model (Django database),
   not in the cache; the package ships a migration.
 
