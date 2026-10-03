@@ -40,6 +40,15 @@ class TestMigrateAfterDjangoMigrate:
         run.assert_called_once()
 
     @pytest.mark.django_db
+    def test_connected_once_when_ready_runs_again(self, system_database_url, run, mocker):
+        mocker.patch('django_dbos.admin.register_admin_sites')
+        apps.get_app_config('django_dbos').ready()
+
+        call_command('migrate', verbosity=0)
+
+        run.assert_called_once()
+
+    @pytest.mark.django_db
     def test_flush_does_not_run_it(self, system_database_url, run):
         call_command('flush', interactive=False, verbosity=0)
 
