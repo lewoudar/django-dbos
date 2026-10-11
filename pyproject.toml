@@ -67,7 +67,7 @@ test = [
     "time-machine>=2.16",
 ]
 doc = [
-    "zensical>=0.0.59",
+    "zensical>=0.0.67",
 ]
 
 [project.entry-points.pytest11]
