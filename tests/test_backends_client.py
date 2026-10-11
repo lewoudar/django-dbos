@@ -14,9 +14,9 @@ from dbos import error as dbos_error
 from django.tasks import TaskResultStatus
 from django.tasks.exceptions import TaskResultDoesNotExist
 
-from django_dbos.backends import _build_task_result
 from django_dbos.exceptions import MaxRecoveryAttemptsExceeded, TaskCancelled, TaskFailure, TaskTimedOut
-from django_dbos.tasks_registry import workflow_name_for_task
+from django_dbos.results import build_task_result
+from django_dbos.workflow_names import workflow_name_for_task
 
 from .tasks import add, async_add
 
@@ -153,7 +153,7 @@ class TestBuildTaskResult:
         ],
     )
     def test_status_mapping(self, dbos_status, expected):
-        assert _build_task_result(WORKFLOW_ID, make_status(status=dbos_status)).status == expected
+        assert build_task_result(WORKFLOW_ID, make_status(status=dbos_status)).status == expected
 
     @pytest.mark.parametrize(
         ('fields', 'expected_class', 'message'),
@@ -176,7 +176,7 @@ class TestBuildTaskResult:
     )
     def test_cancelled_workflow_reports_why(self, fields, expected_class, message):
         # DBOS stores no error for a cancelled workflow: FAILED must not come without an explanation.
-        result = _build_task_result(WORKFLOW_ID, make_status(status='CANCELLED', output=None, **fields))
+        result = build_task_result(WORKFLOW_ID, make_status(status='CANCELLED', output=None, **fields))
 
         assert result.status == TaskResultStatus.FAILED
         [error] = result.errors
@@ -187,7 +187,7 @@ class TestBuildTaskResult:
         # DBOS stores no error when it gives up after repeated crashes either.
         status = make_status(status='MAX_RECOVERY_ATTEMPTS_EXCEEDED', output=None, recovery_attempts=3)
 
-        result = _build_task_result(WORKFLOW_ID, status)
+        result = build_task_result(WORKFLOW_ID, status)
 
         assert result.status == TaskResultStatus.FAILED
         [error] = result.errors
@@ -202,7 +202,7 @@ class TestBuildTaskResult:
     def test_error_stored_without_its_class_reports_the_original_one(self, traceback, expected):
         error = TaskFailure('builtins.ValueError', 'boom', traceback)
 
-        result = _build_task_result(WORKFLOW_ID, make_status(status='ERROR', output=None, error=error))
+        result = build_task_result(WORKFLOW_ID, make_status(status='ERROR', output=None, error=error))
 
         [task_error] = result.errors
         assert task_error.exception_class_path == 'builtins.ValueError'
@@ -211,12 +211,12 @@ class TestBuildTaskResult:
 
     def test_unknown_dbos_status_is_not_exposed(self):
         with pytest.raises(TaskResultDoesNotExist):
-            _build_task_result(WORKFLOW_ID, make_status(status='SOMETHING_NEW'))
+            build_task_result(WORKFLOW_ID, make_status(status='SOMETHING_NEW'))
 
     @pytest.mark.parametrize('name', ['not.a.task.workflow', None])
     def test_workflow_that_is_not_a_task_is_not_exposed(self, name):
         with pytest.raises(TaskResultDoesNotExist):
-            _build_task_result(WORKFLOW_ID, make_status(name=name))
+            build_task_result(WORKFLOW_ID, make_status(name=name))
 
     @pytest.mark.parametrize(
         ('fields', 'started', 'finished'),
@@ -264,7 +264,7 @@ class TestBuildTaskResult:
         ],
     )
     def test_timestamps(self, fields, started, finished):
-        result = _build_task_result(WORKFLOW_ID, make_status(output=None, **fields))
+        result = build_task_result(WORKFLOW_ID, make_status(output=None, **fields))
 
         assert ms(result.enqueued_at) == CREATED_AT_MS
         assert ms(result.started_at) == (None if started is None else CREATED_AT_MS + started)
@@ -272,7 +272,7 @@ class TestBuildTaskResult:
         assert ms(result.finished_at) == (None if finished is None else CREATED_AT_MS + finished)
 
     def test_missing_timestamps_and_inputs(self):
-        result = _build_task_result(
+        result = build_task_result(
             WORKFLOW_ID, make_status(status='PENDING', created_at=None, dequeued_at=None, input=None, output=None)
         )
 
@@ -283,7 +283,7 @@ class TestBuildTaskResult:
         assert result.kwargs == {}
 
     def test_successful_result_without_output(self):
-        result = _build_task_result(WORKFLOW_ID, make_status(output=None))
+        result = build_task_result(WORKFLOW_ID, make_status(output=None))
 
         assert result.status == TaskResultStatus.SUCCESSFUL
         assert result.return_value is None

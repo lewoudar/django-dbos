@@ -8,7 +8,7 @@ user-facing API exactly Django's ``@task``.
 The task function runs in DBOS' long-lived executor threads, outside any
 request cycle: Django's ORM connections are recycled around each execution
 (``close_old_connections``), exactly as a request would, so ``CONN_MAX_AGE``
-is honoured and a connection dropped by the database is not reused.
+is honored and a connection dropped by the database is not reused.
 
 Workflows are named after the task function's module path, which lets
 :meth:`DBOSBackend.get_result` find the original task back from a workflow
@@ -20,54 +20,27 @@ before ``DBOS.launch()``): other processes enqueue by name through
 from __future__ import annotations
 
 import inspect
-import re
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import Any
 
 from asgiref.sync import sync_to_async
 from dbos import DBOS, StepOptions
 from django.db import close_old_connections
+from django.tasks import TaskContext, TaskResult, TaskResultStatus
 
+from .client import get_client
 from .exceptions import describe_error
 from .logging import logger
 from .params_dataclass import DbosTaskParams
+from .results import build_task_result
 from .tasks import DBOSTask, known_tasks
-
-REGISTRY_PREFIX = 'django_dbos.tasks.'
+from .workflow_names import workflow_name_for_task
 
 #: Workflow functions registered with DBOS by this process, by workflow name
 #: (task workflows and cron parents alike). ``DBOS.workflow`` returns the
 #: decorated function; keeping it here avoids the SDK's private registry and
 #: makes registration idempotent.
 _workflows: dict[str, Any] = {}
-
-#: Task module paths resolved via ``import_string`` come from a name stored in
-#: the system database (workflow status); reject anything that is not a plain
-#: dotted module path before importing it.
-_MODULE_PATH_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$')
-
-
-def workflow_name_for_task(task: DBOSTask) -> str:
-    """The DBOS workflow name for a task: its Django module path."""
-    return f'{REGISTRY_PREFIX}{task.module_path}'
-
-
-def task_from_workflow_name(workflow_name: str) -> Any:
-    """Resolve a registered workflow name back to its DBOSTask instance."""
-    from django.utils.module_loading import import_string
-
-    if not workflow_name.startswith(REGISTRY_PREFIX):
-        return None
-    module_path = workflow_name.removeprefix(REGISTRY_PREFIX)
-    if not _MODULE_PATH_RE.fullmatch(module_path):
-        return None
-    try:
-        task = import_string(module_path)
-    except (ImportError, AttributeError):
-        return None
-    # Only actual tasks are usable as results; the name comes from the system
-    # database, so anything else (arbitrary module attributes, ...) is rejected.
-    return task if isinstance(task, DBOSTask) else None
 
 
 def _step_options(params: DbosTaskParams) -> StepOptions:
@@ -88,13 +61,10 @@ def _build_task_context(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str,
     through the client, not ``DBOS.get_workflow_status``: inside a workflow,
     the latter is checkpointed and would replay a stale count after a crash.
     """
-    from .backends import _build_task_result
-    from .client import get_client
-
     workflow_id = DBOS.workflow_id or ''
     try:
         status = get_client().retrieve_workflow(workflow_id).get_status()
-        return _context_for(_build_task_result(workflow_id, status))
+        return _context_for(build_task_result(workflow_id, status))
     except Exception as exc:  # noqa: BLE001 - a failed read must not fail the task itself
         logger.warning('could not read the task status, context.attempt defaults to 1', error=describe_error(exc))
         return _fallback_task_context(task, args, kwargs)
@@ -102,31 +72,22 @@ def _build_task_context(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str,
 
 async def _abuild_task_context(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     """Async variant of :func:`_build_task_context` (the sync client read refuses a running event loop)."""
-    from .backends import _build_task_result
-    from .client import get_client
-
     workflow_id = DBOS.workflow_id or ''
     try:
         handle = await get_client().retrieve_workflow_async(workflow_id)
         status = await handle.get_status()
-        return _context_for(_build_task_result(workflow_id, status))
+        return _context_for(build_task_result(workflow_id, status))
     except Exception as exc:  # noqa: BLE001 - a failed read must not fail the task itself
         logger.warning('could not read the task status, context.attempt defaults to 1', error=describe_error(exc))
         return _fallback_task_context(task, args, kwargs)
 
 
 def _context_for(result: Any) -> Any:
-    from django.tasks import TaskContext
-
     return TaskContext(task_result=result)
 
 
 def _fallback_task_context(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     """A context built without the system database: a single attempt, timestamps of now."""
-    from datetime import datetime
-
-    from django.tasks import TaskContext, TaskResult, TaskResultStatus
-
     workflow_id = DBOS.workflow_id or ''
     now = datetime.now(tz=UTC)
     result = TaskResult(

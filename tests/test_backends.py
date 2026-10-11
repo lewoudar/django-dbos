@@ -12,7 +12,7 @@ from django.utils import timezone
 from django_dbos import dbos_params
 from django_dbos.backends import _delay_seconds, _django_to_dbos_priority
 from django_dbos.exceptions import QueueNotDeclared
-from django_dbos.tasks_registry import workflow_name_for_task
+from django_dbos.workflow_names import workflow_name_for_task
 
 from .conftest import wait_for_result
 from .tasks import add, async_add, context_task, failing_task
