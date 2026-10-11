@@ -149,7 +149,9 @@ def derive_system_database_url(django_db: dict[str, Any]) -> str:
 
 
 def resolve_system_database_url() -> str:
-    """Resolve the DBOS system database URL, by order of precedence:
+    """Resolve the DBOS system database URL.
+
+    By order of precedence:
 
     1. ``DJANGO_DBOS["SYSTEM_DATABASE_URL"]``
     2. ``DBOS_SYSTEM_DATABASE_URL`` environment variable

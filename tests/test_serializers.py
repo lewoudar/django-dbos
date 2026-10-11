@@ -139,7 +139,7 @@ def test_names(serializer_class, name):
 
 @pytest.fixture()
 def without_msgspec(monkeypatch):
-    """msgspec is not installed and django_dbos.serializers not imported yet."""
+    """The msgspec module is not installed and django_dbos.serializers not imported yet."""
     monkeypatch.setitem(sys.modules, 'msgspec', None)
     monkeypatch.delitem(sys.modules, 'django_dbos.serializers')
 

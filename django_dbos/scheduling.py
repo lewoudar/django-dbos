@@ -71,6 +71,13 @@ def cron(
             it is derived from the crontab; pass ``None`` to disable
             monitoring for this task, or a dict to configure the monitor
             manually (see ``sentry_sdk.crons.monitor``).
+
+    Returns:
+        A decorator registering the task, to stack on top of ``@task``.
+
+    Raises:
+        ImproperlyConfiguredDbos: The crontab is invalid, or the task requires
+            arguments (cron tasks run without any).
     """
     normalized = normalize_crontab(crontab)
     if not croniter.is_valid(normalized, second_at_beginning=True):

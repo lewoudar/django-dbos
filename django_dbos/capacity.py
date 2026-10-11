@@ -66,13 +66,20 @@ def _queue_capacities() -> dict[str, dict[str, Any]]:
 def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) -> dict[str, Any]:
     """Collect worker capacity metrics from the DBOS system database.
 
-    Returns a dict with per-queue load (backlog, waiting age, running, declared
-    concurrency, thresholds, advice), per-executor running counts, the worker
-    heartbeats and the number of workflows that exhausted their recovery
-    attempts. Pass ``queues`` to restrict the report to specific queue names.
     All declared queues (see ``DJANGO_DBOS["QUEUES"]``) always appear in the
-    report, even when idle. ``advisor`` overrides the configured advice
-    function for this call.
+    report, even when idle.
+
+    Args:
+        queues: Restrict the report to these queue names.
+        advisor: Overrides the configured advice function for this call.
+
+    Returns:
+        A dict with ``queues`` (per-queue load: backlog, waiting age, running,
+            declared concurrency, thresholds, advice), ``executors``
+            (per-executor running and enqueued counts), ``workers`` (the
+            worker heartbeats, stale ones included) and
+            ``max_recovery_attempts_exceeded`` (the number of workflows that
+            exhausted their recovery attempts).
     """
     capacity_config = resolve_capacity()
     advise: Advisor = advisor or capacity_config.advisor or default_advisor
@@ -175,8 +182,14 @@ def advise_queue(
       workflows running — an idle queue.
     - OK otherwise.
 
-    Thresholds default to ``DJANGO_DBOS["CAPACITY"]`` (then to
-    ``CAPACITY_THRESHOLD_DEFAULTS``).
+    Args:
+        queue_metrics: One queue's metrics, as reported by ``collect``.
+        scale_up_backlog_age_seconds: Defaults to ``DJANGO_DBOS["CAPACITY"]``,
+            then to ``CAPACITY_THRESHOLD_DEFAULTS``.
+        scale_down_max_running: Defaults like ``scale_up_backlog_age_seconds``.
+
+    Returns:
+        ``"SCALE_UP"``, ``"SCALE_DOWN"`` or ``"OK"``.
     """
     if scale_up_backlog_age_seconds is None or scale_down_max_running is None:
         configured = resolve_capacity().thresholds
