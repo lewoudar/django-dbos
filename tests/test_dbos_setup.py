@@ -100,7 +100,7 @@ class TestScrubbedSdkErrors:
     def test_launch_failure_is_scrubbed_and_unchained(self, mocker):
         mocker.patch.object(dbos_setup, '_initialized', True)
         mocker.patch.object(dbos_setup, '_launched', False)
-        mocker.patch('django_dbos.tasks_registry.register_all_task_workflows')
+        mocker.patch('django_dbos.dbos_setup.register_all_task_workflows')
         mocker.patch.object(dbos_setup.DBOS, 'launch', side_effect=self.DSN_ERROR)
 
         with pytest.raises(ImproperlyConfiguredDbos) as excinfo:
@@ -128,12 +128,12 @@ class TestEnsureLaunched:
         mocker.patch.object(dbos_setup, '_launched', False)
         calls: list[str] = []
         mocker.patch(
-            'django_dbos.tasks_registry.register_all_task_workflows',
+            'django_dbos.dbos_setup.register_all_task_workflows',
             side_effect=lambda: calls.append('register'),
         )
         # Every launched worker runs DBOS' scheduler and may dequeue a cron firing.
         mocker.patch(
-            'django_dbos.scheduling.register_cron_workflows',
+            'django_dbos.dbos_setup.register_cron_workflows',
             side_effect=lambda: calls.append('cron'),
         )
         mocker.patch.object(dbos_setup.DBOS, 'launch', side_effect=lambda: calls.append('launch'))
@@ -147,7 +147,7 @@ class TestEnsureLaunched:
     def test_second_call_is_a_noop(self, mocker):
         mocker.patch.object(dbos_setup, '_initialized', True)
         mocker.patch.object(dbos_setup, '_launched', True)
-        register = mocker.patch('django_dbos.tasks_registry.register_all_task_workflows')
+        register = mocker.patch('django_dbos.dbos_setup.register_all_task_workflows')
         launch = mocker.patch.object(dbos_setup.DBOS, 'launch')
 
         dbos_setup.ensure_launched()
@@ -158,7 +158,7 @@ class TestEnsureLaunched:
     def test_queue_configuration_errors_pass_through(self, mocker):
         mocker.patch.object(dbos_setup, '_initialized', True)
         mocker.patch.object(dbos_setup, '_launched', False)
-        mocker.patch('django_dbos.tasks_registry.register_all_task_workflows')
+        mocker.patch('django_dbos.dbos_setup.register_all_task_workflows')
         mocker.patch.object(dbos_setup.DBOS, 'launch')
         error = ImproperlyConfiguredDbos('queue misconfigured')
         mocker.patch.object(dbos_setup, '_register_queues', side_effect=error)

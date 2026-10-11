@@ -24,11 +24,14 @@ from typing import Any
 
 from croniter import croniter
 from dbos import DBOS, SetWorkflowTimeout
+from django.conf import settings
+from django.utils import timezone as dj_timezone
 
 from .exceptions import ImproperlyConfiguredDbos
 from .logging import logger
 from .sentry import UNSET, SentryMonitorConfig, monitor_cron_execution, resolve_monitor_config
 from .tasks import DBOSTask
+from .tasks_registry import registered_workflow, remember_workflow, task_workflow
 
 SCHEDULE_PREFIX = 'django_dbos.schedules.'
 
@@ -88,8 +91,6 @@ def cron(
 
 def _validate_cron_task(task: DBOSTask) -> None:
     """Cron tasks run without arguments: reject required parameters."""
-    import inspect
-
     signature = inspect.signature(task.func)
     skip = 1 if task.takes_context else 0
     parameters = list(signature.parameters.values())[skip:]
@@ -165,9 +166,6 @@ def _delete_orphan_schedules() -> None:
 
 
 def _django_timezone() -> Any:
-    from django.conf import settings
-    from django.utils import timezone as dj_timezone
-
     if getattr(settings, 'USE_TZ', True):
         return dj_timezone.get_default_timezone()
     return 'UTC'
@@ -184,8 +182,6 @@ def _register_scheduled_workflow(task: DBOSTask, monitor_config: SentryMonitorCo
     started from a workflow; schedules themselves carry none. The parent is
     also where a firing is reported to Sentry, so ad-hoc enqueues are not.
     """
-    from .tasks_registry import registered_workflow, remember_workflow, task_workflow
-
     name = schedule_name_for_task(task)
     existing = registered_workflow(name)
     if existing is not None:

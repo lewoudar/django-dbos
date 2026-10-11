@@ -9,16 +9,18 @@ from typing import Any
 
 from django.conf import settings
 from django.core.checks import CheckMessage, Error, Info, Tags, Warning, register
+from django.tasks.base import DEFAULT_TASK_QUEUE_NAME
+from django.utils.module_loading import import_string
 
 from . import discovery
+from . import settings as settings_module
+from .backends import DBOSBackend
 from .exceptions import ImproperlyConfiguredDbos, describe_error
 from .tasks import DBOSTask, known_tasks
 
 
 @register()
 def check_dbos_settings(app_configs: Any = None, **kwargs: Any) -> list[CheckMessage]:
-    from . import settings as settings_module
-
     errors: list[CheckMessage] = []
     try:
         settings_module.resolve_settings()
@@ -40,8 +42,6 @@ def _default_database_engine() -> str:
 
 @register()
 def check_system_database_engine(app_configs: Any = None, **kwargs: Any) -> list[CheckMessage]:
-    from . import settings as settings_module
-
     explicit_url = settings_module.get_dbos_setting('SYSTEM_DATABASE_URL')
     default_engine = _default_database_engine()
     if explicit_url or 'postgres' in default_engine or 'sqlite' in default_engine:
@@ -59,8 +59,6 @@ def check_system_database_engine(app_configs: Any = None, **kwargs: Any) -> list
 @register()
 def check_in_memory_system_database(app_configs: Any = None, **kwargs: Any) -> list[CheckMessage]:
     """An in-memory SQLite system database lives in one process: web and worker never share it."""
-    from . import settings as settings_module
-
     try:
         url = settings_module.resolve_system_database_url()
     except ImproperlyConfiguredDbos:
@@ -79,8 +77,6 @@ def check_in_memory_system_database(app_configs: Any = None, **kwargs: Any) -> l
 
 @register(Tags.security, deploy=True)
 def check_serializer(app_configs: Any = None, **kwargs: Any) -> list[CheckMessage]:
-    from . import settings as settings_module
-
     if settings_module.get_dbos_setting('SERIALIZER') is not None:
         return []
     return [
@@ -97,8 +93,6 @@ def check_serializer(app_configs: Any = None, **kwargs: Any) -> list[CheckMessag
 
 @register(deploy=True)
 def check_executor_id(app_configs: Any = None, **kwargs: Any) -> list[CheckMessage]:
-    from . import settings as settings_module
-
     if settings_module.resolve_executor_id() is not None:
         return []
     return [
@@ -115,8 +109,6 @@ def check_executor_id(app_configs: Any = None, **kwargs: Any) -> list[CheckMessa
 @register()
 def check_unknown_settings(app_configs: Any = None, **kwargs: Any) -> list[CheckMessage]:
     """Report ``DJANGO_DBOS`` keys django-dbos does not read: a typo would be silently ignored."""
-    from . import settings as settings_module
-
     user_settings = getattr(settings, settings_module.SETTING_NAME, None)
     if not isinstance(user_settings, dict):
         return []
@@ -134,11 +126,6 @@ def check_unknown_settings(app_configs: Any = None, **kwargs: Any) -> list[Check
 
 def _dbos_backend_queues() -> dict[str, set[str]]:
     """The queues each ``TASKS`` alias using the DBOS backend accepts (an empty set accepts any)."""
-    from django.tasks.base import DEFAULT_TASK_QUEUE_NAME
-    from django.utils.module_loading import import_string
-
-    from .backends import DBOSBackend
-
     backends: dict[str, set[str]] = {}
     for alias, params in (getattr(settings, 'TASKS', None) or {}).items():
         try:
@@ -161,8 +148,6 @@ def check_declared_queues(app_configs: Any = None, **kwargs: Any) -> list[CheckM
     A backend listing its queues is checked through that list; a backend
     accepting any queue (``QUEUES: []``) through the tasks known so far.
     """
-    from . import settings as settings_module
-
     try:
         declared = {queue.name for queue in settings_module.resolve_queues()}
     except ImproperlyConfiguredDbos:

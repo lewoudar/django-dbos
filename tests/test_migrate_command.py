@@ -28,7 +28,7 @@ class TestDbosMigrate:
             'SYSTEM_DATABASE_URL': 'postgresql://user:hunter2@db/dbos_app',
             'SYSTEM_DB_SCHEMA': 'custom',
         }
-        run = mocker.patch('dbos.cli.migration.run_dbos_database_migrations')
+        run = mocker.patch('django_dbos.system_db.run_dbos_database_migrations')
 
         output = migrate('--app-role', 'app')
 
@@ -42,7 +42,7 @@ class TestDbosMigrate:
     def test_never_launches_dbos(self, settings, monkeypatch, mocker):
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
         settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://db'}
-        mocker.patch('dbos.cli.migration.run_dbos_database_migrations')
+        mocker.patch('django_dbos.system_db.run_dbos_database_migrations')
         launch = mocker.patch('dbos.DBOS.launch')
         ensure_launched = mocker.patch('django_dbos.dbos_setup.ensure_launched')
 
@@ -55,7 +55,7 @@ class TestDbosMigrate:
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
         settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://db'}
         # The SDK reports failures as a click Exit after echoing them.
-        mocker.patch('dbos.cli.migration.run_dbos_database_migrations', side_effect=Exit(code=1))
+        mocker.patch('django_dbos.system_db.run_dbos_database_migrations', side_effect=Exit(code=1))
 
         err = StringIO()
         with contextlib.redirect_stdout(StringIO()), contextlib.redirect_stderr(err), pytest.raises(Exit) as excinfo:

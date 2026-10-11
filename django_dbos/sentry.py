@@ -20,6 +20,9 @@ import string
 from collections.abc import Iterator
 from typing import Any
 
+from django.conf import settings
+from django.utils import timezone
+
 from .logging import logger
 from .tasks import DBOSTask
 
@@ -64,9 +67,6 @@ def crontab_to_monitor_config(crontab: str) -> SentryMonitorConfig | None:
     e.g. sub-minute schedules (DBOS supports a leading seconds field, Sentry
     does not).
     """
-    from django.conf import settings
-    from django.utils import timezone
-
     fields = crontab.split()
     if len(fields) == 6:
         if fields[0] != '0':

@@ -18,13 +18,12 @@ launching DBOS' background threads — which would turn it into a worker.
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING, Any
+from typing import Any
+
+from dbos import DBOSClient
 
 from . import settings as settings_module
 from .exceptions import ImproperlyConfiguredDbos, describe_error
-
-if TYPE_CHECKING:
-    from dbos import DBOSClient
 
 _client_lock = threading.Lock()
 _client: DBOSClient | None = None
@@ -48,8 +47,6 @@ def get_client() -> DBOSClient:
 
 
 def _create_client() -> DBOSClient:
-    from dbos import DBOSClient
-
     try:
         resolved = settings_module.resolve_settings()
         kwargs: dict[str, Any] = {}

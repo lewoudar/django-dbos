@@ -22,7 +22,7 @@ class TestGetClient:
             'SYSTEM_DATABASE_URL': 'postgresql://user:secret@db/dbos_myproject',
             'SYSTEM_DB_SCHEMA': 'custom',
         }
-        client_cls = mocker.patch('dbos.DBOSClient')
+        client_cls = mocker.patch('django_dbos.client.DBOSClient')
 
         first = client.get_client()
         second = client.get_client()
@@ -40,7 +40,7 @@ class TestGetClient:
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
         serializer = DBOSPortableJSONSerializer()
         settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://db', 'SERIALIZER': serializer}
-        client_cls = mocker.patch('dbos.DBOSClient')
+        client_cls = mocker.patch('django_dbos.client.DBOSClient')
 
         client.get_client()
 
@@ -49,7 +49,7 @@ class TestGetClient:
     def test_client_never_launches_dbos(self, settings, monkeypatch, mocker):
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
         settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://db'}
-        mocker.patch('dbos.DBOSClient')
+        mocker.patch('django_dbos.client.DBOSClient')
         launch = mocker.patch('dbos.DBOS.launch')
 
         client.get_client()
@@ -59,7 +59,7 @@ class TestGetClient:
     def test_close_client_destroys_and_forgets(self, settings, monkeypatch, mocker):
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
         settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://db'}
-        client_cls = mocker.patch('dbos.DBOSClient')
+        client_cls = mocker.patch('django_dbos.client.DBOSClient')
 
         instance = client.get_client()
         client.close_client()
@@ -72,7 +72,9 @@ class TestGetClient:
     def test_configuration_errors_are_scrubbed(self, settings, monkeypatch, mocker):
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
         settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://user:hunter2@db/dbos'}
-        mocker.patch('dbos.DBOSClient', side_effect=ValueError('cannot use postgresql://user:hunter2@db/dbos'))
+        mocker.patch(
+            'django_dbos.client.DBOSClient', side_effect=ValueError('cannot use postgresql://user:hunter2@db/dbos')
+        )
 
         with pytest.raises(ImproperlyConfiguredDbos) as excinfo:
             client.get_client()
@@ -85,7 +87,7 @@ class TestGetClient:
     def test_configuration_errors_pass_through_unwrapped(self, settings, monkeypatch, mocker):
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
         settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://db', 'QUEUES': ['emails']}
-        client_cls = mocker.patch('dbos.DBOSClient')
+        client_cls = mocker.patch('django_dbos.client.DBOSClient')
 
         with pytest.raises(ImproperlyConfiguredDbos, match=r"^DJANGO_DBOS\['QUEUES'\] must be a mapping"):
             client.get_client()

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import re
 
+from dbos import error as dbos_error
+from sqlalchemy.exc import DBAPIError
+
 
 class DjangoDbosError(Exception):
     """Base class for django-dbos errors."""
@@ -81,7 +84,4 @@ def system_database_errors() -> tuple[type[BaseException], ...]:
     authentication failed, ...); ``DBOSException`` covers the SDK's own
     operational errors (invalid schedule, unknown queue, ...).
     """
-    from dbos import error as dbos_error
-    from sqlalchemy.exc import DBAPIError
-
     return (DBAPIError, dbos_error.DBOSException)

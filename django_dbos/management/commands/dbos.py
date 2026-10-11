@@ -17,11 +17,13 @@ import threading
 from typing import Any
 
 import djclick as click
+from dbos import DBOS
 from django.core.management.base import CommandError
 
-from django_dbos import capacity, dbos_setup, discovery, system_db
+from django_dbos import capacity, dbos_setup, discovery, scheduling, system_db
 from django_dbos import settings as settings_module
 from django_dbos.exceptions import ImproperlyConfiguredDbos, describe_error, system_database_errors
+from django_dbos.heartbeat import HeartbeatThread
 
 
 @click.group()
@@ -44,8 +46,6 @@ def migrate(app_role: str | None) -> None:
 @main.command()
 def worker() -> None:
     """Run the DBOS worker: execute Django tasks durably and process cron schedules."""
-    from django_dbos import scheduling
-
     discovery.autodiscover_tasks()
     dbos_setup.ensure_launched()
     scheduling.register_cron_schedules()
@@ -57,10 +57,6 @@ def worker() -> None:
 
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, _stop)
-
-    from dbos import DBOS
-
-    from django_dbos.heartbeat import HeartbeatThread
 
     heartbeat_thread = HeartbeatThread(
         executor_id=DBOS.executor_id or 'local',
