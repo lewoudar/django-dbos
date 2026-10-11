@@ -29,7 +29,7 @@ DEFAULT_SYSTEM_DB_PREFIX = 'dbos_'
 
 DEFAULT_QUEUES = ('default',)
 
-#: Every key ``DJANGO_DBOS`` accepts; the system checks report any other one.
+# Every key ``DJANGO_DBOS`` accepts; the system checks report any other one.
 KNOWN_SETTINGS = (
     'NAME',
     'APPLICATION_VERSION',
@@ -63,12 +63,12 @@ class QueueConfig:
     global_concurrency: int | None = None
     limiter: dict[str, Any] | None = None
     polling_interval_sec: float | None = None
-    #: Per-queue capacity thresholds (django-dbos only, never sent to DBOS),
-    #: same keys as ``DJANGO_DBOS["CAPACITY"]`` minus ``ADVISOR``.
+    # Per-queue capacity thresholds (django-dbos only, never sent to DBOS),
+    # same keys as ``DJANGO_DBOS["CAPACITY"]`` minus ``ADVISOR``.
     capacity: dict[str, Any] | None = None
 
 
-#: ``DJANGO_DBOS["CAPACITY"]`` threshold keys and their defaults; see ``capacity.advise_queue``.
+# ``DJANGO_DBOS["CAPACITY"]`` threshold keys and their defaults; see ``capacity.advise_queue``.
 CAPACITY_THRESHOLD_DEFAULTS: dict[str, float | int] = {
     'SCALE_UP_BACKLOG_AGE_SECONDS': 60.0,
     'SCALE_DOWN_MAX_RUNNING': 0,
@@ -149,7 +149,9 @@ def derive_system_database_url(django_db: dict[str, Any]) -> str:
 
 
 def resolve_system_database_url() -> str:
-    """Resolve the DBOS system database URL, by order of precedence:
+    """Resolve the DBOS system database URL.
+
+    By order of precedence:
 
     1. ``DJANGO_DBOS["SYSTEM_DATABASE_URL"]``
     2. ``DBOS_SYSTEM_DATABASE_URL`` environment variable

@@ -30,11 +30,29 @@ def dbos_params(
 ) -> Any:
     """Attach DBOS execution options to a Django task.
 
-    Works both below and above ``@task``::
+    Works both below and above ``@task``, with or without parentheses. The
+    options are documented on ``DbosTaskParams``, whose fields they set.
 
+    Args:
+        _task: The decorated task or function, when used without parentheses.
+        max_recovery_attempts: See ``DbosTaskParams``.
+        step_retries_allowed: See ``DbosTaskParams``.
+        step_max_attempts: See ``DbosTaskParams``.
+        step_interval_seconds: See ``DbosTaskParams``.
+        step_backoff_rate: See ``DbosTaskParams``.
+        deduplication_id: See ``DbosTaskParams``.
+        workflow_timeout: See ``DbosTaskParams``.
+        durable_operations: See ``DbosTaskParams``.
+
+    Returns:
+        The decorated task when ``_task`` is given, otherwise a decorator.
+
+    Example:
+        ```python
         @dbos_params(step_retries_allowed=True, step_max_attempts=5)
         @task
         def my_task(): ...
+        ```
     """
     params = DbosTaskParams(
         max_recovery_attempts=max_recovery_attempts,

@@ -11,9 +11,9 @@ from .tasks import DBOSTask
 
 REGISTRY_PREFIX = 'django_dbos.tasks.'
 
-#: Task module paths resolved via ``import_string`` come from a name stored in
-#: the system database (workflow status); reject anything that is not a plain
-#: dotted module path before importing it.
+# Task module paths resolved via ``import_string`` come from a name stored in
+# the system database (workflow status); reject anything that is not a plain
+# dotted module path before importing it.
 _MODULE_PATH_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$')
 
 

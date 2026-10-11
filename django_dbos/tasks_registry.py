@@ -11,8 +11,8 @@ request cycle: Django's ORM connections are recycled around each execution
 is honored and a connection dropped by the database is not reused.
 
 Workflows are named after the task function's module path, which lets
-:meth:`DBOSBackend.get_result` find the original task back from a workflow
-status. Only the worker registers them (:func:`register_all_task_workflows`,
+``DBOSBackend.get_result`` find the original task back from a workflow
+status. Only the worker registers them (``register_all_task_workflows``,
 before ``DBOS.launch()``): other processes enqueue by name through
 ``DBOSClient`` and never hold workflow code.
 """
@@ -36,10 +36,10 @@ from .results import build_task_result
 from .tasks import DBOSTask, known_tasks
 from .workflow_names import workflow_name_for_task
 
-#: Workflow functions registered with DBOS by this process, by workflow name
-#: (task workflows and cron parents alike). ``DBOS.workflow`` returns the
-#: decorated function; keeping it here avoids the SDK's private registry and
-#: makes registration idempotent.
+# Workflow functions registered with DBOS by this process, by workflow name
+# (task workflows and cron parents alike). ``DBOS.workflow`` returns the
+# decorated function; keeping it here avoids the SDK's private registry and
+# makes registration idempotent.
 _workflows: dict[str, Any] = {}
 
 
@@ -71,7 +71,7 @@ def _build_task_context(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str,
 
 
 async def _abuild_task_context(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
-    """Async variant of :func:`_build_task_context` (the sync client read refuses a running event loop)."""
+    """Async variant of ``_build_task_context`` (the sync client read refuses a running event loop)."""
     workflow_id = DBOS.workflow_id or ''
     try:
         handle = await get_client().retrieve_workflow_async(workflow_id)
@@ -142,7 +142,7 @@ def execute_task_body(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str, A
 
 
 async def aexecute_task_body(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
-    """Async variant of :func:`execute_task_body`."""
+    """Async variant of ``execute_task_body``."""
     if task.takes_context:
         args = (await _abuild_task_context(task, args, kwargs), *args)
     if task.dbos_params.durable_operations:

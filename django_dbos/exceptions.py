@@ -61,9 +61,9 @@ class TaskFailure(DjangoDbosError):
         return self.message
 
 
-#: A DSN with credentials embedded in an error message, e.g.
-#: ``postgresql+psycopg://user:secrets@host/db``. Drivers and ORMs may include
-#: one in connection errors; the password is masked before showing the message.
+# A DSN with credentials embedded in an error message, e.g.
+# ``postgresql+psycopg://user:secrets@host/db``. Drivers and ORMs may include
+# one in connection errors; the password is masked before showing the message.
 _DSN_WITH_PASSWORD_RE = re.compile(r"([a-z][a-z0-9+.-]*://[^\s:/@\"']+):([^\s@\"'/]+)@", re.IGNORECASE)
 
 

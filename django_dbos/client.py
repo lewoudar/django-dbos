@@ -11,7 +11,7 @@ DBOS distinguishes two kinds of processes:
 
 Everything outside the worker (web processes enqueuing tasks and reading
 results, the admin pages, ``dbos status``) goes through the process-wide
-client returned by :func:`get_client`. That keeps a web process from
+client returned by ``get_client``. That keeps a web process from
 launching DBOS' background threads — which would turn it into a worker.
 """
 
@@ -30,7 +30,7 @@ _client: DBOSClient | None = None
 
 
 def get_client() -> DBOSClient:
-    """The process-wide :class:`dbos.DBOSClient`, created on first use.
+    """The process-wide ``dbos.DBOSClient``, created on first use.
 
     The client connects lazily: a misconfigured or unreachable system database
     surfaces on the first operation, not at import or ``ready()`` time, and

@@ -7,10 +7,10 @@ per-executor figures, plus worker heartbeats pushed by the workers themselves
 into the Django database (see ``heartbeat.py``).
 
 Each queue gets a scaling *advice* (SCALE_UP / SCALE_DOWN / OK) from
-:func:`advise_queue`, a deliberately simple heuristic whose thresholds come
+``advise_queue``, a deliberately simple heuristic whose thresholds come
 from ``DJANGO_DBOS["CAPACITY"]`` (globally) and ``QUEUES[name]["capacity"]``
 (per queue); ``CAPACITY["ADVISOR"]`` or ``collect(advisor=...)`` replaces it
-entirely. :func:`collect` is a snapshot: smoothing several samples before
+entirely. ``collect`` is a snapshot: smoothing several samples before
 acting on a SCALE_DOWN is the caller's job.
 """
 
@@ -24,15 +24,15 @@ from .client import get_client
 from .heartbeat import read_heartbeats
 from .settings import CAPACITY_THRESHOLD_DEFAULTS, resolve_capacity, resolve_queues
 
-#: ``(queue_name, metrics, thresholds) -> advice`` — the signature of a custom advisor.
+# ``(queue_name, metrics, thresholds) -> advice`` — the signature of a custom advisor.
 Advisor = Callable[[str, dict[str, Any], dict[str, float | int]], str]
 
-#: Default thresholds of :func:`advise_queue` (overridable through settings).
+# Default thresholds of ``advise_queue`` (overridable through settings).
 DEFAULT_SCALE_UP_BACKLOG_AGE_SECONDS = CAPACITY_THRESHOLD_DEFAULTS['SCALE_UP_BACKLOG_AGE_SECONDS']
 DEFAULT_SCALE_DOWN_MAX_RUNNING = CAPACITY_THRESHOLD_DEFAULTS['SCALE_DOWN_MAX_RUNNING']
 
-#: DBOS has no RUNNING status: ENQUEUED waits for a worker, PENDING is being
-#: executed, DELAYED waits for its ``run_after`` time.
+# DBOS has no RUNNING status: ENQUEUED waits for a worker, PENDING is being
+# executed, DELAYED waits for its ``run_after`` time.
 ACTIVE_STATUSES = ('ENQUEUED', 'PENDING', 'DELAYED')
 
 
@@ -66,13 +66,20 @@ def _queue_capacities() -> dict[str, dict[str, Any]]:
 def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) -> dict[str, Any]:
     """Collect worker capacity metrics from the DBOS system database.
 
-    Returns a dict with per-queue load (backlog, waiting age, running, declared
-    concurrency, thresholds, advice), per-executor running counts, the worker
-    heartbeats and the number of workflows that exhausted their recovery
-    attempts. Pass ``queues`` to restrict the report to specific queue names.
     All declared queues (see ``DJANGO_DBOS["QUEUES"]``) always appear in the
-    report, even when idle. ``advisor`` overrides the configured advice
-    function for this call.
+    report, even when idle.
+
+    Args:
+        queues: Restrict the report to these queue names.
+        advisor: Overrides the configured advice function for this call.
+
+    Returns:
+        A dict with ``queues`` (per-queue load: backlog, waiting age, running,
+            declared concurrency, thresholds, advice), ``executors``
+            (per-executor running and enqueued counts), ``workers`` (the
+            worker heartbeats, stale ones included) and
+            ``max_recovery_attempts_exceeded`` (the number of workflows that
+            exhausted their recovery attempts).
     """
     capacity_config = resolve_capacity()
     advise: Advisor = advisor or capacity_config.advisor or default_advisor
@@ -175,8 +182,14 @@ def advise_queue(
       workflows running — an idle queue.
     - OK otherwise.
 
-    Thresholds default to ``DJANGO_DBOS["CAPACITY"]`` (then to
-    ``CAPACITY_THRESHOLD_DEFAULTS``).
+    Args:
+        queue_metrics: One queue's metrics, as reported by ``collect``.
+        scale_up_backlog_age_seconds: Defaults to ``DJANGO_DBOS["CAPACITY"]``,
+            then to ``CAPACITY_THRESHOLD_DEFAULTS``.
+        scale_down_max_running: Defaults like ``scale_up_backlog_age_seconds``.
+
+    Returns:
+        ``"SCALE_UP"``, ``"SCALE_DOWN"`` or ``"OK"``.
     """
     if scale_up_backlog_age_seconds is None or scale_down_max_running is None:
         configured = resolve_capacity().thresholds
@@ -197,7 +210,7 @@ def advise_queue(
 
 
 def default_advisor(queue_name: str, metrics: dict[str, Any], thresholds: dict[str, float | int]) -> str:
-    """The built-in advisor: :func:`advise_queue` with the queue's resolved thresholds."""
+    """The built-in advisor: ``advise_queue`` with the queue's resolved thresholds."""
     return advise_queue(
         metrics,
         scale_up_backlog_age_seconds=thresholds['scale_up_backlog_age_seconds'],

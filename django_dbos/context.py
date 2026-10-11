@@ -1,12 +1,12 @@
 """Durable DBOS primitives available inside a running task.
 
-By default a task's function runs as a single checkpointed DBOS step: simple,
+By default, a task's function runs as a single checkpointed DBOS step: simple,
 and retried atomically, but it cannot itself use DBOS durable primitives
 (steps, durable sleep, events, messages are workflow-level operations).
 
 Tasks that need them opt in with ``@dbos_params(durable_operations=True)``;
 their function then runs at workflow level and can call
-:func:`get_dbos_context` to checkpoint work explicitly::
+``get_dbos_context`` to checkpoint work explicitly:
 
     from django.tasks import task
     from django_dbos import dbos_params, get_dbos_context
@@ -47,12 +47,22 @@ class DbosTaskContext:
     workflow_id: str
 
     def run_step(self, func: Any, *args: Any, name: str | None = None, **kwargs: Any) -> Any:
-        """Execute ``func`` as a checkpointed step of the enclosing workflow."""
+        """Execute ``func`` as a checkpointed step of the enclosing workflow.
+
+        Args:
+            func: The function to run as a step.
+            *args: Positional arguments passed to ``func``.
+            name: Step name recorded by DBOS; defaults to the function's name.
+            **kwargs: Keyword arguments passed to ``func``.
+
+        Returns:
+            The result of ``func``, replayed from the checkpoint on recovery.
+        """
         options = StepOptions(name=name) if name else StepOptions()
         return DBOS.run_step(options, func, *args, **kwargs)
 
     async def run_step_async(self, func: Any, *args: Any, name: str | None = None, **kwargs: Any) -> Any:
-        """Async variant of :meth:`run_step`."""
+        """Async variant of ``run_step``."""
         options = StepOptions(name=name) if name else StepOptions()
         return await DBOS.run_step_async(options, func, *args, **kwargs)
 
@@ -61,6 +71,7 @@ class DbosTaskContext:
         DBOS.sleep(seconds)
 
     async def sleep_async(self, seconds: float) -> None:
+        """Async variant of ``sleep``."""
         await DBOS.sleep_async(seconds)
 
     def set_event(self, key: str, value: Any) -> None:
@@ -68,15 +79,38 @@ class DbosTaskContext:
         DBOS.set_event(key, value)
 
     def get_event(self, workflow_id: str, key: str, timeout_seconds: float = 60) -> Any:
-        """Wait for an event set by another workflow."""
+        """Wait for an event set by another workflow.
+
+        Args:
+            workflow_id: The workflow that publishes the event.
+            key: The event key.
+            timeout_seconds: How long to wait before giving up.
+
+        Returns:
+            The event value, or ``None`` on timeout.
+        """
         return DBOS.get_event(workflow_id, key, timeout_seconds)
 
     def send(self, destination_workflow_id: str, message: Any, topic: str | None = None) -> None:
-        """Send a durable message to another workflow."""
+        """Send a durable message to another workflow.
+
+        Args:
+            destination_workflow_id: The receiving workflow.
+            message: The message payload.
+            topic: Optional topic, matched by the receiver's ``recv``.
+        """
         DBOS.send(destination_workflow_id, message, topic)
 
     def recv(self, topic: str | None = None, timeout_seconds: float = 60) -> Any:
-        """Wait for a durable message sent to this workflow."""
+        """Wait for a durable message sent to this workflow.
+
+        Args:
+            topic: Only receive messages sent on this topic.
+            timeout_seconds: How long to wait before giving up.
+
+        Returns:
+            The message, or ``None`` on timeout.
+        """
         return DBOS.recv(topic, timeout_seconds)
 
     def start_child_workflow(self, func: Any, *args: Any, **kwargs: Any) -> Any:
@@ -89,6 +123,14 @@ def get_dbos_context() -> DbosTaskContext:
 
     Requires the task to be declared with ``@dbos_params(durable_operations=True)``
     and to be executing inside the DBOS worker.
+
+    Returns:
+        The context of the running task's workflow.
+
+    Raises:
+        NoActiveDbosContext: Called outside a running task, or from a step
+            (a task without ``durable_operations``, a function run by
+            ``run_step``, or one decorated with ``@DBOS.step``).
     """
     workflow_id = DBOS.workflow_id
     if not workflow_id:
