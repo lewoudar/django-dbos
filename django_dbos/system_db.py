@@ -12,6 +12,8 @@ import sys
 from collections.abc import Callable
 from typing import Any
 
+import sqlalchemy as sa
+from dbos.cli.migration import run_dbos_database_migrations
 from django.core.management.base import CommandError
 from django.db import DEFAULT_DB_ALIAS, connections
 
@@ -34,8 +36,6 @@ def _with_connect_timeout(url: str) -> str:
     The SDK connects without one: an unreachable server would block the
     migration (hence ``manage.py migrate``) indefinitely instead of failing.
     """
-    import sqlalchemy as sa
-
     parsed = sa.make_url(url)
     if not parsed.drivername.startswith(('postgresql', 'cockroachdb')) or 'connect_timeout' in parsed.query:
         return url
@@ -49,8 +49,6 @@ def migrate_system_database(*, echo: Callable[[str], object], app_role: str | No
     reported through ``echo``, with credentials masked; failures raise a
     ``CommandError`` without the DSN.
     """
-    from dbos.cli.migration import run_dbos_database_migrations
-
     try:
         resolved = settings_module.resolve_settings()
     except ImproperlyConfiguredDbos as exc:

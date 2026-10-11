@@ -3,7 +3,8 @@
 import pytest
 
 from django_dbos.tasks import known_tasks
-from django_dbos.tasks_registry import register_all_task_workflows, task_from_workflow_name, workflow_name_for_task
+from django_dbos.tasks_registry import register_all_task_workflows
+from django_dbos.workflow_names import task_from_workflow_name, workflow_name_for_task
 
 from . import tasks as tasks_module
 

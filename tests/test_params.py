@@ -3,8 +3,7 @@
 from django.tasks import task as django_task
 
 from django_dbos import dbos_params
-from django_dbos.params import FUNC_PARAMS_ATTRIBUTE
-from django_dbos.params_dataclass import DbosTaskParams
+from django_dbos.params_dataclass import FUNC_PARAMS_ATTRIBUTE, DbosTaskParams
 
 from .tests_helpers import make_dbos_task
 

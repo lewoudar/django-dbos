@@ -10,9 +10,9 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from .params_dataclass import DbosTaskParams
+from .params_dataclass import FUNC_PARAMS_ATTRIBUTE, DbosTaskParams
+from .tasks import DBOSTask
 
-FUNC_PARAMS_ATTRIBUTE = '_django_dbos_params'
 _UNSET = object()
 
 
@@ -48,8 +48,6 @@ def dbos_params(
     )
 
     def wrapper(task: Any) -> Any:
-        from .tasks import DBOSTask
-
         if isinstance(task, DBOSTask):
             return replace(task, dbos_params=params)
         # Bare function, or a Task from another backend: keep the params on

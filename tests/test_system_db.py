@@ -16,7 +16,7 @@ from django_dbos import system_db
 
 @pytest.fixture
 def run(mocker):
-    return mocker.patch('dbos.cli.migration.run_dbos_database_migrations')
+    return mocker.patch('django_dbos.system_db.run_dbos_database_migrations')
 
 
 @pytest.fixture
@@ -99,7 +99,7 @@ class TestMigrateAfterDjangoMigrate:
         run.assert_not_called()
 
     def test_sdk_failure_names_the_opt_out(self, system_database_url, mocker):
-        mocker.patch('dbos.cli.migration.run_dbos_database_migrations', side_effect=Exit(code=1))
+        mocker.patch('django_dbos.system_db.run_dbos_database_migrations', side_effect=Exit(code=1))
 
         with pytest.raises(CommandError, match="MIGRATE_WITH_DJANGO'] = False") as excinfo:
             send(stdout=StringIO())
@@ -107,7 +107,7 @@ class TestMigrateAfterDjangoMigrate:
 
     def test_other_failures_are_described(self, system_database_url, mocker):
         mocker.patch(
-            'dbos.cli.migration.run_dbos_database_migrations',
+            'django_dbos.system_db.run_dbos_database_migrations',
             side_effect=RuntimeError('boom at postgresql://user:hunter2@db/dbos_app'),
         )
 

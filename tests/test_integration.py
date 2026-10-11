@@ -14,7 +14,7 @@ from django_dbos.client import get_client
 from django_dbos.context import NoActiveDbosContext
 from django_dbos.exceptions import TaskCancelled, TaskTimedOut
 from django_dbos.scheduling import register_cron_schedules
-from django_dbos.tasks_registry import workflow_name_for_task
+from django_dbos.workflow_names import workflow_name_for_task
 
 from . import tasks as tasks_module
 from .conftest import wait_for_result

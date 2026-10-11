@@ -23,11 +23,21 @@ Fixtures:
 
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import UTC, datetime
+from traceback import format_exception
 from typing import Any
 
 import pytest
+from django.tasks import TaskResult, TaskResultStatus
+from django.tasks.base import TaskError
+from django.tasks.exceptions import TaskResultDoesNotExist
+
+from django_dbos import client, dbos_setup
+from django_dbos.backends import DBOSBackend
+from django_dbos.exceptions import DjangoDbosError
+from django_dbos.tasks_registry import _build_task_context
 
 
 def pytest_addoption(parser: Any) -> None:
@@ -55,11 +65,6 @@ def _now() -> datetime:
 
 def _inline_result(task: Any, args: tuple[Any, ...], kwargs: dict[str, Any], outcome: Any) -> Any:
     """A finished TaskResult: SUCCESSFUL with the return value, or FAILED with the exception."""
-    from traceback import format_exception
-
-    from django.tasks import TaskResult, TaskResultStatus
-    from django.tasks.base import TaskError
-
     now = _now()
     failed = isinstance(outcome, BaseException)
     errors = []
@@ -93,8 +98,6 @@ def _inline_result(task: Any, args: tuple[Any, ...], kwargs: dict[str, Any], out
 
 def _check_inline_support(backend: Any, task: Any) -> None:
     """Mirror the real backend's validation, and refuse what inline cannot reproduce in strict mode."""
-    from django_dbos.exceptions import DjangoDbosError
-
     backend.validate_task(task)
     backend._validate_queue(task)
     if not backend._inline_strict:
@@ -115,8 +118,6 @@ def _check_inline_support(backend: Any, task: Any) -> None:
 def _inline_args(task: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[Any, ...]:
     if not task.takes_context:
         return tuple(args)
-    from django_dbos.tasks_registry import _build_task_context
-
     return (_build_task_context(task, args, kwargs), *args)
 
 
@@ -150,8 +151,6 @@ _results: dict[str, Any] = {}
 
 
 def _lookup_result(self: Any, result_id: str) -> Any:
-    from django.tasks.exceptions import TaskResultDoesNotExist
-
     try:
         return _results[result_id]
     except KeyError:
@@ -165,8 +164,6 @@ async def _alookup_result(self: Any, result_id: str) -> Any:
 @pytest.fixture
 def dbos_inline(monkeypatch: Any, request: Any) -> Any:
     """Make DBOS-backed tasks execute synchronously, without a system database."""
-    from django_dbos.backends import DBOSBackend
-
     strict = bool(request.config.getoption('--dbos-inline-strict'))
     monkeypatch.setattr(DBOSBackend, '_inline_strict', strict, raising=False)
     monkeypatch.setattr(DBOSBackend, 'enqueue', _inline_enqueue)
@@ -192,8 +189,6 @@ def dbos_system(request: Any, tmp_path_factory: Any) -> Any:
     ``--dbos-system-db=auto|sqlite|postgres`` (default: auto — PostgreSQL via
     testcontainers when Docker is available, SQLite file otherwise).
     """
-    import os
-
     mode = request.config.getoption('--dbos-system-db')
     container = None
     previous_url = os.environ.get('DBOS_SYSTEM_DATABASE_URL')
@@ -224,8 +219,6 @@ def dbos_system(request: Any, tmp_path_factory: Any) -> Any:
         system_database_url = f'sqlite:///{tmp_path_factory.mktemp("dbos") / "systemdb.sqlite"}'
 
     os.environ['DBOS_SYSTEM_DATABASE_URL'] = system_database_url
-
-    from django_dbos import client, dbos_setup
 
     # The DBOSClient (enqueue/get_result) must target this session's system
     # database: drop any client built before the URL was set.

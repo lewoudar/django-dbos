@@ -11,7 +11,8 @@ from django.tasks import TaskContext, TaskResultStatus, task
 from structlog.testing import capture_logs
 
 from django_dbos import dbos_params
-from django_dbos.tasks_registry import aexecute_task_body, execute_task_body, workflow_name_for_task
+from django_dbos.tasks_registry import aexecute_task_body, execute_task_body
+from django_dbos.workflow_names import workflow_name_for_task
 
 from .tasks import context_task
 
@@ -71,7 +72,7 @@ def calls(mocker):
 
     mocker.patch('django_dbos.tasks_registry.DBOS.run_step_async', side_effect=run_step_async)
     # No system database here: building a TaskContext falls back to a single attempt.
-    mocker.patch('django_dbos.client.get_client', side_effect=RuntimeError('no system database'))
+    mocker.patch('django_dbos.tasks_registry.get_client', side_effect=RuntimeError('no system database'))
     return events
 
 
@@ -100,7 +101,7 @@ class TestTaskContext:
     @pytest.fixture
     def client(self, calls, mocker):
         client = MagicMock()
-        mocker.patch('django_dbos.client.get_client', return_value=client)
+        mocker.patch('django_dbos.tasks_registry.get_client', return_value=client)
         mocker.patch('django_dbos.tasks_registry.DBOS.workflow_id', 'wf-1')
         return client
 

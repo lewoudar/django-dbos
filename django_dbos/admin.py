@@ -18,9 +18,13 @@ from __future__ import annotations
 from typing import Any
 
 from django.contrib import admin as django_admin
+from django.contrib.admin import AdminSite
 from django.urls import URLPattern, path
+from django.utils.module_loading import import_string
 
+from . import admin_views
 from .logging import logger
+from .models import WorkerHeartbeat
 from .settings import get_dbos_setting
 
 APP_LABEL = 'django_dbos'
@@ -45,9 +49,6 @@ def get_admin_sites() -> list[Any]:
     When the default site is requested but ``django.contrib.admin`` is not
     installed, it is silently skipped (projects without an admin at all).
     """
-    from django.contrib.admin import AdminSite
-    from django.utils.module_loading import import_string
-
     configured_paths = get_admin_site_paths()
     resolved: list[Any] = []
     for dotted_path in configured_paths:
@@ -87,9 +88,6 @@ class WorkerHeartbeatAdmin(django_admin.ModelAdmin):
 
 def register_admin(site: Any) -> None:
     """Append django-dbos URLs to an AdminSite instance (idempotent)."""
-    from . import admin_views
-    from .models import WorkerHeartbeat
-
     if getattr(site, '_django_dbos_registered', False):
         return
 

@@ -16,8 +16,11 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import quote
 
+from dbos import Serializer
 from django.conf import settings
+from django.utils.module_loading import import_string
 
 from .exceptions import ImproperlyConfiguredDbos
 
@@ -118,8 +121,6 @@ def _sqlite_system_database_url(django_db: dict[str, Any]) -> str:
 
 
 def _postgres_url_from_django(django_db: dict[str, Any], db_name: str) -> str:
-    from urllib.parse import quote
-
     # percent-encode the credentials (a password may contain '@', ':' or '/')
     user = quote(django_db.get('USER') or '', safe='')
     password = quote(django_db.get('PASSWORD') or '', safe='')
@@ -195,9 +196,6 @@ def resolve_serializer() -> Any:
 
     The worker and every client must use the same serializer.
     """
-    from dbos import Serializer
-    from django.utils.module_loading import import_string
-
     value = get_dbos_setting('SERIALIZER')
     if value is None:
         return None
@@ -240,8 +238,6 @@ def resolve_capacity() -> CapacityConfig:
     ``ADVISOR`` is a callable ``(queue_name, metrics, thresholds) -> str`` (or
     its dotted path) replacing the default heuristic, ``capacity.advise_queue``.
     """
-    from django.utils.module_loading import import_string
-
     where = f"{SETTING_NAME}['CAPACITY']"
     setting = get_dbos_setting('CAPACITY')
     if setting is None:

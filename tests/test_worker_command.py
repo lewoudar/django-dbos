@@ -14,7 +14,7 @@ def worker_mocks(mocker):
         'ensure_launched': mocker.patch('django_dbos.dbos_setup.ensure_launched'),
         'register_cron_schedules': mocker.patch('django_dbos.scheduling.register_cron_schedules'),
         'shutdown': mocker.patch('django_dbos.dbos_setup.shutdown'),
-        'heartbeat_cls': mocker.patch('django_dbos.heartbeat.HeartbeatThread'),
+        'heartbeat_cls': mocker.patch('django_dbos.management.commands.dbos.HeartbeatThread'),
         'find_spec': mocker.patch('importlib.util.find_spec', return_value=None),
         'event_wait': mocker.patch('threading.Event.wait', return_value=True),
         # Never install real handlers in the pytest process: they would outlive the test.
