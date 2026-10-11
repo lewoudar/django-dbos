@@ -38,6 +38,7 @@ KNOWN_SETTINGS = (
     'SERIALIZER',
     'CAPACITY',
     'RUN_MIGRATIONS',
+    'MIGRATE_WITH_DJANGO',
     'SCHEDULER_POLLING_INTERVAL_SEC',
     'ADMIN_ENABLED',
     'ADMIN_SITE',
@@ -157,6 +158,11 @@ def resolve_system_database_url() -> str:
     if url:
         return url
     return derive_system_database_url(_django_database_settings())
+
+
+def resolve_migrate_with_django() -> bool:
+    """Whether ``manage.py migrate`` also migrates the DBOS system database (default ``True``)."""
+    return bool(get_dbos_setting('MIGRATE_WITH_DJANGO', True))
 
 
 def resolve_app_name() -> str:

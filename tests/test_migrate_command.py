@@ -32,7 +32,9 @@ class TestDbosMigrate:
 
         output = migrate('--app-role', 'app')
 
-        run.assert_called_once_with('postgresql://user:hunter2@db/dbos_app', schema='custom', application_role='app')
+        run.assert_called_once_with(
+            'postgresql://user:hunter2@db/dbos_app?connect_timeout=10', schema='custom', application_role='app'
+        )
         assert 'hunter2' not in output
         assert 'user:***@db/dbos_app' in output
         assert 'up to date' in output

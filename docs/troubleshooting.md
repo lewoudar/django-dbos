@@ -54,9 +54,30 @@ With PostgreSQL, an error saying the system database or its `dbos` schema
 does not exist.
 
 Web processes never create the system database: it is created by
-`python manage.py dbos migrate`, or by the first worker start (unless
+`python manage.py migrate` (unless `MIGRATE_WITH_DJANGO` is `False`),
+`python manage.py dbos migrate`, or the first worker start (unless
 `RUN_MIGRATIONS` is `False`). Run one of them before enqueuing. See
 [Migrating the system database](configuration.md#migrating-the-system-database).
+
+## `migrate` fails on the DBOS system database
+
+`python manage.py migrate` applies Django's migrations first, then DBOS':
+when it ends with `DBOS migrations failed`, Django's migrations are already
+applied, and running `migrate` again once the cause is fixed finishes the job.
+The DBOS SDK prints the actual error just above.
+
+- **`database "dbos_<name>" does not exist`** while migrating: the system
+  database could not be *created*, most often because the migrating role
+  lacks `CREATEDB` (DBOS only logs that failure and carries on, so the
+  missing database is what you get to see). Grant `CREATEDB` to that role,
+  create the database yourself, or point `SYSTEM_DATABASE_URL` at an
+  existing database (DBOS' tables live in their own `dbos` schema).
+- **`connection timeout expired`**: the system database server is
+  unreachable. Connection attempts give up after 10 seconds (set your own
+  `connect_timeout` in `SYSTEM_DATABASE_URL` to change it).
+- The system database must not be migrated from this step — say it needs
+  other credentials? Set `MIGRATE_WITH_DJANGO` to `False` and run
+  `python manage.py dbos migrate` where it can.
 
 ## `NoActiveDbosContext`
 

@@ -19,14 +19,9 @@ from typing import Any
 import djclick as click
 from django.core.management.base import CommandError
 
-from django_dbos import capacity, dbos_setup, discovery
+from django_dbos import capacity, dbos_setup, discovery, system_db
 from django_dbos import settings as settings_module
-from django_dbos.exceptions import (
-    ImproperlyConfiguredDbos,
-    describe_error,
-    scrub_credentials,
-    system_database_errors,
-)
+from django_dbos.exceptions import ImproperlyConfiguredDbos, describe_error, system_database_errors
 
 
 @click.group()
@@ -42,21 +37,7 @@ def main() -> None:
 )
 def migrate(app_role: str | None) -> None:
     """Create the DBOS system database and apply its migrations, without launching a worker."""
-    from dbos.cli.migration import run_dbos_database_migrations
-
-    try:
-        resolved = settings_module.resolve_settings()
-    except ImproperlyConfiguredDbos as exc:
-        raise CommandError(str(exc)) from None
-
-    schema = resolved.dbos_system_schema or 'dbos'
-    click.echo(
-        f'Migrating the DBOS system database {scrub_credentials(resolved.system_database_url)} (schema {schema!r})'
-    )
-    try:
-        run_dbos_database_migrations(resolved.system_database_url, schema=schema, application_role=app_role)
-    except Exception as exc:  # noqa: BLE001 - the SDK reports its own failure as a click Exit; keep the chain out of the output
-        raise CommandError(f'DBOS migrations failed: {describe_error(exc)}') from None
+    system_db.migrate_system_database(echo=click.echo, app_role=app_role)
     click.secho('DBOS system database is up to date.', fg='green')
 
 

@@ -52,8 +52,7 @@ DJANGO_DBOS = {
 ```
 
 ```bash
-python manage.py migrate       # django-dbos ships one small model (worker heartbeats)
-python manage.py dbos migrate  # creates/migrates the DBOS system database
+python manage.py migrate       # Django's migrations (worker heartbeats), then creates/migrates the DBOS system database
 python manage.py dbos worker   # executes tasks — see "Processes" below
 ```
 
@@ -345,8 +344,11 @@ actually about durability.
 - **`RUN_MIGRATIONS`** (default `True`): a worker creates/migrates the system
   database on every launch — convenient in dev, wrong in production (DDL
   rights on the worker role, migration races on first boot of a new
-  version). Set to `False` and run `python manage.py dbos migrate` as an
-  explicit release step, next to `migrate`.
+  version). Set to `False`: the release step's `migrate` migrates it.
+- **`MIGRATE_WITH_DJANGO`** (default `True`): `manage.py migrate` also
+  creates/migrates the system database (`post_migrate`, default database
+  only, skipped on test databases and `flush`). Set to `False` to run
+  `python manage.py dbos migrate [--app-role ROLE]` separately instead.
 - **`EXECUTOR_ID`**: give each worker *instance* a stable identity (survives
   its own restarts, distinct from other instances) — crash recovery and
   capacity reports are keyed by it. Falls back to `DBOS__VMID` env, then
@@ -369,9 +371,9 @@ actually about durability.
 
 1. Two process kinds, scaled independently: web/commands (client only) vs.
    `dbos worker` (executes tasks).
-2. A release step running `migrate` then `dbos migrate` before the new
-   version serves, with `RUN_MIGRATIONS=False` so workers only verify the
-   schema.
+2. A release step running `migrate` (which also migrates the system
+   database) before the new version serves, with `RUN_MIGRATIONS=False` so
+   workers only verify the schema.
 3. A stable `EXECUTOR_ID` per worker instance (platform instance id/hostname
    — never a pid, which changes every restart).
 4. Decide the system database URL and serializer deliberately (see above).
@@ -391,8 +393,8 @@ actually about durability.
 - Expecting a cancellation to stop a running task → it only stops at the next
   step boundary; a task without `durable_operations` runs to its end.
 - First enqueue fails with a missing table/database → the system database
-  was never created: run `python manage.py dbos migrate` (web processes never
-  create it).
+  was never created: run `python manage.py migrate` (or `dbos migrate` with
+  `MIGRATE_WITH_DJANGO=False`; web processes never create it).
 - `queue_name` used by a task but not declared in `DJANGO_DBOS['QUEUES']` →
   rejected at enqueue/validation time.
 - A `@cron` task declared with parameters → rejected at module load, not at
