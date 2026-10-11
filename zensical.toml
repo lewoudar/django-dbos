@@ -126,3 +126,31 @@ pymdownx.tabbed.alternate_style = true
 pymdownx.tabbed.combine_header_slug = true
 pymdownx.tasklist.custom_checkbox = true
 pymdownx.tilde = {}
+
+# llms.txt index (and a Markdown copy of every page) for AI agents reading
+# the site; llms-full.txt concatenates all pages in a single file.
+[project.plugins.llmstxt]
+full_output = "llms-full.txt"
+markdown_description = """
+Durable background tasks for Django's `django.tasks` framework, backed by
+DBOS: tasks survive crashes and restarts, retries and timeouts are declared
+per task, and `@cron` schedules periodic tasks (with optional Sentry cron
+monitors). Workers run with `manage.py dbos worker`; web processes only
+enqueue. Coding agents can also install the `django-dbos` agent skill (see
+"AI agents").
+"""
+
+[project.plugins.llmstxt.sections]
+"Getting started" = ["index.md", "first-task.md", "configuration.md"]
+"Guides" = [
+  "tasks.md",
+  "workflows.md",
+  "cron.md",
+  "admin.md",
+  "status.md",
+  "testing.md",
+  "deployment.md",
+  "troubleshooting.md",
+]
+# "Optional" is special in the llms.txt spec: agents short on context may skip it.
+"Optional" = ["ai-agents.md"]
