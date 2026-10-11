@@ -23,7 +23,7 @@ from .logging import logger
 
 PAGE_SIZE = 50
 
-#: Workflow status -> CSS class for the status badge in templates.
+# Workflow status -> CSS class for the status badge in templates.
 STATUS_BADGES = {
     'SUCCESS': 'success',
     'ERROR': 'error',
@@ -94,8 +94,8 @@ def _row(status: Any) -> dict[str, Any]:
     }
 
 
-#: Cap on the page query parameter: beyond this there is no meaningful data
-#: (50 pages of 50 workflows), and unbounded offsets overflow database integers.
+# Cap on the page query parameter: beyond this there is no meaningful data
+# (50 pages of 50 workflows), and unbounded offsets overflow database integers.
 _MAX_PAGE = 50
 
 

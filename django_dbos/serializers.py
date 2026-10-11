@@ -1,21 +1,21 @@
 """msgspec serializers for task arguments, results and errors.
 
 Safe alternatives to DBOS' default serializer (pickle), and much faster than
-``dbos.DBOSPortableJSONSerializer``. Install the extra, then select one::
+``dbos.DBOSPortableJSONSerializer``. Install the extra, then select one:
 
     uv add "django-dbos[msgspec]"
 
     DJANGO_DBOS = {'SERIALIZER': 'django_dbos.serializers.MsgspecJSONSerializer'}
 
-- :class:`MsgspecJSONSerializer` stores JSON: the fastest and most compact,
+- ``MsgspecJSONSerializer`` stores JSON: the fastest and most compact,
   readable in the system database and the admin.
-- :class:`MsgspecMsgpackSerializer` stores base64-encoded msgpack (DBOS
+- ``MsgspecMsgpackSerializer`` stores base64-encoded msgpack (DBOS
   stores text): slower and bigger than JSON, but aware ``datetime`` and
   ``bytes`` values come back as such instead of strings.
 
 Both keep JSON-like data: tuples and sets come back as lists; ``Decimal``,
 ``UUID``, dates, times, enums (and naive datetimes) as strings; dataclasses as
-dicts. A task's exception comes back as :class:`~django_dbos.exceptions.TaskFailure`,
+dicts. A task's exception comes back as ``TaskFailure``,
 carrying the original class path, message and traceback: the original class is
 never imported.
 
@@ -41,16 +41,16 @@ except ImportError as exc:  # resolve_serializer() lets it through: manage.py ch
         'The msgspec serializers need msgspec: install it with the extra, django-dbos[msgspec].'
     ) from exc
 
-#: Marks an exception in JSON: ``{"__django_dbos_error__": {...}}``.
+# Marks an exception in JSON: ``{"__django_dbos_error__": {...}}``.
 _ERROR_KEY = '__django_dbos_error__'
-#: msgpack extension type code of an exception.
+# msgpack extension type code of an exception.
 _ERROR_EXT_CODE = 1
 
 
 class ErrorPayload(msgspec.Struct, frozen=True):
     """How a task's exception is stored: never the exception object itself."""
 
-    #: Dotted path of the exception class, never imported back.
+    # Dotted path of the exception class, never imported back.
     type: str
     message: str
     traceback: str = ''

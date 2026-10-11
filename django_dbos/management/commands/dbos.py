@@ -74,7 +74,7 @@ def worker() -> None:
         dbos_setup.shutdown()
 
 
-#: Capacity advice -> click color for the status badge in the human-readable report.
+# Capacity advice -> click color for the status badge in the human-readable report.
 _ADVICE_COLORS = {'SCALE_UP': 'red', 'SCALE_DOWN': 'yellow', 'OK': 'green'}
 
 

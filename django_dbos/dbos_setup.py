@@ -4,13 +4,13 @@ DBOS uses a process-wide singleton (``dbos.DBOS``). This module wraps its
 creation, launch and teardown so the worker entry points (the ``dbos worker``
 command, the ``dbos_system`` test fixture) share one idempotent lifecycle:
 
-- :func:`ensure_initialized` builds the singleton from the ``DJANGO_DBOS``
+- ``ensure_initialized`` builds the singleton from the ``DJANGO_DBOS``
   setting.
-- :func:`ensure_launched` registers every known task as a DBOS workflow,
+- ``ensure_launched`` registers every known task as a DBOS workflow,
   starts the queue/scheduler/recovery threads and declares the queues (DBOS
   persists queue configuration to the system database, which only exists once
   launched): from then on this process executes tasks.
-- :func:`shutdown` tears the singleton down (used on worker shutdown and
+- ``shutdown`` tears the singleton down (used on worker shutdown and
   between tests), waiting for in-flight workflows to finish first.
 
 Processes that only enqueue tasks or inspect the system database (web,

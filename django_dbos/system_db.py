@@ -20,13 +20,13 @@ from django.db import DEFAULT_DB_ALIAS, connections
 from . import settings as settings_module
 from .exceptions import ImproperlyConfiguredDbos, describe_error, scrub_credentials
 
-#: Appended to the errors raised from ``manage.py migrate``.
+# Appended to the errors raised from ``manage.py migrate``.
 _OPT_OUT_HINT = (
     f"(set {settings_module.SETTING_NAME}['MIGRATE_WITH_DJANGO'] = False to migrate it "
     'separately with `manage.py dbos migrate`)'
 )
 
-#: Seconds before a connection attempt to a PostgreSQL system database gives up.
+# Seconds before a connection attempt to a PostgreSQL system database gives up.
 CONNECT_TIMEOUT_SEC = 10
 
 

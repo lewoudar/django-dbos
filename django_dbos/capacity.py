@@ -7,10 +7,10 @@ per-executor figures, plus worker heartbeats pushed by the workers themselves
 into the Django database (see ``heartbeat.py``).
 
 Each queue gets a scaling *advice* (SCALE_UP / SCALE_DOWN / OK) from
-:func:`advise_queue`, a deliberately simple heuristic whose thresholds come
+``advise_queue``, a deliberately simple heuristic whose thresholds come
 from ``DJANGO_DBOS["CAPACITY"]`` (globally) and ``QUEUES[name]["capacity"]``
 (per queue); ``CAPACITY["ADVISOR"]`` or ``collect(advisor=...)`` replaces it
-entirely. :func:`collect` is a snapshot: smoothing several samples before
+entirely. ``collect`` is a snapshot: smoothing several samples before
 acting on a SCALE_DOWN is the caller's job.
 """
 
@@ -24,15 +24,15 @@ from .client import get_client
 from .heartbeat import read_heartbeats
 from .settings import CAPACITY_THRESHOLD_DEFAULTS, resolve_capacity, resolve_queues
 
-#: ``(queue_name, metrics, thresholds) -> advice`` — the signature of a custom advisor.
+# ``(queue_name, metrics, thresholds) -> advice`` — the signature of a custom advisor.
 Advisor = Callable[[str, dict[str, Any], dict[str, float | int]], str]
 
-#: Default thresholds of :func:`advise_queue` (overridable through settings).
+# Default thresholds of ``advise_queue`` (overridable through settings).
 DEFAULT_SCALE_UP_BACKLOG_AGE_SECONDS = CAPACITY_THRESHOLD_DEFAULTS['SCALE_UP_BACKLOG_AGE_SECONDS']
 DEFAULT_SCALE_DOWN_MAX_RUNNING = CAPACITY_THRESHOLD_DEFAULTS['SCALE_DOWN_MAX_RUNNING']
 
-#: DBOS has no RUNNING status: ENQUEUED waits for a worker, PENDING is being
-#: executed, DELAYED waits for its ``run_after`` time.
+# DBOS has no RUNNING status: ENQUEUED waits for a worker, PENDING is being
+# executed, DELAYED waits for its ``run_after`` time.
 ACTIVE_STATUSES = ('ENQUEUED', 'PENDING', 'DELAYED')
 
 
@@ -197,7 +197,7 @@ def advise_queue(
 
 
 def default_advisor(queue_name: str, metrics: dict[str, Any], thresholds: dict[str, float | int]) -> str:
-    """The built-in advisor: :func:`advise_queue` with the queue's resolved thresholds."""
+    """The built-in advisor: ``advise_queue`` with the queue's resolved thresholds."""
     return advise_queue(
         metrics,
         scale_up_backlog_age_seconds=thresholds['scale_up_backlog_age_seconds'],

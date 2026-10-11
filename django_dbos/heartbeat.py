@@ -1,10 +1,10 @@
 """Worker heartbeats: liveness and load of worker processes, in the Django database.
 
-Each ``dbos worker`` periodically upserts a :class:`~django_dbos.models.WorkerHeartbeat`
+Each ``dbos worker`` periodically upserts a ``WorkerHeartbeat``
 row (process metrics via psutil when the ``[metrics]`` extra is installed)
 and deletes it on clean shutdown. Diagnostics (``dbos status``, the admin)
 read the rows back: a row whose ``last_seen_at`` is older than
-:data:`STALE_AFTER_SECONDS` belongs to a worker that died without cleaning up.
+``STALE_AFTER_SECONDS`` belongs to a worker that died without cleaning up.
 
 This mirrors DBOS Conductor's push model with the Django database as the
 channel — it works wherever the ORM does, from any process, without a
@@ -26,9 +26,9 @@ from django.utils import timezone
 from .logging import logger
 
 HEARTBEAT_INTERVAL_SECONDS = 10.0
-#: A heartbeat older than this means the worker died without cleaning up.
+# A heartbeat older than this means the worker died without cleaning up.
 STALE_AFTER_SECONDS = 30.0
-#: Stale rows older than this are purged by the next heartbeat write.
+# Stale rows older than this are purged by the next heartbeat write.
 PURGE_AFTER_SECONDS = 24 * 3600.0
 
 

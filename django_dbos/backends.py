@@ -21,9 +21,9 @@ from .workflow_names import workflow_name_for_task
 if TYPE_CHECKING:
     from dbos import EnqueueOptions
 
-#: DBOS queue priorities run 1 (highest) .. 2**31-1 (lowest). Django priorities
-#: run -100 (lowest) .. 100 (highest). Offset so the Django scale fits in the
-#: DBOS scale while preserving the order.
+# DBOS queue priorities run 1 (highest) .. 2**31-1 (lowest). Django priorities
+# run -100 (lowest) .. 100 (highest). Offset so the Django scale fits in the
+# DBOS scale while preserving the order.
 _PRIORITY_OFFSET = 101
 
 

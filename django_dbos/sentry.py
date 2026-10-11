@@ -5,7 +5,7 @@ Tasks scheduled with ``@cron`` can be monitored by `Sentry cron monitors
 upserted by Sentry on each check-in, so there is nothing to create in the
 Sentry UI beforehand.
 
-Install the extra to enable it::
+Install the extra to enable it:
 
     uv add django-dbos[sentry]
 

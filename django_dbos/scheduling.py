@@ -1,6 +1,6 @@
 """Scheduling Django tasks with cron expressions.
 
-Stack ``@cron`` on top of ``@task``::
+Stack ``@cron`` on top of ``@task``:
 
     from django.tasks import task
     from django_dbos import cron
@@ -40,7 +40,7 @@ SCHEDULE_PREFIX = 'django_dbos.schedules.'
 class CronRegistration:
     task: DBOSTask
     crontab: str
-    #: Resolved Sentry monitor configuration (None: not monitored).
+    # Resolved Sentry monitor configuration (None: not monitored).
     monitor_config: SentryMonitorConfig | None
 
 

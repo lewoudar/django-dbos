@@ -30,7 +30,7 @@ def dbos_params(
 ) -> Any:
     """Attach DBOS execution options to a Django task.
 
-    Works both below and above ``@task``::
+    Works both below and above ``@task``:
 
         @dbos_params(step_retries_allowed=True, step_max_attempts=5)
         @task

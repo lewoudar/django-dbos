@@ -6,7 +6,7 @@ and retried atomically, but it cannot itself use DBOS durable primitives
 
 Tasks that need them opt in with ``@dbos_params(durable_operations=True)``;
 their function then runs at workflow level and can call
-:func:`get_dbos_context` to checkpoint work explicitly::
+``get_dbos_context`` to checkpoint work explicitly:
 
     from django.tasks import task
     from django_dbos import dbos_params, get_dbos_context
@@ -52,7 +52,7 @@ class DbosTaskContext:
         return DBOS.run_step(options, func, *args, **kwargs)
 
     async def run_step_async(self, func: Any, *args: Any, name: str | None = None, **kwargs: Any) -> Any:
-        """Async variant of :meth:`run_step`."""
+        """Async variant of ``run_step``."""
         options = StepOptions(name=name) if name else StepOptions()
         return await DBOS.run_step_async(options, func, *args, **kwargs)
 

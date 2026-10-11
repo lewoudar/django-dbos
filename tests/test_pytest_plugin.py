@@ -196,7 +196,7 @@ def test_async_keyboard_interrupt_is_not_swallowed(dbos_inline):
         asyncio.run(async_interrupt.aenqueue())
 """
 
-#: Makes `PostgresContainer.start()` fail as it does when Docker is not running.
+# Makes `PostgresContainer.start()` fail as it does when Docker is not running.
 UNAVAILABLE_POSTGRES_CONFTEST = """
 import os
 import sys

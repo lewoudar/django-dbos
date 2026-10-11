@@ -8,11 +8,11 @@ from django.tasks import Task
 
 from .params_dataclass import FUNC_PARAMS_ATTRIBUTE, DbosTaskParams
 
-#: Every DBOSTask built in this process, by module path. ``@task`` evaluates
-#: at import time, so once the task modules are imported (see
-#: ``discovery.autodiscover_tasks``) this holds every task a worker must be
-#: able to execute. Copies made by ``.using()`` or ``@dbos_params`` share the
-#: module path and simply replace the entry.
+# Every DBOSTask built in this process, by module path. ``@task`` evaluates
+# at import time, so once the task modules are imported (see
+# ``discovery.autodiscover_tasks``) this holds every task a worker must be
+# able to execute. Copies made by ``.using()`` or ``@dbos_params`` share the
+# module path and simply replace the entry.
 _known_tasks: dict[str, DBOSTask] = {}
 
 
