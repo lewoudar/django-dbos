@@ -203,15 +203,17 @@ python manage.py dbos migrate            # creates the database and applies DBOS
 python manage.py dbos migrate --app-role app   # optionally grant the schema to your runtime role
 ```
 
-Workers also create the system database and apply DBOS' migrations every
-time they launch. In production, that means the worker's database role needs
-DDL rights and that a DBOS upgrade changes the schema whenever the first new
-worker boots: since the release step already migrates, have workers only
-verify the schema:
+Workers migrate too: by default (`RUN_MIGRATIONS = True`), every worker
+creates the system database and applies DBOS' migrations when it launches.
+Handy in development. Once `migrate` does it in your release step, turn that
+off in production: workers then only check that the schema is there and up
+to date, and refuse to launch otherwise. Their database role no longer needs
+DDL rights, and a DBOS upgrade changes the schema during the release, not
+whenever the first new worker boots.
 
 ```python
 DJANGO_DBOS = {
-    'RUN_MIGRATIONS': False,  # workers verify the schema and refuse to launch if it is missing or behind
+    'RUN_MIGRATIONS': False,
 }
 ```
 
