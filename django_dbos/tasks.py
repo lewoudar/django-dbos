@@ -6,8 +6,7 @@ from dataclasses import dataclass, field
 
 from django.tasks import Task
 
-from .params import FUNC_PARAMS_ATTRIBUTE
-from .params_dataclass import DbosTaskParams
+from .params_dataclass import FUNC_PARAMS_ATTRIBUTE, DbosTaskParams
 
 #: Every DBOSTask built in this process, by module path. ``@task`` evaluates
 #: at import time, so once the task modules are imported (see

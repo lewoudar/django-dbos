@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+#: Attribute of a task function holding the DbosTaskParams set by ``@dbos_params``.
+FUNC_PARAMS_ATTRIBUTE = '_django_dbos_params'
+
 
 @dataclass(frozen=True, kw_only=True)
 class DbosTaskParams:
