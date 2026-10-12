@@ -18,7 +18,7 @@ from django_dbos.heartbeat import (
     worker_id,
     write_heartbeat,
 )
-from django_dbos.models import WorkerHeartbeat
+from django_dbos.models import WorkerHeartbeat, new_heartbeat_id
 
 pytestmark = pytest.mark.django_db
 
@@ -27,12 +27,19 @@ def _unique_executor() -> str:
     return f'worker-{uuid.uuid4().hex[:8]}'
 
 
+def test_new_heartbeat_id_is_time_ordered_when_available():
+    heartbeat_id = new_heartbeat_id()
+    assert isinstance(heartbeat_id, uuid.UUID)
+    assert heartbeat_id.version == (7 if hasattr(uuid, 'uuid7') else 4)
+
+
 class TestWriteAndReadHeartbeat:
     def test_roundtrip(self):
-        executor_id = _unique_executor()
-        assert write_heartbeat(executor_id, queues=('default', 'emails')) is True
+        executor_id, heartbeat_id = _unique_executor(), uuid.uuid4()
+        assert write_heartbeat(executor_id, heartbeat_id=heartbeat_id, queues=('default', 'emails')) is True
 
         (heartbeat,) = read_heartbeats()
+        assert heartbeat['id'] == str(heartbeat_id)
         assert heartbeat['worker_id'] == worker_id(executor_id)
         assert heartbeat['executor_id'] == executor_id
         assert heartbeat['queues'] == ['default', 'emails']
@@ -40,18 +47,25 @@ class TestWriteAndReadHeartbeat:
         assert heartbeat['alive'] is True
 
     def test_rewrite_keeps_started_at(self):
-        executor_id = _unique_executor()
+        executor_id, heartbeat_id = _unique_executor(), uuid.uuid4()
         started_at = timezone.now() - timedelta(minutes=5)
-        write_heartbeat(executor_id, started_at=started_at)
-        write_heartbeat(executor_id, started_at=timezone.now())
+        write_heartbeat(executor_id, heartbeat_id=heartbeat_id, started_at=started_at)
+        write_heartbeat(executor_id, heartbeat_id=heartbeat_id, started_at=timezone.now())
 
-        row = WorkerHeartbeat.objects.get(worker_id=worker_id(executor_id))
+        row = WorkerHeartbeat.objects.get(id=heartbeat_id)
         assert row.started_at == started_at
         assert WorkerHeartbeat.objects.count() == 1
 
-    def test_stale_heartbeats_are_hidden_by_default(self):
+    def test_each_worker_run_gets_its_own_row(self):
+        # Same executor, hostname and pid (a container restarted after a crash).
         executor_id = _unique_executor()
-        write_heartbeat(executor_id)
+        write_heartbeat(executor_id, heartbeat_id=uuid.uuid4())
+        write_heartbeat(executor_id, heartbeat_id=uuid.uuid4())
+
+        assert WorkerHeartbeat.objects.filter(worker_id=worker_id(executor_id)).count() == 2
+
+    def test_stale_heartbeats_are_hidden_by_default(self):
+        write_heartbeat(_unique_executor(), heartbeat_id=uuid.uuid4())
         WorkerHeartbeat.objects.update(last_seen_at=timezone.now() - timedelta(seconds=STALE_AFTER_SECONDS + 1))
 
         assert read_heartbeats() == []
@@ -66,7 +80,7 @@ class TestWriteAndReadHeartbeat:
         )
         monkeypatch.setitem(sys.modules, 'psutil', fake_psutil)
 
-        write_heartbeat(_unique_executor(), has_metrics=True)
+        write_heartbeat(_unique_executor(), heartbeat_id=uuid.uuid4(), has_metrics=True)
         (heartbeat,) = read_heartbeats()
         assert heartbeat['has_metrics'] is True
         assert heartbeat['cpu_percent'] == 12.5
@@ -75,27 +89,26 @@ class TestWriteAndReadHeartbeat:
     def test_metrics_requested_without_psutil_are_left_empty(self, monkeypatch):
         monkeypatch.setitem(sys.modules, 'psutil', None)  # makes `import psutil` fail
 
-        assert write_heartbeat(_unique_executor(), has_metrics=True) is True
+        assert write_heartbeat(_unique_executor(), heartbeat_id=uuid.uuid4(), has_metrics=True) is True
         (heartbeat,) = read_heartbeats()
         assert heartbeat['cpu_percent'] is None
         assert heartbeat['memory_rss_mb'] is None
 
     def test_delete_removes_own_row_only(self):
-        mine, other = _unique_executor(), _unique_executor()
-        write_heartbeat(mine)
-        write_heartbeat(other)
-        WorkerHeartbeat.objects.filter(executor_id=other).update(worker_id=f'{other}@elsewhere:1')
+        executor_id, mine, other = _unique_executor(), uuid.uuid4(), uuid.uuid4()
+        write_heartbeat(executor_id, heartbeat_id=mine)
+        write_heartbeat(executor_id, heartbeat_id=other)
 
         delete_heartbeat(mine)
-        assert [row['executor_id'] for row in read_heartbeats()] == [other]
+        assert [row['id'] for row in read_heartbeats()] == [str(other)]
 
     def test_database_failure_never_raises(self, mocker):
         mocker.patch.object(WorkerHeartbeat.objects, 'update_or_create', side_effect=DatabaseError('db down'))
-        assert write_heartbeat(_unique_executor()) is False
+        assert write_heartbeat(_unique_executor(), heartbeat_id=uuid.uuid4()) is False
 
     def test_delete_failure_never_raises(self, mocker):
         mocker.patch.object(WorkerHeartbeat.objects, 'filter', side_effect=DatabaseError('db down'))
-        delete_heartbeat(_unique_executor())
+        delete_heartbeat(uuid.uuid4())
 
     def test_missing_table_reads_as_empty(self, mocker):
         mocker.patch.object(WorkerHeartbeat.objects, 'all', side_effect=DatabaseError('no such table'))
@@ -115,7 +128,14 @@ class TestHeartbeatThread:
         assert not thread.is_alive()
         write.assert_called()
         assert write.call_args.kwargs['queues'] == ('default',)
-        delete.assert_called_once_with(executor_id)
+        heartbeat_id = write.call_args.kwargs['heartbeat_id']
+        assert all(call.kwargs['heartbeat_id'] == heartbeat_id for call in write.call_args_list)
+        delete.assert_called_once_with(heartbeat_id)
+
+    def test_each_thread_gets_its_own_heartbeat_id(self):
+        executor_id = _unique_executor()
+        first, second = HeartbeatThread(executor_id=executor_id), HeartbeatThread(executor_id=executor_id)
+        assert first._heartbeat_id != second._heartbeat_id
 
     def test_thread_keeps_writing_every_interval(self, mocker):
         mocker.patch('django_dbos.heartbeat.HEARTBEAT_INTERVAL_SECONDS', 0.01)
