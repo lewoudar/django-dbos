@@ -6,6 +6,8 @@ django-dbos and pytest are installed. Its own dependencies come with the
 
 ```bash
 uv add --group test "django-dbos[test]" pytest-django
+# or
+pip install "django-dbos[test]" pytest-django
 ```
 
 It provides two fixtures to test tasks through the tasks API. They expect

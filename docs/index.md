@@ -65,9 +65,29 @@ A few words used throughout this documentation:
 
 ## Installation
 
-```bash
-uv add django-dbos
-```
+=== "uv"
+
+    ```bash
+    uv add django-dbos
+    ```
+
+=== "pip"
+
+    ```bash
+    pip install django-dbos
+    ```
+
+=== "Poetry"
+
+    ```bash
+    poetry add django-dbos
+    ```
+
+=== "PDM"
+
+    ```bash
+    pdm add django-dbos
+    ```
 
 Add the app and register the backend in your settings:
 

@@ -102,7 +102,10 @@ database as the channel. Any process with the ORM can read it: this command,
 the admin, an autoscaling script.
 
 ```bash
-uv add django-dbos[metrics]   # optional: adds CPU/memory to the heartbeat
+# optional: adds CPU/memory to the heartbeat
+uv add "django-dbos[metrics]"
+# or
+pip install "django-dbos[metrics]"
 ```
 
 Workers report their host, pid, served queues (and CPU/memory) every 10

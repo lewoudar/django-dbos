@@ -123,10 +123,14 @@ automatically.
 
 ```bash
 uv add django-dbos
+# or
+pip install django-dbos
 ```
 
-Add the `msgspec` extra (`uv add "django-dbos[msgspec]"`) for fast, safe
-serialization of task data; see
+Poetry and PDM work too, see
+[Installation](https://github.com/lewoudar/django-dbos/blob/main/docs/index.md#installation).
+Add the `msgspec` extra (`uv add "django-dbos[msgspec]"` or
+`pip install "django-dbos[msgspec]"`) for fast, safe serialization of task data; see
 [Serialization](https://github.com/lewoudar/django-dbos/blob/main/docs/configuration.md#serialization).
 
 ```python

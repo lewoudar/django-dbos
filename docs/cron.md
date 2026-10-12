@@ -55,7 +55,9 @@ when `USE_TZ` is enabled, otherwise in UTC.
 Install the extra:
 
 ```bash
-uv add django-dbos[sentry]
+uv add "django-dbos[sentry]"
+# or
+pip install "django-dbos[sentry]"
 ```
 
 Scheduled tasks are then monitored with [Sentry cron

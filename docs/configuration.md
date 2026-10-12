@@ -74,6 +74,8 @@ The msgspec serializers need the `msgspec` extra:
 
 ```bash
 uv add "django-dbos[msgspec]"
+# or
+pip install "django-dbos[msgspec]"
 ```
 
 ```python
