@@ -8,8 +8,10 @@ read the rows back: a row whose ``last_seen_at`` is older than
 
 This mirrors DBOS Conductor's push model with the Django database as the
 channel — it works wherever the ORM does, from any process, without a
-shared cache. Rows are keyed per process (``executor_id@hostname:pid``), so
-workers sharing an ``executor_id`` (DBOS' default ``"local"``) stay apart.
+shared cache. Rows are keyed per worker run (a UUID generated when the
+heartbeat thread starts), so workers sharing an ``executor_id`` (DBOS'
+default ``"local"``) stay apart, and a worker restarted after a crash with
+the same hostname and pid gets a fresh row while the old one goes stale.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from __future__ import annotations
 import os
 import socket
 import threading
+import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -54,6 +57,7 @@ def _local_metrics() -> dict[str, Any] | None:
 def write_heartbeat(
     executor_id: str,
     *,
+    heartbeat_id: uuid.UUID,
     queues: list[str] | tuple[str, ...] = (),
     has_metrics: bool = False,
     started_at: datetime | None = None,
@@ -63,6 +67,7 @@ def write_heartbeat(
 
     now = timezone.now()
     values: dict[str, Any] = {
+        'worker_id': worker_id(executor_id),
         'executor_id': executor_id,
         'hostname': socket.gethostname(),
         'pid': os.getpid(),
@@ -78,7 +83,7 @@ def write_heartbeat(
             values |= metrics
     try:
         WorkerHeartbeat.objects.update_or_create(
-            worker_id=worker_id(executor_id),
+            id=heartbeat_id,
             defaults=values,
             create_defaults={**values, 'started_at': started_at or now},
         )
@@ -91,12 +96,12 @@ def write_heartbeat(
         close_old_connections()
 
 
-def delete_heartbeat(executor_id: str) -> None:
+def delete_heartbeat(heartbeat_id: uuid.UUID) -> None:
     """Remove this worker's row (clean shutdown)."""
     from .models import WorkerHeartbeat
 
     try:
-        WorkerHeartbeat.objects.filter(worker_id=worker_id(executor_id)).delete()
+        WorkerHeartbeat.objects.filter(id=heartbeat_id).delete()
     except DatabaseError as exc:
         logger.warning('could not delete worker heartbeat', error=str(exc))
     finally:
@@ -106,6 +111,7 @@ def delete_heartbeat(executor_id: str) -> None:
 def _serialize(heartbeat: Any, now: datetime) -> dict[str, Any]:
     age = (now - heartbeat.last_seen_at).total_seconds()
     return {
+        'id': str(heartbeat.pk),
         'worker_id': heartbeat.worker_id,
         'executor_id': heartbeat.executor_id,
         'hostname': heartbeat.hostname,
@@ -146,7 +152,10 @@ class HeartbeatThread(threading.Thread):
     """Background thread pushing this worker's heartbeat until stopped."""
 
     def __init__(self, executor_id: str, *, queues: tuple[str, ...] = (), has_metrics: bool = False) -> None:
+        from .models import new_heartbeat_id
+
         super().__init__(name='django-dbos-heartbeat', daemon=True)
+        self._heartbeat_id = new_heartbeat_id()
         self._executor_id = executor_id
         self._queues = queues
         self._has_metrics = has_metrics
@@ -158,13 +167,14 @@ class HeartbeatThread(threading.Thread):
         while True:
             write_heartbeat(
                 self._executor_id,
+                heartbeat_id=self._heartbeat_id,
                 queues=self._queues,
                 has_metrics=self._has_metrics,
                 started_at=self._started_at,
             )
             if self._stop_event.wait(timeout=HEARTBEAT_INTERVAL_SECONDS):
                 break
-        delete_heartbeat(self._executor_id)
+        delete_heartbeat(self._heartbeat_id)
 
     def stop(self) -> None:
         self._stop_event.set()

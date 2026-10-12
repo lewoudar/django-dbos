@@ -119,8 +119,11 @@ the human output): the worker died without cleaning up. An executor id seen
 on active workflows without any heartbeat row is flagged `NO HEARTBEAT`.
 
 Several worker processes may share an `executor_id` (DBOS' default is
-`"local"` for all of them); heartbeats are keyed per process
-(`executor_id@hostname:pid`), so they are always told apart. See
+`"local"` for all of them); each worker run gets its own heartbeat row,
+identified by a UUID (`id`) and labelled `executor_id@hostname:pid`
+(`worker_id`), so they are always told apart. A worker restarted after a
+crash with the same hostname and pid (pid 1 in a container) gets a fresh
+row; the old one shows as stale until it is purged a day later. See
 [Executor identity](configuration.md#executor-identity) to name your
 instances.
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -323,7 +324,7 @@ class TestUnavailableSystemDatabase:
 
 class TestWorkerHeartbeatAdmin:
     def test_superuser_sees_live_workers(self, admin_client):
-        write_heartbeat('machine-1', queues=('default',))
+        write_heartbeat('machine-1', heartbeat_id=uuid.uuid4(), queues=('default',))
         response = admin_client.get('/admin/django_dbos/workerheartbeat/')
         assert response.status_code == 200
         assert_text(response, 'machine-1')
