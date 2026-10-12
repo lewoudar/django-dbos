@@ -1,3 +1,7 @@
+---
+icon: lucide/settings
+---
+
 # Configuration
 
 django-dbos is configured through a single `DJANGO_DBOS` setting.

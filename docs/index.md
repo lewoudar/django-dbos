@@ -1,3 +1,7 @@
+---
+icon: lucide/house
+---
+
 # django-dbos
 
 **DBOS-backed backend for [Django's tasks framework](https://docs.djangoproject.com/en/stable/topics/tasks/)**:

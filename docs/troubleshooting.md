@@ -1,3 +1,7 @@
+---
+icon: lucide/life-buoy
+---
+
 # Troubleshooting
 
 The problems you are most likely to hit, what they look like, and how to fix

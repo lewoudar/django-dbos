@@ -1,3 +1,7 @@
+---
+icon: lucide/list-checks
+---
+
 # Tasks
 
 django-dbos implements Django's [tasks framework](https://docs.djangoproject.com/en/stable/ref/tasks/):

@@ -1,3 +1,7 @@
+---
+icon: lucide/calendar-clock
+---
+
 # Cron scheduling
 
 Stack `@cron` on top of `@task` to run it on a schedule:

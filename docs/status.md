@@ -1,3 +1,7 @@
+---
+icon: lucide/gauge
+---
+
 # Worker capacity
 
 The `dbos status` management command reports on worker capacity so you can

@@ -1,3 +1,7 @@
+---
+icon: lucide/shield-user
+---
+
 # Admin
 
 django-dbos registers custom pages in the Django admin to inspect and operate

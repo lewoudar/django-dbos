@@ -1,3 +1,7 @@
+---
+icon: lucide/rocket
+---
+
 # Your first task
 
 This walkthrough takes a fresh Django project from zero to a task running in

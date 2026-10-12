@@ -1,3 +1,7 @@
+---
+icon: lucide/flask-conical
+---
+
 # Testing
 
 django-dbos ships a pytest plugin, loaded automatically as soon as

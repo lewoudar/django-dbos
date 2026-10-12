@@ -1,3 +1,7 @@
+---
+icon: lucide/bot
+---
+
 # AI agents
 
 django-dbos ships an [agent skill](https://agentskills.io/) for AI coding

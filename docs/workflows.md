@@ -1,3 +1,7 @@
+---
+icon: lucide/workflow
+---
+
 # Workflows
 
 A task with `@dbos_params(durable_operations=True)` runs its function at

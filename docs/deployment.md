@@ -1,3 +1,7 @@
+---
+icon: lucide/server
+---
+
 # Deployment
 
 django-dbos does not care where it runs: it needs a PostgreSQL system
