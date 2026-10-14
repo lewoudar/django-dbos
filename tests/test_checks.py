@@ -12,6 +12,7 @@ from django_dbos import checks, discovery
 from django_dbos import settings as settings_module
 from django_dbos import tasks as tasks_module
 from django_dbos.checks import (
+    check_dbos_backend_configured,
     check_dbos_settings,
     check_executor_id,
     check_in_memory_system_database,
@@ -240,6 +241,19 @@ class TestDeploymentChecks:
         set_dbos_options(settings, {})
         monkeypatch.setenv('DBOS__VMID', 'machine-1')
         assert check_executor_id() == []
+
+
+class TestCheckDbosBackendConfigured:
+    def test_a_dbos_backend_reports_nothing(self):
+        assert check_dbos_backend_configured() == []
+
+    def test_no_dbos_backend_reports_a_warning(self, settings):
+        settings.TASKS = {'default': {'BACKEND': 'django.tasks.backends.immediate.ImmediateBackend'}}
+
+        warnings = check_dbos_backend_configured()
+
+        assert [warning.id for warning in warnings] == ['django_dbos.W005']
+        assert DBOS_BACKEND in warnings[0].hint
 
 
 class TestCheckSystemDatabaseEngine:

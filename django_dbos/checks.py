@@ -162,6 +162,21 @@ def check_executor_id(app_configs: Any = None, **kwargs: Any) -> list[CheckMessa
     ]
 
 
+@register()
+def check_dbos_backend_configured(app_configs: Any = None, **kwargs: Any) -> list[CheckMessage]:
+    """django_dbos is installed but no backend uses it: tasks never reach DBOS."""
+    if settings_module.dbos_backend_aliases():
+        return []
+    return [
+        Warning(
+            'django_dbos is installed but no TASKS entry uses its backend: tasks are not run by DBOS '
+            'and the django-dbos settings are not read.',
+            id='django_dbos.W005',
+            hint="Add a TASKS entry with 'BACKEND': 'django_dbos.backends.DBOSBackend'.",
+        )
+    ]
+
+
 def _default_database_engine() -> str:
     return (settings.DATABASES.get('default', {}) or {}).get('ENGINE', '')
 

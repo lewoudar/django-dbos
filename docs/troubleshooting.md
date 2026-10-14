@@ -231,6 +231,9 @@ you with `SILENCED_SYSTEM_CHECKS`.
 - **`django_dbos.W004`** (`--deploy` only) — no `EXECUTOR_ID` (nor
   `DBOS__VMID`) is set, so every worker is `"local"`. See
   [Executor identity](configuration.md#executor-identity).
+- **`django_dbos.W005`** — `django_dbos` is in `INSTALLED_APPS` but no
+  `TASKS` entry uses `django_dbos.backends.DBOSBackend`: tasks run on
+  another backend and the django-dbos options are never read.
 - **`django_dbos.I001`** — your default database is neither PostgreSQL nor
   SQLite, so django-dbos cannot derive the system database URL from it. Set
   `OPTIONS["SYSTEM_DATABASE_URL"]` or the `DBOS_SYSTEM_DATABASE_URL`
