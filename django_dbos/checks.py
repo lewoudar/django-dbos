@@ -64,10 +64,6 @@ def check_unknown_settings(app_configs: Any = None, **kwargs: Any) -> list[Check
     return errors
 
 
-def _known_tasks() -> tuple[DBOSTask, ...]:
-    return known_tasks()
-
-
 def _is_discovered(task: DBOSTask, discovered: list[str], exposed: set[str]) -> bool:
     """Whether the worker imports ``task``: it lives in, or is exposed by, a discovered module."""
     module = task.func.__module__
@@ -107,7 +103,7 @@ def check_task_modules(app_configs: Any = None, **kwargs: Any) -> list[CheckMess
             id='django_dbos.W001',
             hint='Define the task in the tasks.py or dbos_tasks.py module of an installed app, or import it there.',
         )
-        for task in _known_tasks()
+        for task in known_tasks()
         if not _is_discovered(task, discovered, exposed)
     ]
 

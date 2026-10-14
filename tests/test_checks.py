@@ -140,24 +140,24 @@ def discovered(mocker, monkeypatch):
 
 class TestCheckTaskModules:
     def test_tasks_of_discovered_modules_report_nothing(self, mocker):
-        mocker.patch.object(checks, '_known_tasks', return_value=(test_tasks.add, test_tasks.send_email))
+        mocker.patch.object(checks, 'known_tasks', return_value=(test_tasks.add, test_tasks.send_email))
         assert check_task_modules() == []
 
     def test_task_in_a_submodule_of_a_discovered_package_reports_nothing(self, mocker, task_in, discovered):
         discovered(**{'shop.tasks': {}})
-        mocker.patch.object(checks, '_known_tasks', return_value=(task_in('shop.tasks.emails'),))
+        mocker.patch.object(checks, 'known_tasks', return_value=(task_in('shop.tasks.emails'),))
         assert check_task_modules() == []
 
     def test_task_exposed_by_a_discovered_module_reports_nothing(self, mocker, task_in, discovered):
         task = task_in('shop.utils')
         discovered(**{'shop.tasks': {'placeholder': task}})
-        mocker.patch.object(checks, '_known_tasks', return_value=(task,))
+        mocker.patch.object(checks, 'known_tasks', return_value=(task,))
         assert check_task_modules() == []
 
     @pytest.mark.parametrize('module', ['shop.utils', 'shop.tasks_extra'])
     def test_task_the_worker_does_not_import_reports_a_warning(self, mocker, task_in, discovered, module):
         discovered(**{'shop.tasks': {}})
-        mocker.patch.object(checks, '_known_tasks', return_value=(task_in(module),))
+        mocker.patch.object(checks, 'known_tasks', return_value=(task_in(module),))
 
         warnings = check_task_modules()
 
@@ -175,11 +175,6 @@ class TestCheckTaskModules:
         assert errors[0].id == 'django_dbos.E004'
         assert 'ImportError' in errors[0].msg
         assert 'hunter2' not in errors[0].msg
-
-
-def test_known_tasks_are_the_tasks_declared_in_this_process(monkeypatch):
-    monkeypatch.setattr(tasks_module, '_known_tasks', {test_tasks.add.module_path: test_tasks.add})
-    assert checks._known_tasks() == (test_tasks.add,)
 
 
 class TestCheckInMemorySystemDatabase:
