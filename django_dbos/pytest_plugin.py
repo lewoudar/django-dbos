@@ -98,8 +98,8 @@ def _inline_result(task: Any, args: tuple[Any, ...], kwargs: dict[str, Any], out
 
 def _check_inline_support(backend: Any, task: Any) -> None:
     """Mirror the real backend's validation, and refuse what inline cannot reproduce in strict mode."""
+    backend._validate_queues_config()
     backend.validate_task(task)
-    backend._validate_queue(task)
     if not backend._inline_strict:
         return
     if task.run_after is not None:

@@ -5,7 +5,7 @@ Safe alternatives to DBOS' default serializer (pickle), and much faster than
 
     uv add "django-dbos[msgspec]"
 
-    DJANGO_DBOS = {'SERIALIZER': 'django_dbos.serializers.MsgspecJSONSerializer'}
+    TASKS = {'default': {..., 'OPTIONS': {'SERIALIZER': 'django_dbos.serializers.MsgspecJSONSerializer'}}}
 
 - ``MsgspecJSONSerializer`` stores JSON: the fastest and most compact,
   readable in the system database and the admin.

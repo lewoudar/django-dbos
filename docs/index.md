@@ -107,17 +107,11 @@ TASKS = {
         'QUEUES': ['default', 'emails'],
     },
 }
-
-DJANGO_DBOS = {
-    # every queue a task can use must be declared here too
-    'QUEUES': {'default': None, 'emails': None},
-}
 ```
 
-`TASKS[...]["QUEUES"]` is what Django lets tasks target; `DJANGO_DBOS["QUEUES"]`
-is what DBOS workers actually process (with per-queue options such as
-concurrency, see [Queues](configuration.md#queues)). Enqueuing on a queue
-missing from the latter raises `QueueNotDeclared`.
+`QUEUES` lists the queues tasks may target and DBOS workers process. Every
+other django-dbos setting goes in the backend's `OPTIONS`, including
+per-queue options such as concurrency (see [Configuration](configuration.md)).
 
 Apply the migrations — `migrate` runs Django's (django-dbos ships one small
 table, for worker heartbeats), then creates and migrates DBOS' system

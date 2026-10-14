@@ -8,7 +8,7 @@ into the Django database (see ``heartbeat.py``).
 
 Each queue gets a scaling *advice* (SCALE_UP / SCALE_DOWN / OK) from
 ``advise_queue``, a deliberately simple heuristic whose thresholds come
-from ``DJANGO_DBOS["CAPACITY"]`` (globally) and ``QUEUES[name]["capacity"]``
+from ``OPTIONS["CAPACITY"]`` (globally) and ``QUEUES[name]["capacity"]``
 (per queue); ``CAPACITY["ADVISOR"]`` or ``collect(advisor=...)`` replaces it
 entirely. ``collect`` is a snapshot: smoothing several samples before
 acting on a SCALE_DOWN is the caller's job.
@@ -66,7 +66,7 @@ def _queue_capacities() -> dict[str, dict[str, Any]]:
 def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) -> dict[str, Any]:
     """Collect worker capacity metrics from the DBOS system database.
 
-    All declared queues (see ``DJANGO_DBOS["QUEUES"]``) always appear in the
+    All declared queues (see ``settings.resolve_queues``) always appear in the
     report, even when idle.
 
     Args:
@@ -184,7 +184,7 @@ def advise_queue(
 
     Args:
         queue_metrics: One queue's metrics, as reported by ``collect``.
-        scale_up_backlog_age_seconds: Defaults to ``DJANGO_DBOS["CAPACITY"]``,
+        scale_up_backlog_age_seconds: Defaults to ``OPTIONS["CAPACITY"]``,
             then to ``CAPACITY_THRESHOLD_DEFAULTS``.
         scale_down_max_running: Defaults like ``scale_up_backlog_age_seconds``.
 

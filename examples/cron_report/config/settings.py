@@ -82,9 +82,3 @@ TASKS = {
         'QUEUES': ['default'],
     },
 }
-
-DJANGO_DBOS = {
-    'QUEUES': {
-        'default': None,
-    },
-}

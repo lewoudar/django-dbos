@@ -1,6 +1,7 @@
 """Configuration for django-dbos.
 
-Everything is driven by a single ``DJANGO_DBOS`` setting, a dict of options.
+Everything is driven by the ``OPTIONS`` of the ``TASKS`` entry using
+``DBOSBackend``: a single one per project, DBOS being a per-process singleton.
 Options not set there fall back to environment variables where DBOS supports
 them (``DBOS_SYSTEM_DATABASE_URL``, ...). When no URL is given at all, the
 system database URL is derived from the default Django database connection:
@@ -20,16 +21,14 @@ from urllib.parse import quote
 
 from dbos import Serializer
 from django.conf import settings
+from django.tasks.base import DEFAULT_TASK_QUEUE_NAME
 from django.utils.module_loading import import_string
 
 from .exceptions import ImproperlyConfiguredDbos
 
-SETTING_NAME = 'DJANGO_DBOS'
 DEFAULT_SYSTEM_DB_PREFIX = 'dbos_'
 
-DEFAULT_QUEUES = ('default',)
-
-# Every key ``DJANGO_DBOS`` accepts; the system checks report any other one.
+# Every ``OPTIONS`` key django-dbos accepts; the system checks report any other one.
 KNOWN_SETTINGS = (
     'NAME',
     'APPLICATION_VERSION',
@@ -48,10 +47,67 @@ KNOWN_SETTINGS = (
 )
 
 
+def dbos_backend_aliases() -> list[str]:
+    """The ``TASKS`` aliases whose backend is ``DBOSBackend`` (or a subclass of it)."""
+    from .backends import DBOSBackend  # the backend module imports this one
+
+    aliases: list[str] = []
+    for alias, params in (getattr(settings, 'TASKS', None) or {}).items():
+        try:
+            backend_class = import_string(params['BACKEND'])
+        except (ImportError, KeyError, TypeError):
+            continue  # an invalid backend is Django's own checks' business
+        if isinstance(backend_class, type) and issubclass(backend_class, DBOSBackend):
+            aliases.append(alias)
+    return aliases
+
+
+def _backend_alias(alias: str | None = None) -> str | None:
+    """``alias`` when given, else the DBOS backend's: the first one if several (see ``django_dbos.E002``)."""
+    if alias is not None:
+        return alias
+    aliases = dbos_backend_aliases()
+    return aliases[0] if aliases else None
+
+
+def _dbos_backend_params(alias: str | None = None) -> dict[str, Any]:
+    """The ``TASKS`` entry of the DBOS backend (empty when there is none)."""
+    alias = _backend_alias(alias)
+    return settings.TASKS[alias] if alias is not None else {}
+
+
+def backend_path(alias: str | None = None) -> str:
+    """The DBOS backend's ``TASKS`` entry, for messages: ``TASKS['dbos']``."""
+    alias = _backend_alias(alias)
+    return f'TASKS[{alias!r}]' if alias is not None else 'TASKS[<alias>]'
+
+
+def options_path(key: str | None = None, alias: str | None = None) -> str:
+    """Where an option lives, for messages: ``TASKS['dbos']['OPTIONS']['SERIALIZER']``."""
+    path = f"{backend_path(alias)}['OPTIONS']"
+    return path if key is None else f'{path}[{key!r}]'
+
+
+def _validate_options() -> None:
+    options = _dbos_backend_params().get('OPTIONS')
+    if options is not None and not isinstance(options, dict):
+        raise ImproperlyConfiguredDbos(f'{options_path()} must be a mapping, got {type(options).__name__}.')
+
+
+def get_dbos_options(alias: str | None = None) -> dict[str, Any]:
+    """The ``OPTIONS`` of the DBOS backend (empty when there is none).
+
+    ``OPTIONS`` that are not a mapping read as empty, so that the admin and the
+    system checks keep working: ``resolve_settings`` reports them
+    (``django_dbos.E001``) and the client and worker refuse to start.
+    """
+    options = _dbos_backend_params(alias).get('OPTIONS')
+    return options if isinstance(options, dict) else {}
+
+
 def get_dbos_setting(key: str, default: Any = None) -> Any:
-    """Read a ``DJANGO_DBOS`` setting key."""
-    user_settings = getattr(settings, SETTING_NAME, None) or {}
-    return user_settings.get(key, default)
+    """Read a key of the DBOS backend's ``OPTIONS``."""
+    return get_dbos_options().get(key, default)
 
 
 @dataclass(frozen=True)
@@ -64,11 +120,11 @@ class QueueConfig:
     limiter: dict[str, Any] | None = None
     polling_interval_sec: float | None = None
     # Per-queue capacity thresholds (django-dbos only, never sent to DBOS),
-    # same keys as ``DJANGO_DBOS["CAPACITY"]`` minus ``ADVISOR``.
+    # same keys as ``OPTIONS["CAPACITY"]`` minus ``ADVISOR``.
     capacity: dict[str, Any] | None = None
 
 
-# ``DJANGO_DBOS["CAPACITY"]`` threshold keys and their defaults; see ``capacity.advise_queue``.
+# ``OPTIONS["CAPACITY"]`` threshold keys and their defaults; see ``capacity.advise_queue``.
 CAPACITY_THRESHOLD_DEFAULTS: dict[str, float | int] = {
     'SCALE_UP_BACKLOG_AGE_SECONDS': 60.0,
     'SCALE_DOWN_MAX_RUNNING': 0,
@@ -77,7 +133,7 @@ CAPACITY_THRESHOLD_DEFAULTS: dict[str, float | int] = {
 
 @dataclass(frozen=True)
 class CapacityConfig:
-    """Resolved ``DJANGO_DBOS["CAPACITY"]``: global thresholds and optional custom advisor."""
+    """Resolved ``OPTIONS["CAPACITY"]``: global thresholds and optional custom advisor."""
 
     thresholds: dict[str, float | int] = field(default_factory=lambda: dict(CAPACITY_THRESHOLD_DEFAULTS))
     advisor: Any = None
@@ -108,7 +164,7 @@ def _django_database_settings() -> dict[str, Any]:
         raise ImproperlyConfiguredDbos(
             'No default Django database is configured. django-dbos derives the DBOS '
             'system database from it, or you can set '
-            f"{SETTING_NAME}['SYSTEM_DATABASE_URL'] / DBOS_SYSTEM_DATABASE_URL."
+            f'{options_path("SYSTEM_DATABASE_URL")} / DBOS_SYSTEM_DATABASE_URL.'
         )
     return default_db
 
@@ -144,7 +200,7 @@ def derive_system_database_url(django_db: dict[str, Any]) -> str:
     raise ImproperlyConfiguredDbos(
         f"Unsupported database engine '{engine}' for deriving the DBOS system "
         'database. Set '
-        f"{SETTING_NAME}['SYSTEM_DATABASE_URL'] or DBOS_SYSTEM_DATABASE_URL explicitly."
+        f'{options_path("SYSTEM_DATABASE_URL")} or DBOS_SYSTEM_DATABASE_URL explicitly.'
     )
 
 
@@ -153,7 +209,7 @@ def resolve_system_database_url() -> str:
 
     By order of precedence:
 
-    1. ``DJANGO_DBOS["SYSTEM_DATABASE_URL"]``
+    1. ``OPTIONS["SYSTEM_DATABASE_URL"]``
     2. ``DBOS_SYSTEM_DATABASE_URL`` environment variable
     3. Derived from the default Django database connection
     """
@@ -176,7 +232,7 @@ def resolve_app_name() -> str:
 def resolve_executor_id() -> str | None:
     """Identity of this worker process for DBOS (``executor_id``).
 
-    Resolved from ``DJANGO_DBOS["EXECUTOR_ID"]``, then the ``DBOS__VMID``
+    Resolved from ``OPTIONS["EXECUTOR_ID"]``, then the ``DBOS__VMID``
     environment variable DBOS itself honours; ``None`` leaves DBOS' default
     (``"local"``). Workflow rows, recovery on restart and worker heartbeats
     are all keyed by it, so give each worker instance a *stable* identity
@@ -189,7 +245,7 @@ def resolve_executor_id() -> str | None:
 def resolve_serializer() -> Any:
     """The DBOS serializer for task arguments, results and errors, or ``None``.
 
-    ``DJANGO_DBOS["SERIALIZER"]`` is a ``dbos.Serializer`` instance, a class
+    ``OPTIONS["SERIALIZER"]`` is a ``dbos.Serializer`` instance, a class
     (instantiated without arguments) or the dotted path of either. ``None``
     keeps DBOS' default, which is **pickle**: anyone who can write to the
     system database can then run code in the workers and in every process
@@ -205,12 +261,12 @@ def resolve_serializer() -> Any:
         try:
             value = import_string(value)
         except ImportError as exc:
-            raise ImproperlyConfiguredDbos(f"{SETTING_NAME}['SERIALIZER']: {exc}") from exc
+            raise ImproperlyConfiguredDbos(f'{options_path("SERIALIZER")}: {exc}') from exc
     if isinstance(value, type):
         value = value()
     if not isinstance(value, Serializer):
         raise ImproperlyConfiguredDbos(
-            f"{SETTING_NAME}['SERIALIZER'] must be a dbos.Serializer instance, subclass or dotted path."
+            f'{options_path("SERIALIZER")} must be a dbos.Serializer instance, subclass or dotted path.'
         )
     return value
 
@@ -221,11 +277,13 @@ _QUEUE_OPTIONS = tuple(name for name in QueueConfig.__dataclass_fields__ if name
 def _validate_capacity_thresholds(mapping: Any, where: str) -> dict[str, float | int]:
     if not isinstance(mapping, dict):
         raise ImproperlyConfiguredDbos(f'{where} must be a mapping of thresholds.')
+
     unknown = sorted(set(mapping) - set(CAPACITY_THRESHOLD_DEFAULTS))
     if unknown:
         raise ImproperlyConfiguredDbos(
             f'{where}: unknown threshold(s) {", ".join(unknown)}. Valid thresholds: {", ".join(CAPACITY_THRESHOLD_DEFAULTS)}.'
         )
+
     thresholds: dict[str, float | int] = {}
     for key, value in mapping.items():
         if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
@@ -235,12 +293,12 @@ def _validate_capacity_thresholds(mapping: Any, where: str) -> dict[str, float |
 
 
 def resolve_capacity() -> CapacityConfig:
-    """Resolve ``DJANGO_DBOS["CAPACITY"]``: thresholds of the scaling advice and an optional advisor.
+    """Resolve ``OPTIONS["CAPACITY"]``: thresholds of the scaling advice and an optional advisor.
 
     ``ADVISOR`` is a callable ``(queue_name, metrics, thresholds) -> str`` (or
     its dotted path) replacing the default heuristic, ``capacity.advise_queue``.
     """
-    where = f"{SETTING_NAME}['CAPACITY']"
+    where = options_path('CAPACITY')
     setting = get_dbos_setting('CAPACITY')
     if setting is None:
         setting = {}
@@ -258,51 +316,76 @@ def resolve_capacity() -> CapacityConfig:
     return CapacityConfig(thresholds={**CAPACITY_THRESHOLD_DEFAULTS, **overrides}, advisor=advisor)
 
 
-def _queue_config(name: str, options: Any) -> QueueConfig:
+def _queue_config(name: str, options: Any, where: str) -> QueueConfig:
     if options is None:
         return QueueConfig(name=name)
     if not isinstance(options, dict):
         raise ImproperlyConfiguredDbos(
-            f"{SETTING_NAME}['QUEUES']['{name}'] must be a mapping of options (or None), got {type(options).__name__}."
+            f"{where}['{name}'] must be a mapping of options (or None), got {type(options).__name__}."
         )
     unknown = sorted(set(options) - set(_QUEUE_OPTIONS))
     if unknown:
         raise ImproperlyConfiguredDbos(
-            f"{SETTING_NAME}['QUEUES']['{name}']: unknown option(s) {', '.join(unknown)}. "
-            f'Valid options: {", ".join(_QUEUE_OPTIONS)}.'
+            f"{where}['{name}']: unknown option(s) {', '.join(unknown)}. Valid options: {', '.join(_QUEUE_OPTIONS)}."
         )
     if options.get('capacity') is not None:
         options = {
             **options,
-            'capacity': _validate_capacity_thresholds(
-                options['capacity'], f"{SETTING_NAME}['QUEUES']['{name}']['capacity']"
-            ),
+            'capacity': _validate_capacity_thresholds(options['capacity'], f"{where}['{name}']['capacity']"),
         }
     return QueueConfig(name=name, **options)
 
 
-def resolve_queues() -> tuple[QueueConfig, ...]:
-    """Resolve declared DBOS queues.
+def _declared_queues(alias: str | None) -> dict[Any, Any]:
+    """Queue name -> options, from ``OPTIONS["QUEUES"]`` or the ``QUEUES`` list of the backend's entry."""
+    params = _dbos_backend_params(alias)
+    queue_options = get_dbos_options(alias).get('QUEUES')
+    if queue_options is None:
+        names = params.get('QUEUES', [DEFAULT_TASK_QUEUE_NAME])
+        if isinstance(names, str) or not isinstance(names, list | tuple | set | frozenset):
+            raise ImproperlyConfiguredDbos(
+                f"{backend_path(alias)}['QUEUES'] must be a list of queue names, got {names!r}."
+            )
+        if not names:
+            raise ImproperlyConfiguredDbos(
+                f"{backend_path(alias)}['QUEUES'] is empty, which lets tasks target any queue, but a DBOS worker "
+                'only processes the queues it declares: list them.'
+            )
+        return dict.fromkeys(names)
 
-    Users declare queues in ``DJANGO_DBOS["QUEUES"]`` as a mapping of queue
-    name to queue options (``None`` for none); ``("default",)`` when unset.
-    Every queue a task targets (``TASKS[alias]["QUEUES"]``, ``queue_name``)
-    must be declared here: the backend raises ``QueueNotDeclared`` otherwise.
+    if 'QUEUES' in params:
+        raise ImproperlyConfiguredDbos(
+            f"Declare the queues either in {backend_path(alias)}['QUEUES'] (names only) or in "
+            f'{options_path("QUEUES", alias)} (names and options), not both.'
+        )
+
+    if not isinstance(queue_options, dict) or not queue_options:
+        raise ImproperlyConfiguredDbos(
+            f'{options_path("QUEUES", alias)} must be a non-empty mapping of queue name to options.'
+        )
+    return queue_options
+
+
+def resolve_queues(alias: str | None = None) -> tuple[QueueConfig, ...]:
+    """Resolve the DBOS queues declared by the ``TASKS`` entry ``alias`` (the DBOS backend's by default).
+
+    Queues are declared once, either as a list of names in ``QUEUES`` (no
+    options) or as a mapping of name to options (``None`` for none) in
+    ``OPTIONS["QUEUES"]``; ``["default"]`` when neither is set. The backend
+    accepts exactly these queues, and the worker processes them.
     """
-    queues_setting = get_dbos_setting('QUEUES') or {}
-    if not isinstance(queues_setting, dict):
-        raise ImproperlyConfiguredDbos(f"{SETTING_NAME}['QUEUES'] must be a mapping of queue name to options.")
-    queues = tuple(_queue_config(str(name), options) for name, options in queues_setting.items()) or tuple(
-        QueueConfig(name=name) for name in DEFAULT_QUEUES
-    )
+    alias = _backend_alias(alias)
+    where = options_path('QUEUES', alias)
+    queues = tuple(_queue_config(str(name), options, where) for name, options in _declared_queues(alias).items())
     names = [queue.name for queue in queues]
     if len(names) != len(set(names)):
-        raise ImproperlyConfiguredDbos(f"Duplicate queue names in {SETTING_NAME}['QUEUES'].")
+        raise ImproperlyConfiguredDbos(f'Duplicate queue names in {where}.')
     return queues
 
 
 def resolve_settings() -> DbosSettings:
-    """Build the final configuration from the ``DJANGO_DBOS`` setting."""
+    """Build the final configuration from the DBOS backend's ``OPTIONS``."""
+    _validate_options()
     queues = resolve_queues()
     return DbosSettings(
         app_name=resolve_app_name(),

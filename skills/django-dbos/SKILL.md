@@ -42,14 +42,18 @@ INSTALLED_APPS = [..., 'django_dbos']
 TASKS = {
     'default': {
         'BACKEND': 'django_dbos.backends.DBOSBackend',
-        'QUEUES': ['default', 'emails'],  # must also be declared in DJANGO_DBOS["QUEUES"]
+        # Every django-dbos setting lives in OPTIONS. Queues are declared once:
+        # here with their options, or as a plain 'QUEUES': ['default', 'emails']
+        # list next to OPTIONS when none needs options (never both).
+        'OPTIONS': {
+            'QUEUES': {'default': None, 'emails': {'worker_concurrency': 4}},
+        },
     },
 }
-
-DJANGO_DBOS = {
-    'QUEUES': {'default': None, 'emails': {'worker_concurrency': 4}},
-}
 ```
+
+One DBOS backend per project (`django_dbos.E002` otherwise); it may sit next
+to other backends under any alias.
 
 ```bash
 python manage.py migrate       # Django's migrations (worker heartbeats), then creates/migrates the DBOS system database
@@ -283,7 +287,7 @@ from django.tasks import TaskResultStatus
 
 
 # 2. dbos_inline fixture: enqueue runs synchronously in-process, no system DB / worker.
-#    Real TaskResult, real queue validation against DJANGO_DBOS["QUEUES"].
+#    Real TaskResult, real validation of the backend's declared queues.
 def test_send_email(dbos_inline):
     result = send_email.enqueue('kevin@example.com')
     assert result.status == TaskResultStatus.SUCCESSFUL
@@ -322,16 +326,17 @@ anyway (it can't reproduce those semantics) — pass
 between test and production behaviour. Prefer `dbos_system` when the test is
 actually about durability.
 
-## Configuration essentials (`DJANGO_DBOS` setting)
+## Configuration essentials (the backend's `OPTIONS` in `TASKS`)
 
 - **System database**: derived by default from the Django default
   connection (`dbos_<dbname>` on Postgres, `<name>-dbos.sqlite` for SQLite —
-  dev only). Override with `DJANGO_DBOS['SYSTEM_DATABASE_URL']` or the
+  dev only). Override with `OPTIONS['SYSTEM_DATABASE_URL']` or the
   `DBOS_SYSTEM_DATABASE_URL` env var. It only carries DBOS' own tables — app
   data stays in the regular Django database(s).
-- **Queues**: every queue name used by a task (`queue_name=` / `TASKS[alias]['QUEUES']`)
-  must be declared under `DJANGO_DBOS['QUEUES']` (worker/global concurrency,
-  rate limiter, scaling thresholds).
+- **Queues**: every queue name used by a task (`queue_name=`) must be
+  declared, either in the backend's `QUEUES` list (names only) or in
+  `OPTIONS['QUEUES']` (name → options: worker/global concurrency, rate
+  limiter, scaling thresholds) — not both; an empty `QUEUES` list is an error.
 - **Serialization**: pickle by default — fine, but treat the system database
   as trusted (anyone who can write to it can run code in your workers).
   When task args/results are plain data, prefer
@@ -358,7 +363,7 @@ actually about durability.
 
 - Django admin gets **DBOS workflows** and **DBOS schedules** pages
   (superuser-only — they expose task inputs/outputs and can cancel/fork/
-  delete workflows). Disable with `DJANGO_DBOS['ADMIN_ENABLED'] = False` if
+  delete workflows). Disable with `OPTIONS['ADMIN_ENABLED'] = False` if
   superusers aren't fully trusted with that.
 - `python manage.py dbos status` (or `--json`) reports queue backlog,
   running counts and a scale up/down/OK advice per queue, plus worker
@@ -395,8 +400,8 @@ actually about durability.
 - First enqueue fails with a missing table/database → the system database
   was never created: run `python manage.py migrate` (or `dbos migrate` with
   `MIGRATE_WITH_DJANGO=False`; web processes never create it).
-- `queue_name` used by a task but not declared in `DJANGO_DBOS['QUEUES']` →
-  rejected at enqueue/validation time.
+- `queue_name` used by a task but not declared by the DBOS backend →
+  Django raises `InvalidTask` as soon as the task is defined.
 - A `@cron` task declared with parameters → rejected at module load, not at
   runtime.
 - Non-deterministic code (API calls, `timezone.now()`, randomness) directly

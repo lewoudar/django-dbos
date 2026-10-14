@@ -143,12 +143,8 @@ TASKS = {
     'default': {
         'BACKEND': 'django_dbos.backends.DBOSBackend',
         'QUEUES': ['default', 'emails'],
+        # other django-dbos settings go in 'OPTIONS', see the configuration docs
     },
-}
-
-DJANGO_DBOS = {
-    # every queue a task can use must be declared here too
-    'QUEUES': {'default': None, 'emails': None},
 }
 ```
 

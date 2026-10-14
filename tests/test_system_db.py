@@ -12,6 +12,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 
 from django_dbos import system_db
+from tests.tests_helpers import set_dbos_options
 
 
 @pytest.fixture
@@ -22,9 +23,9 @@ def run(mocker):
 @pytest.fixture
 def system_database_url(settings, monkeypatch, mocker):
     monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
-    settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://user:hunter2@db/dbos_app'}
+    set_dbos_options(settings, {'SYSTEM_DATABASE_URL': 'postgresql://user:hunter2@db/dbos_app'})
     mocker.patch('django_dbos.system_db._is_test_database', return_value=False)
-    return settings.DJANGO_DBOS['SYSTEM_DATABASE_URL']
+    return settings.TASKS['dbos']['OPTIONS']['SYSTEM_DATABASE_URL']
 
 
 def send(**kwargs) -> None:
@@ -85,14 +86,14 @@ class TestMigrateAfterDjangoMigrate:
         run.assert_not_called()
 
     def test_disabled_by_setting(self, system_database_url, settings, run):
-        settings.DJANGO_DBOS = {**settings.DJANGO_DBOS, 'MIGRATE_WITH_DJANGO': False}
+        set_dbos_options(settings, {**settings.TASKS['dbos']['OPTIONS'], 'MIGRATE_WITH_DJANGO': False})
 
         send(stdout=StringIO())
 
         run.assert_not_called()
 
     def test_skips_an_in_memory_system_database(self, system_database_url, settings, run):
-        settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'sqlite:///:memory:'}
+        set_dbos_options(settings, {'SYSTEM_DATABASE_URL': 'sqlite:///:memory:'})
 
         send(stdout=StringIO())
 
@@ -116,7 +117,7 @@ class TestMigrateAfterDjangoMigrate:
         assert 'hunter2' not in str(excinfo.value)
 
     def test_configuration_error_names_the_opt_out(self, system_database_url, settings, run):
-        settings.DJANGO_DBOS = {'QUEUES': {'x': {'nope': 1}}, 'SYSTEM_DATABASE_URL': 'postgresql://db'}
+        set_dbos_options(settings, {'QUEUES': {'x': {'nope': 1}}, 'SYSTEM_DATABASE_URL': 'postgresql://db'})
 
         with pytest.raises(CommandError, match=r'unknown option.*MIGRATE_WITH_DJANGO'):
             send(stdout=StringIO())
@@ -124,7 +125,7 @@ class TestMigrateAfterDjangoMigrate:
 
     def test_unresolvable_url_names_the_opt_out(self, settings, monkeypatch, mocker, run):
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
-        settings.DJANGO_DBOS = {}
+        set_dbos_options(settings, {})
         mocker.patch('django_dbos.system_db._is_test_database', return_value=False)
         mocker.patch(
             'django_dbos.settings.derive_system_database_url', side_effect=system_db.ImproperlyConfiguredDbos('nope')

@@ -29,7 +29,10 @@ def msgspec_worker(request, dbos_system):
         client.close_client()
         dbos_setup.ensure_launched()
 
-    with override_settings(DJANGO_DBOS={**settings.DJANGO_DBOS, 'SERIALIZER': request.param}):
+    dbos = settings.TASKS['dbos']
+    with override_settings(
+        TASKS={**settings.TASKS, 'dbos': {**dbos, 'OPTIONS': {**dbos['OPTIONS'], 'SERIALIZER': request.param}}}
+    ):
         relaunch()
         yield request.param
     relaunch()

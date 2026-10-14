@@ -28,23 +28,32 @@ you at a glance whether executions pile up. `python manage.py check` reports
 tasks defined outside the modules the worker imports
 ([`django_dbos.W001`](#system-checks)).
 
-## `QueueNotDeclared` when enqueuing
+## `Queue '...' is not valid for backend`
 
 ```
-Queue 'emails' is not declared in the DJANGO_DBOS setting. Declare it under DJANGO_DBOS['QUEUES'] so a worker can process it.
+django.tasks.exceptions.InvalidTask: Queue 'emails' is not valid for backend.
 ```
 
-Every queue a task can use — listed in `TASKS[alias]["QUEUES"]` or passed as
-`queue_name` — must also be declared in `DJANGO_DBOS["QUEUES"]`:
+Django raises it when a task names a `queue_name` the DBOS backend does not
+declare, as soon as the task is defined (or `using()` is called). Workers
+only process declared queues, so declare it, in `QUEUES` or in
+`OPTIONS["QUEUES"]` (see [Queues](configuration.md#queues)):
 
 ```python
-DJANGO_DBOS = {
-    'QUEUES': {'default': None, 'emails': None},
+TASKS = {
+    'default': {
+        'BACKEND': 'django_dbos.backends.DBOSBackend',
+        'OPTIONS': {
+            'QUEUES': {'default': None, 'emails': None},
+        },
+    },
 }
 ```
 
-`python manage.py check` reports undeclared queues before any enqueue
-([`django_dbos.E002`](#system-checks)).
+A queue declaration that is itself invalid (both `QUEUES` and
+`OPTIONS["QUEUES"]`, an empty `QUEUES` list...) is reported by
+`python manage.py check` ([`django_dbos.E001`](#system-checks)) and raises
+`ImproperlyConfiguredDbos` on enqueue.
 
 ## A database error on the first enqueue
 
@@ -182,24 +191,23 @@ make `check` fail and stop `runserver`; warnings are only displayed, unless
 you pass `--fail-level WARNING`. Silence a warning that does not apply to
 you with `SILENCED_SYSTEM_CHECKS`.
 
-- **`django_dbos.E001`** — the setting is invalid: an unknown queue option,
-  a malformed `CAPACITY` threshold, a `SERIALIZER` that cannot be imported...
+- **`django_dbos.E001`** — the backend's configuration is invalid: an unknown queue option,
+  queues declared both in `QUEUES` and in `OPTIONS["QUEUES"]`, a malformed `CAPACITY` threshold, a `SERIALIZER` that cannot be imported...
   The message names the faulty key, for example:
 
     ```
-    (django_dbos.E001) DJANGO_DBOS['QUEUES']['default']: unknown option(s) concurency. Valid options: worker_concurrency, global_concurrency, limiter, polling_interval_sec, capacity.
+    (django_dbos.E001) TASKS['default']['OPTIONS']['QUEUES']['default']: unknown option(s) concurency. Valid options: worker_concurrency, global_concurrency, limiter, polling_interval_sec, capacity.
     ```
 
-- **`django_dbos.E002`** — a queue tasks can be enqueued on is not declared
-  in `DJANGO_DBOS["QUEUES"]`; enqueuing would raise
-  [`QueueNotDeclared`](#queuenotdeclared-when-enqueuing). The queues come
-  from `TASKS[alias]["QUEUES"]` (`["default"]` when it is not set) or, when
-  a backend accepts any queue (`"QUEUES": []`), from the tasks' `queue_name`.
-- **`django_dbos.E003`** — `DJANGO_DBOS` holds a key django-dbos does not
-  know, most likely a typo that would otherwise be silently ignored:
+- **`django_dbos.E002`** — several `TASKS` entries use the DBOS backend.
+  DBOS runs as one instance per process, with one system database and one
+  configuration: django-dbos only reads the first entry. Keep a single DBOS
+  backend and declare all its queues there.
+- **`django_dbos.E003`** — the backend's `OPTIONS` hold a key django-dbos
+  does not know, most likely a typo that would otherwise be silently ignored:
 
     ```
-    (django_dbos.E003) DJANGO_DBOS: unknown key 'QUEUE'.
+    (django_dbos.E003) TASKS['default']['OPTIONS']: unknown key 'QUEUE'.
         HINT: Did you mean 'QUEUES'?
     ```
 
@@ -225,7 +233,7 @@ you with `SILENCED_SYSTEM_CHECKS`.
   [Executor identity](configuration.md#executor-identity).
 - **`django_dbos.I001`** — your default database is neither PostgreSQL nor
   SQLite, so django-dbos cannot derive the system database URL from it. Set
-  `DJANGO_DBOS["SYSTEM_DATABASE_URL"]` or the `DBOS_SYSTEM_DATABASE_URL`
+  `OPTIONS["SYSTEM_DATABASE_URL"]` or the `DBOS_SYSTEM_DATABASE_URL`
   environment variable (see [System database](configuration.md#system-database)).
 
 ## `@cron` task "must not require arguments"

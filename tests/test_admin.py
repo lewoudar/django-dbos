@@ -28,6 +28,7 @@ from django_dbos.admin import (
 from django_dbos.heartbeat import write_heartbeat
 from django_dbos.models import WorkerHeartbeat
 from django_dbos.scheduling import register_cron_schedules
+from tests.tests_helpers import set_dbos_options
 
 from .conftest import wait_for_result
 from .tasks import add
@@ -250,10 +251,10 @@ class TestAdminGating:
         ],
     )
     def test_admin_enabled_setting(self, settings, admin_enabled, expected):
-        dj = {k: v for k, v in settings.DJANGO_DBOS.items() if k != 'ADMIN_ENABLED'}
+        dj = {k: v for k, v in settings.TASKS['dbos']['OPTIONS'].items() if k != 'ADMIN_ENABLED'}
         if admin_enabled is not None:
             dj['ADMIN_ENABLED'] = admin_enabled
-        settings.DJANGO_DBOS = dj
+        set_dbos_options(settings, dj)
         assert is_admin_enabled() is expected
 
     def test_urls_registered_by_default(self, dbos_environment):
@@ -272,7 +273,7 @@ class TestAdminGating:
             User.objects.filter(pk=staff.pk).delete()
 
     def test_disabled_admin_skips_registration(self, settings):
-        settings.DJANGO_DBOS = {**settings.DJANGO_DBOS, 'ADMIN_ENABLED': False}
+        set_dbos_options(settings, {**settings.TASKS['dbos']['OPTIONS'], 'ADMIN_ENABLED': False})
         site = AdminSite(name='disabled-test')
         register_admin_sites()
         # register_admin_sites() only touches the configured default sites;
@@ -346,16 +347,16 @@ class TestWorkerHeartbeatAdmin:
 
 class TestAdminSiteResolution:
     def test_admin_site_accepts_a_single_string(self, settings):
-        settings.DJANGO_DBOS = {'ADMIN_SITE': 'django.contrib.admin.site'}
+        set_dbos_options(settings, {'ADMIN_SITE': 'django.contrib.admin.site'})
         assert get_admin_site_paths() == ('django.contrib.admin.site',)
 
     def test_unknown_custom_site_raises(self, settings):
-        settings.DJANGO_DBOS = {'ADMIN_SITE': 'myproject.sites.missing_site'}
+        set_dbos_options(settings, {'ADMIN_SITE': 'myproject.sites.missing_site'})
         with pytest.raises(ImportError):
             get_admin_sites()
 
     def test_path_to_a_non_admin_site_raises(self, settings):
-        settings.DJANGO_DBOS = {'ADMIN_SITE': 'django.contrib.admin.ModelAdmin'}
+        set_dbos_options(settings, {'ADMIN_SITE': 'django.contrib.admin.ModelAdmin'})
         with pytest.raises(TypeError, match='does not point to an AdminSite instance'):
             get_admin_sites()
 

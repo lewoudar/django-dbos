@@ -13,11 +13,7 @@ class DjangoDbosError(Exception):
 
 
 class ImproperlyConfiguredDbos(DjangoDbosError):
-    """The DJANGO_DBOS setting or environment is misconfigured."""
-
-
-class QueueNotDeclared(DjangoDbosError):
-    """The task was enqueued on a queue that is not declared."""
+    """The DBOS backend's ``OPTIONS`` (``TASKS`` setting) or environment is misconfigured."""
 
 
 class TaskCancelled(DjangoDbosError):

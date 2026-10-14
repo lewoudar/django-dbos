@@ -1,7 +1,6 @@
 """Tests for the DBOS task backend: helpers (unit) and behavior (integration)."""
 
 import asyncio
-from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -11,7 +10,6 @@ from django.utils import timezone
 
 from django_dbos import dbos_params
 from django_dbos.backends import _delay_seconds, _django_to_dbos_priority
-from django_dbos.exceptions import QueueNotDeclared
 from django_dbos.workflow_names import workflow_name_for_task
 
 from .conftest import wait_for_result
@@ -85,18 +83,6 @@ class TestBackendBehavior:
         mocker.patch('django_dbos.backends.get_client', side_effect=RuntimeError('db unreachable'))
         with pytest.raises(RuntimeError, match='db unreachable'):
             add.get_result('00000000-0000-0000-0000-000000000000')
-
-    def test_undeclared_queue_is_rejected(self, dbos_environment, settings):
-        # django.tasks validates the queue against TASKS at construction, but
-        # the backend requires it in DJANGO_DBOS['QUEUES'] (where workers are
-        # configured): a task on a queue no worker declares must fail loudly.
-        settings.TASKS = {
-            **settings.TASKS,
-            'dbos': {**settings.TASKS['dbos'], 'QUEUES': [*settings.TASKS['dbos']['QUEUES'], 'ghost_queue']},
-        }
-        rogue = replace(add, queue_name='ghost_queue')
-        with pytest.raises(QueueNotDeclared):
-            rogue.enqueue()
 
     def test_failed_task_includes_traceback(self, dbos_environment):
         result = wait_for_result(failing_task.enqueue(), TaskResultStatus.FAILED)
