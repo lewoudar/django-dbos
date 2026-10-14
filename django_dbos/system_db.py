@@ -20,11 +20,14 @@ from django.db import DEFAULT_DB_ALIAS, connections
 from . import settings as settings_module
 from .exceptions import ImproperlyConfiguredDbos, describe_error, scrub_credentials
 
-# Appended to the errors raised from ``manage.py migrate``.
-_OPT_OUT_HINT = (
-    f"(set {settings_module.SETTING_NAME}['MIGRATE_WITH_DJANGO'] = False to migrate it "
-    'separately with `manage.py dbos migrate`)'
-)
+
+def _opt_out_hint() -> str:
+    """Appended to the errors raised from ``manage.py migrate``."""
+    return (
+        f'(set {settings_module.options_path("MIGRATE_WITH_DJANGO")} = False to migrate it '
+        'separately with `manage.py dbos migrate`)'
+    )
+
 
 # Seconds before a connection attempt to a PostgreSQL system database gives up.
 CONNECT_TIMEOUT_SEC = 10
@@ -101,7 +104,7 @@ def migrate_after_django_migrate(
         if settings_module.resolve_system_database_url() == 'sqlite:///:memory:':
             return  # a fresh in-memory database per connection: nothing to keep up to date
     except ImproperlyConfiguredDbos as exc:
-        raise CommandError(f'{exc} {_OPT_OUT_HINT}') from None
+        raise CommandError(f'{exc} {_opt_out_hint()}') from None
 
     out = stdout or sys.stdout
 
@@ -112,5 +115,5 @@ def migrate_after_django_migrate(
     try:
         migrate_system_database(echo=echo)
     except CommandError as exc:
-        raise CommandError(f'{exc} {_OPT_OUT_HINT}') from None
+        raise CommandError(f'{exc} {_opt_out_hint()}') from None
     echo('DBOS system database is up to date.')

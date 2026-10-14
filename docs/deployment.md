@@ -16,11 +16,11 @@ settle, then shows the same setup on a few platforms.
    independently. See [Processes](configuration.md#processes).
 2. **A release step** that runs before the new version starts serving:
    `python manage.py migrate`, which applies Django's migrations then DBOS'
-   (the system database), with `DJANGO_DBOS["RUN_MIGRATIONS"] = False` so
+   (the system database), with `OPTIONS["RUN_MIGRATIONS"] = False` so
    workers verify the schema instead of altering it. See
    [Migrating the system database](configuration.md#migrating-the-system-database).
 3. **A stable identity per worker instance**, through
-   `DJANGO_DBOS["EXECUTOR_ID"]`: crash recovery and the capacity reports are
+   `OPTIONS["EXECUTOR_ID"]`: crash recovery and the capacity reports are
    keyed by it. Use the platform's instance name, never something that
    changes on every restart such as a pid. See
    [Executor identity](configuration.md#executor-identity).
@@ -52,13 +52,18 @@ A settings module covering the lot:
 ```python
 import os
 
-DJANGO_DBOS = {
-    'NAME': 'myproject',
-    'SYSTEM_DATABASE_URL': os.environ['DBOS_SYSTEM_DATABASE_URL'],
-    'EXECUTOR_ID': os.environ.get('WORKER_INSTANCE_ID'),
-    'RUN_MIGRATIONS': False,
-    'SERIALIZER': 'django_dbos.serializers.MsgspecJSONSerializer',  # django-dbos[msgspec]
-    'QUEUES': {'default': None, 'emails': {'worker_concurrency': 4}},
+TASKS = {
+    'default': {
+        'BACKEND': 'django_dbos.backends.DBOSBackend',
+        'OPTIONS': {
+            'NAME': 'myproject',
+            'SYSTEM_DATABASE_URL': os.environ['DBOS_SYSTEM_DATABASE_URL'],
+            'EXECUTOR_ID': os.environ.get('WORKER_INSTANCE_ID'),
+            'RUN_MIGRATIONS': False,
+            'SERIALIZER': 'django_dbos.serializers.MsgspecJSONSerializer',  # django-dbos[msgspec]
+            'QUEUES': {'default': None, 'emails': {'worker_concurrency': 4}},
+        },
+    },
 }
 ```
 
@@ -101,10 +106,15 @@ Settings:
   Machine and differs between Machines — exactly what `EXECUTOR_ID` needs:
 
 ```python
-DJANGO_DBOS = {
-    'EXECUTOR_ID': os.environ.get('FLY_MACHINE_ID'),
-    'RUN_MIGRATIONS': False,
-    ...
+TASKS = {
+    'default': {
+        'BACKEND': 'django_dbos.backends.DBOSBackend',
+        'OPTIONS': {
+            'EXECUTOR_ID': os.environ.get('FLY_MACHINE_ID'),
+            'RUN_MIGRATIONS': False,
+            ...
+        },
+    },
 }
 ```
 

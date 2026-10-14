@@ -10,6 +10,8 @@ import pytest
 from click.exceptions import Exit
 from django.core.management import call_command
 
+from tests.tests_helpers import set_dbos_options
+
 
 def migrate(*args: str) -> str:
     # django-click (2.5.0, the latest released version) does not yet support
@@ -24,10 +26,13 @@ def migrate(*args: str) -> str:
 class TestDbosMigrate:
     def test_migrates_from_the_resolved_settings(self, settings, monkeypatch, mocker):
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
-        settings.DJANGO_DBOS = {
-            'SYSTEM_DATABASE_URL': 'postgresql://user:hunter2@db/dbos_app',
-            'SYSTEM_DB_SCHEMA': 'custom',
-        }
+        set_dbos_options(
+            settings,
+            {
+                'SYSTEM_DATABASE_URL': 'postgresql://user:hunter2@db/dbos_app',
+                'SYSTEM_DB_SCHEMA': 'custom',
+            },
+        )
         run = mocker.patch('django_dbos.system_db.run_dbos_database_migrations')
 
         output = migrate('--app-role', 'app')
@@ -41,7 +46,7 @@ class TestDbosMigrate:
 
     def test_never_launches_dbos(self, settings, monkeypatch, mocker):
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
-        settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://db'}
+        set_dbos_options(settings, {'SYSTEM_DATABASE_URL': 'postgresql://db'})
         mocker.patch('django_dbos.system_db.run_dbos_database_migrations')
         launch = mocker.patch('dbos.DBOS.launch')
         ensure_launched = mocker.patch('django_dbos.dbos_setup.ensure_launched')
@@ -53,7 +58,7 @@ class TestDbosMigrate:
 
     def test_sdk_failure_is_a_command_error(self, settings, monkeypatch, mocker):
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
-        settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://db'}
+        set_dbos_options(settings, {'SYSTEM_DATABASE_URL': 'postgresql://db'})
         # The SDK reports failures as a click Exit after echoing them.
         mocker.patch('django_dbos.system_db.run_dbos_database_migrations', side_effect=Exit(code=1))
 
@@ -65,7 +70,7 @@ class TestDbosMigrate:
 
     def test_configuration_errors_are_command_errors(self, settings, monkeypatch):
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
-        settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://db', 'QUEUES': {'x': {'nope': 1}}}
+        set_dbos_options(settings, {'SYSTEM_DATABASE_URL': 'postgresql://db', 'QUEUES': {'x': {'nope': 1}}})
         err = StringIO()
         with contextlib.redirect_stdout(StringIO()), contextlib.redirect_stderr(err), pytest.raises(Exit) as excinfo:
             call_command('dbos', 'migrate')

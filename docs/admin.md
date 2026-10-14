@@ -45,11 +45,16 @@ queue and last fire time. Each schedule can be paused, resumed or deleted
 The pages are enabled by default; you can disable them entirely:
 
 ```python
-DJANGO_DBOS = {
-    # Disable the admin pages entirely:
-    'ADMIN_ENABLED': False,
-    # Register the pages on custom AdminSite instances (dotted paths):
-    'ADMIN_SITE': ['myapp.admin.admin_site'],
+TASKS = {
+    'default': {
+        'BACKEND': 'django_dbos.backends.DBOSBackend',
+        'OPTIONS': {
+            # Disable the admin pages entirely:
+            'ADMIN_ENABLED': False,
+            # Register the pages on custom AdminSite instances (dotted paths):
+            'ADMIN_SITE': ['myapp.admin.admin_site'],
+        },
+    },
 }
 ```
 

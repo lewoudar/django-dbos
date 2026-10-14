@@ -53,18 +53,23 @@ Each queue gets a simple heuristic:
 
 ### Thresholds
 
-Set them globally in `DJANGO_DBOS["CAPACITY"]`, and per queue under the
+Set them globally in `OPTIONS["CAPACITY"]`, and per queue under the
 queue's own `capacity` option (which is never sent to DBOS):
 
 ```python
-DJANGO_DBOS = {
-    'CAPACITY': {
-        'SCALE_UP_BACKLOG_AGE_SECONDS': 30,
-        'SCALE_DOWN_MAX_RUNNING': 1,
-    },
-    'QUEUES': {
-        'default': None,
-        'emails': {'worker_concurrency': 4, 'capacity': {'SCALE_UP_BACKLOG_AGE_SECONDS': 300}},
+TASKS = {
+    'default': {
+        'BACKEND': 'django_dbos.backends.DBOSBackend',
+        'OPTIONS': {
+            'CAPACITY': {
+                'SCALE_UP_BACKLOG_AGE_SECONDS': 30,
+                'SCALE_DOWN_MAX_RUNNING': 1,
+            },
+            'QUEUES': {
+                'default': None,
+                'emails': {'worker_concurrency': 4, 'capacity': {'SCALE_UP_BACKLOG_AGE_SECONDS': 300}},
+            },
+        },
     },
 }
 ```
@@ -79,7 +84,8 @@ Replace the advice function entirely with a callable
 or directly as an argument of `collect()`:
 
 ```python
-DJANGO_DBOS = {'CAPACITY': {'ADVISOR': 'myproject.scaling.advise'}}
+# in the DBOS backend's OPTIONS
+'CAPACITY': {'ADVISOR': 'myproject.scaling.advise'},
 ```
 
 ```python

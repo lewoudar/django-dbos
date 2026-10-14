@@ -12,6 +12,7 @@ import pytest
 from django_dbos.checks import check_dbos_settings
 from django_dbos.exceptions import ImproperlyConfiguredDbos, TaskFailure
 from django_dbos.serializers import MsgspecJSONSerializer, MsgspecMsgpackSerializer
+from tests.tests_helpers import set_dbos_options
 
 SERIALIZERS = [MsgspecJSONSerializer, MsgspecMsgpackSerializer]
 
@@ -151,7 +152,7 @@ def test_missing_msgspec_tells_how_to_install_it(without_msgspec):
 
 def test_missing_msgspec_is_reported_by_the_system_checks(without_msgspec, settings, monkeypatch):
     monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
-    settings.DJANGO_DBOS = {'SERIALIZER': 'django_dbos.serializers.MsgspecJSONSerializer'}
+    set_dbos_options(settings, {'SERIALIZER': 'django_dbos.serializers.MsgspecJSONSerializer'})
 
     [error] = check_dbos_settings()
 

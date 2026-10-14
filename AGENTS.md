@@ -98,10 +98,16 @@ or Settings › Pages — then every push to `main` deploys.
 
 ## Pitfalls learned the hard way
 
+- `DBOSBackend.__init__` must not raise: Django builds the backend while
+  importing task modules and running its checks. A bad queue declaration is
+  stored, reported by `django_dbos.E001` and raised on enqueue. In tests,
+  override the backend's `OPTIONS` with
+  `tests_helpers.set_dbos_options(settings, {...})`.
 - **Never patch `django.conf.settings` attributes directly** (lazy object +
   pytest-django `settings` fixture teardown = state leaks between tests).
-  Patch a module-level seam instead (see `_default_database_engine` in
-  `checks.py`) or override via the `settings` fixture for plain settings.
+  Patch the module's own `settings` reference instead (see
+  `test_no_usable_django_database_raises` in `tests/test_settings.py`) or
+  override via the `settings` fixture for plain settings.
   Overriding `DATABASES` through the fixture also raises a `UserWarning`
   (fatal with `filterwarnings = ["error"]`).
 - No private SDK import (`dbos._*`): workflow functions are kept in

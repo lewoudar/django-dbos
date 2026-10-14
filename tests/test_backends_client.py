@@ -6,19 +6,27 @@ SDK only reaches through race conditions.
 """
 
 import asyncio
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from dbos import error as dbos_error
-from django.tasks import TaskResultStatus
-from django.tasks.exceptions import TaskResultDoesNotExist
+from django.tasks import TaskResultStatus, task_backends
+from django.tasks.exceptions import InvalidTask, TaskResultDoesNotExist
 
-from django_dbos.exceptions import MaxRecoveryAttemptsExceeded, TaskCancelled, TaskFailure, TaskTimedOut
+from django_dbos.exceptions import (
+    ImproperlyConfiguredDbos,
+    MaxRecoveryAttemptsExceeded,
+    TaskCancelled,
+    TaskFailure,
+    TaskTimedOut,
+)
 from django_dbos.results import build_task_result
 from django_dbos.workflow_names import workflow_name_for_task
 
 from .tasks import add, async_add
+from .tests_helpers import set_dbos_options
 
 WORKFLOW_ID = 'wf-1'
 CREATED_AT_MS = 1_700_000_000_000
@@ -287,3 +295,55 @@ class TestBuildTaskResult:
 
         assert result.status == TaskResultStatus.SUCCESSFUL
         assert result.return_value is None
+
+
+class TestDeclaredQueues:
+    """The backend accepts exactly the queues a worker declares, whichever way they are declared."""
+
+    @staticmethod
+    def backend_queues(settings, **params):
+        settings.TASKS = {'dbos': {'BACKEND': 'django_dbos.backends.DBOSBackend', **params}}
+        return task_backends['dbos'].queues
+
+    def test_from_options_mapping(self, settings):
+        queues = self.backend_queues(
+            settings, OPTIONS={'QUEUES': {'emails': None, 'reports': {'worker_concurrency': 1}}}
+        )
+        assert queues == {'emails', 'reports'}
+
+    def test_from_top_level_list(self, settings):
+        assert self.backend_queues(settings, QUEUES=['default', 'emails']) == {'default', 'emails'}
+
+    def test_default_queue_when_none_is_declared(self, settings):
+        assert self.backend_queues(settings) == {'default'}
+
+    def test_queues_of_its_own_alias(self, settings):
+        # several DBOS backends are reported by django_dbos.E002, yet each one reads its own entry
+        settings.TASKS = {
+            'first': {'BACKEND': 'django_dbos.backends.DBOSBackend', 'QUEUES': ['first']},
+            'second': {'BACKEND': 'django_dbos.backends.DBOSBackend', 'QUEUES': ['second']},
+        }
+        assert task_backends['second'].queues == {'second'}
+
+    def test_undeclared_queue_is_rejected_at_task_construction(self):
+        with pytest.raises(InvalidTask, match="Queue 'ghost' is not valid for backend"):
+            replace(add, queue_name='ghost')
+
+    @pytest.mark.parametrize(
+        'params',
+        [
+            pytest.param({'QUEUES': ['default'], 'OPTIONS': {'QUEUES': {'default': None}}}, id='both'),
+            pytest.param({'QUEUES': []}, id='any-queue'),
+        ],
+    )
+    def test_misconfigured_queues_raise_on_enqueue_only(self, settings, params):
+        # building the backend (task import, Django's checks) must not fail
+        settings.TASKS = {**settings.TASKS, 'dbos': {'BACKEND': 'django_dbos.backends.DBOSBackend', **params}}
+        with pytest.raises(ImproperlyConfiguredDbos):
+            add.enqueue(1, 2)
+        with pytest.raises(ImproperlyConfiguredDbos):
+            asyncio.run(add.aenqueue(1, 2))
+
+    def test_options_change_resets_the_backend(self, settings):
+        set_dbos_options(settings, {'QUEUES': {'emails': None}})
+        assert add.get_backend().queues == {'emails'}

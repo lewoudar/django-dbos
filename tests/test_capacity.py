@@ -25,6 +25,7 @@ from django_dbos.exceptions import ImproperlyConfiguredDbos
 from django_dbos.heartbeat import STALE_AFTER_SECONDS, write_heartbeat
 from django_dbos.models import WorkerHeartbeat
 from django_dbos.settings import resolve_capacity, resolve_queues, resolve_settings
+from tests.tests_helpers import set_dbos_options
 
 from .tasks import add
 
@@ -107,7 +108,9 @@ class TestConfigurableThresholds:
         assert advise_queue(_metrics(running=2), scale_down_max_running=2) == 'SCALE_DOWN'
 
     def test_thresholds_come_from_settings(self, settings):
-        settings.DJANGO_DBOS = {**settings.DJANGO_DBOS, 'CAPACITY': {'SCALE_UP_BACKLOG_AGE_SECONDS': 5}}
+        set_dbos_options(
+            settings, {**settings.TASKS['dbos']['OPTIONS'], 'CAPACITY': {'SCALE_UP_BACKLOG_AGE_SECONDS': 5}}
+        )
         assert advise_queue(_metrics(enqueued=1, backlog_age_seconds=10.0, running=1)) == 'SCALE_UP'
 
     @pytest.mark.parametrize(
@@ -122,21 +125,26 @@ class TestConfigurableThresholds:
         ],
     )
     def test_invalid_capacity_setting(self, settings, capacity, message):
-        settings.DJANGO_DBOS = {**settings.DJANGO_DBOS, 'CAPACITY': capacity}
+        set_dbos_options(settings, {**settings.TASKS['dbos']['OPTIONS'], 'CAPACITY': capacity})
         with pytest.raises(ImproperlyConfiguredDbos, match=message):
             resolve_capacity()
 
     def test_invalid_per_queue_thresholds(self, settings):
-        settings.DJANGO_DBOS = {**settings.DJANGO_DBOS, 'QUEUES': {'emails': {'capacity': {'ADVISOR': 'x'}}}}
+        set_dbos_options(
+            settings, {**settings.TASKS['dbos']['OPTIONS'], 'QUEUES': {'emails': {'capacity': {'ADVISOR': 'x'}}}}
+        )
         with pytest.raises(ImproperlyConfiguredDbos, match=r"QUEUES'\]\['emails'\]\['capacity'\]: unknown threshold"):
             resolve_queues()
 
     def test_per_queue_thresholds_override_global_ones(self, settings):
-        settings.DJANGO_DBOS = {
-            **settings.DJANGO_DBOS,
-            'CAPACITY': {'SCALE_UP_BACKLOG_AGE_SECONDS': 30},
-            'QUEUES': {'default': None, 'emails': {'capacity': {'SCALE_UP_BACKLOG_AGE_SECONDS': 300}}},
-        }
+        set_dbos_options(
+            settings,
+            {
+                **settings.TASKS['dbos']['OPTIONS'],
+                'CAPACITY': {'SCALE_UP_BACKLOG_AGE_SECONDS': 30},
+                'QUEUES': {'default': None, 'emails': {'capacity': {'SCALE_UP_BACKLOG_AGE_SECONDS': 300}}},
+            },
+        )
         resolved = resolve_settings()
         default, emails = resolved.queues
         assert resolved.capacity.thresholds_for(default) == {
@@ -217,21 +225,30 @@ class TestCollect:
         assert list(report['queues']) == ['emails']
 
     def test_collect_reports_the_thresholds_applied_per_queue(self, dbos_environment, settings):
-        settings.DJANGO_DBOS = {
-            **settings.DJANGO_DBOS,
-            'QUEUES': {'default': None, 'emails': {'capacity': {'SCALE_UP_BACKLOG_AGE_SECONDS': 300}}},
-        }
+        set_dbos_options(
+            settings,
+            {
+                **settings.TASKS['dbos']['OPTIONS'],
+                'QUEUES': {'default': None, 'emails': {'capacity': {'SCALE_UP_BACKLOG_AGE_SECONDS': 300}}},
+            },
+        )
         report = capacity.collect()
         assert report['queues']['default']['thresholds']['scale_up_backlog_age_seconds'] == 60.0
         assert report['queues']['emails']['thresholds']['scale_up_backlog_age_seconds'] == 300
 
     def test_collect_uses_the_configured_advisor(self, dbos_environment, settings):
-        settings.DJANGO_DBOS = {**settings.DJANGO_DBOS, 'CAPACITY': {'ADVISOR': 'tests.test_capacity.custom_advisor'}}
+        set_dbos_options(
+            settings,
+            {**settings.TASKS['dbos']['OPTIONS'], 'CAPACITY': {'ADVISOR': 'tests.test_capacity.custom_advisor'}},
+        )
         report = capacity.collect(queues=['emails'])
         assert report['queues']['emails']['advice'] == 'CUSTOM:emails:60.0'
 
     def test_collect_advisor_argument_wins(self, dbos_environment, settings):
-        settings.DJANGO_DBOS = {**settings.DJANGO_DBOS, 'CAPACITY': {'ADVISOR': 'tests.test_capacity.custom_advisor'}}
+        set_dbos_options(
+            settings,
+            {**settings.TASKS['dbos']['OPTIONS'], 'CAPACITY': {'ADVISOR': 'tests.test_capacity.custom_advisor'}},
+        )
         report = capacity.collect(queues=['emails'], advisor=lambda name, metrics, thresholds: 'MINE')
         assert report['queues']['emails']['advice'] == 'MINE'
 

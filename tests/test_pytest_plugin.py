@@ -17,7 +17,7 @@ INSTALLED_APPS = [
 ]
 DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
 TASKS = {
-    "default": {"BACKEND": "django_dbos.backends.DBOSBackend", "QUEUES": ["default", "ghost"]},
+    "default": {"BACKEND": "django_dbos.backends.DBOSBackend"},
 }
 USE_TZ = True
 """
@@ -52,10 +52,6 @@ def explode():
 def with_context(context):
     return context.task_result.id
 
-
-@task(queue_name="ghost")
-def on_undeclared_queue():
-    return "never"
 
 
 @task
@@ -142,16 +138,23 @@ def test_context_is_provided(dbos_inline):
     assert result.return_value == ''  # no DBOS workflow id inline, but a TaskContext
 """
 
-INLINE_TEST_UNDECLARED_QUEUE = """
+INLINE_TEST_MISCONFIGURED_QUEUES = """
 import pytest
 
-from django_dbos.exceptions import QueueNotDeclared
-from tasks_app.tasks import on_undeclared_queue
+from django_dbos.exceptions import ImproperlyConfiguredDbos
+from tasks_app.tasks import add
 
 
-def test_undeclared_queue_is_rejected_inline_too(dbos_inline):
-    with pytest.raises(QueueNotDeclared):
-        on_undeclared_queue.enqueue()
+def test_misconfigured_queues_are_rejected_inline_too(dbos_inline, settings):
+    settings.TASKS = {
+        "default": {
+            "BACKEND": "django_dbos.backends.DBOSBackend",
+            "QUEUES": ["default"],
+            "OPTIONS": {"QUEUES": {"default": None}},
+        },
+    }
+    with pytest.raises(ImproperlyConfiguredDbos, match="not both"):
+        add.enqueue(1, 2)
 """
 
 INLINE_TEST_GET_RESULT = """
@@ -250,7 +253,7 @@ class TestDbosInline:
             pytest.param(INLINE_TEST_AENQUEUE, id='async-api'),
             pytest.param(INLINE_TEST_FAILURE, id='failure-is-a-failed-result'),
             pytest.param(INLINE_TEST_CONTEXT, id='takes-context'),
-            pytest.param(INLINE_TEST_UNDECLARED_QUEUE, id='undeclared-queue'),
+            pytest.param(INLINE_TEST_MISCONFIGURED_QUEUES, id='misconfigured-queues'),
         ],
     )
     def test_inline_roundtrip(self, pytester: pytest.Pytester, inline_test_source: str):

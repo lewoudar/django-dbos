@@ -12,6 +12,11 @@ from django_dbos.tasks import DBOSTask
 def noop() -> None: ...
 
 
+def set_dbos_options(settings: Any, options: dict[str, Any]) -> None:
+    """Replace the ``OPTIONS`` of the test DBOS backend through pytest-django's ``settings`` fixture."""
+    settings.TASKS = {**settings.TASKS, 'dbos': {**settings.TASKS['dbos'], 'OPTIONS': options}}
+
+
 def make_dbos_task(**overrides: Any) -> DBOSTask:
     """Build a DBOSTask from a module-level test function."""
     return DBOSTask(func=noop, **overrides)

@@ -3,7 +3,7 @@
 from django.apps import apps
 from django.core.checks import registry
 
-from django_dbos.checks import check_dbos_settings, check_system_database_engine
+from django_dbos.checks import check_dbos_settings, check_task_modules
 
 
 class TestReady:
@@ -23,4 +23,4 @@ class TestReady:
     def test_system_checks_are_registered(self):
         registered = set(registry.registry.registered_checks)
         assert check_dbos_settings in registered
-        assert check_system_database_engine in registered
+        assert check_task_modules in registered

@@ -55,23 +55,21 @@ TASKS = {
         'BACKEND': 'django.tasks.backends.immediate.ImmediateBackend',
         'QUEUES': ['default'],
     },
+    # Tests that need a launched DBOS (the worker side) use the dbos_system
+    # fixture; everything else goes through the DBOSClient like a web process.
     'dbos': {
         'BACKEND': 'django_dbos.backends.DBOSBackend',
-        'QUEUES': ['default', 'emails'],
+        'OPTIONS': {
+            # Explicit for clarity: the admin pages are registered by default
+            # and restricted to superusers.
+            'ADMIN_ENABLED': True,
+            'SCHEDULER_POLLING_INTERVAL_SEC': 0.5,
+            'QUEUES': {
+                'default': None,
+                'emails': None,
+            },
+        },
     },
 }
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-# Tests that need a launched DBOS (the worker side) use the dbos_system
-# fixture; everything else goes through the DBOSClient like a web process.
-DJANGO_DBOS = {
-    # Explicit for clarity: the admin pages are registered by default and
-    # restricted to superusers.
-    'ADMIN_ENABLED': True,
-    'SCHEDULER_POLLING_INTERVAL_SEC': 0.5,
-    'QUEUES': {
-        'default': None,
-        'emails': None,
-    },
-}

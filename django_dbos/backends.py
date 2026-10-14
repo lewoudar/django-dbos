@@ -12,7 +12,7 @@ from django.tasks.exceptions import TaskResultDoesNotExist
 
 from . import settings as settings_module
 from .client import get_client
-from .exceptions import QueueNotDeclared
+from .exceptions import ImproperlyConfiguredDbos
 from .logging import logger
 from .results import build_task_result
 from .tasks import DBOSTask
@@ -56,9 +56,20 @@ class DBOSBackend(BaseTaskBackend):
     supports_get_result = True
     supports_priority = True
 
+    def __init__(self, alias: str, params: dict[str, Any]) -> None:
+        super().__init__(alias, params)
+        # Tasks may only target the queues a worker declares. A misconfiguration
+        # is reported by django_dbos.E001 and raised on enqueue, not here: the
+        # backend is built while importing task modules and running checks.
+        self._queues_error: str | None = None
+        try:
+            self.queues = {queue.name for queue in settings_module.resolve_queues(alias)}
+        except ImproperlyConfiguredDbos as exc:
+            self._queues_error = str(exc)
+
     def enqueue(self, task: DBOSTask, args: Any, kwargs: Any) -> TaskResult:
+        self._validate_queues_config()
         self.validate_task(task)
-        self._validate_queue(task)
 
         handle = get_client().enqueue(self._enqueue_options(task), *args, **kwargs)
         self._log_enqueued(task, handle.workflow_id)
@@ -69,8 +80,8 @@ class DBOSBackend(BaseTaskBackend):
         return build_task_result(handle.workflow_id, status)
 
     async def aenqueue(self, task: DBOSTask, args: Any, kwargs: Any) -> TaskResult:
+        self._validate_queues_config()
         self.validate_task(task)
-        self._validate_queue(task)
 
         handle = await get_client().enqueue_async(self._enqueue_options(task), *args, **kwargs)
         self._log_enqueued(task, handle.workflow_id)
@@ -114,14 +125,9 @@ class DBOSBackend(BaseTaskBackend):
             options['workflow_timeout'] = params.workflow_timeout
         return options  # type: ignore[return-value]
 
-    def _validate_queue(self, task: DBOSTask) -> None:
-        declared_queues = {queue.name for queue in settings_module.resolve_queues()}
-        if task.queue_name not in declared_queues:
-            raise QueueNotDeclared(
-                f"Queue '{task.queue_name}' is not declared in the DJANGO_DBOS "
-                "setting. Declare it under DJANGO_DBOS['QUEUES'] so a worker "
-                'can process it.'
-            )
+    def _validate_queues_config(self) -> None:
+        if self._queues_error is not None:
+            raise ImproperlyConfiguredDbos(self._queues_error)
 
     @staticmethod
     def _log_enqueued(task: DBOSTask, workflow_id: str) -> None:

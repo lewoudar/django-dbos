@@ -4,7 +4,25 @@ icon: lucide/settings
 
 # Configuration
 
-django-dbos is configured through a single `DJANGO_DBOS` setting.
+django-dbos is configured where Django expects a task backend's own
+settings: the `OPTIONS` of its entry in `TASKS`.
+
+```python
+TASKS = {
+    'default': {
+        'BACKEND': 'django_dbos.backends.DBOSBackend',
+        'OPTIONS': {
+            'SERIALIZER': 'django_dbos.serializers.MsgspecJSONSerializer',
+            'QUEUES': {'default': None, 'emails': {'worker_concurrency': 4}},
+        },
+    },
+}
+```
+
+DBOS runs as a single instance per process (one system database, one
+configuration), so a project has **one** DBOS backend: `manage.py check`
+reports several (`django_dbos.E002`). It can sit next to other backends,
+under any alias. The examples below call it `default`.
 
 ## System database
 
@@ -18,12 +36,17 @@ django-dbos derives its URL from your default Django connection:
 
 Two overrides are available, by order of precedence:
 
-1. `DJANGO_DBOS["SYSTEM_DATABASE_URL"]`
+1. `OPTIONS["SYSTEM_DATABASE_URL"]`
 2. the `DBOS_SYSTEM_DATABASE_URL` environment variable
 
 ```python
-DJANGO_DBOS = {
-    'SYSTEM_DATABASE_URL': 'postgresql+psycopg://user:pass@db.example.com:5432/dbos_myproject',
+TASKS = {
+    'default': {
+        'BACKEND': 'django_dbos.backends.DBOSBackend',
+        'OPTIONS': {
+            'SYSTEM_DATABASE_URL': 'postgresql+psycopg://user:pass@db.example.com:5432/dbos_myproject',
+        },
+    },
 }
 ```
 
@@ -34,7 +57,7 @@ DJANGO_DBOS = {
 
 ## Options
 
-`DJANGO_DBOS` accepts the keys below; `manage.py check` reports any other
+`OPTIONS` accepts the keys below; `manage.py check` reports any other
 one (`django_dbos.E003`, see [System checks](troubleshooting.md#system-checks)).
 
 | Key | Default | Description |
@@ -83,8 +106,13 @@ pip install "django-dbos[msgspec]"
 ```
 
 ```python
-DJANGO_DBOS = {
-    'SERIALIZER': 'django_dbos.serializers.MsgspecJSONSerializer',
+TASKS = {
+    'default': {
+        'BACKEND': 'django_dbos.backends.DBOSBackend',
+        'OPTIONS': {
+            'SERIALIZER': 'django_dbos.serializers.MsgspecJSONSerializer',
+        },
+    },
 }
 ```
 
@@ -102,10 +130,30 @@ workflows are in flight makes their stored data unreadable.
 
 ## Queues
 
-Queues process task executions concurrently and are declared under
-`DJANGO_DBOS["QUEUES"]`. Queue names used by tasks (through `queue_name` or
-`TASKS[alias]["QUEUES"]`) must be declared here, otherwise enqueuing raises
-`QueueNotDeclared`. Each queue maps to `None` (no options) or a dict of
+Queues process task executions concurrently. Workers process the queues
+you declare, and tasks may only target those (`queue_name`): Django raises
+`InvalidTask` for any other queue. Declare them **once**, in either of two
+ways:
+
+- `QUEUES`, Django's own list of names, for queues without options:
+
+    ```python
+    TASKS = {
+        'default': {
+            'BACKEND': 'django_dbos.backends.DBOSBackend',
+            'QUEUES': ['default', 'emails'],
+        },
+    }
+    ```
+
+- `OPTIONS["QUEUES"]`, a mapping of queue name to options, as soon as one
+  queue needs some (see below).
+
+Setting both is a configuration error, and so is an empty `QUEUES` list
+(which Django reads as "any queue", while a worker only processes declared
+queues). With neither, the only queue is `default`.
+
+In `OPTIONS["QUEUES"]`, each queue maps to `None` (no options) or a dict of
 options:
 
 | Option | Default | Description |
@@ -119,14 +167,19 @@ options:
 An unknown option is a configuration error, reported by `manage.py check`.
 
 ```python
-DJANGO_DBOS = {
-    'QUEUES': {
-        'default': None,  # no options
-        'emails': {
-            'worker_concurrency': 4,  # max concurrent executions per worker
-            'global_concurrency': 10,  # max concurrent executions across workers
-            'limiter': {'limit': 50, 'period': 30},  # rate limit
-            'capacity': {'SCALE_UP_BACKLOG_AGE_SECONDS': 300},  # django-dbos only, see Worker capacity
+TASKS = {
+    'default': {
+        'BACKEND': 'django_dbos.backends.DBOSBackend',
+        'OPTIONS': {
+            'QUEUES': {
+                'default': None,  # no options
+                'emails': {
+                    'worker_concurrency': 4,  # max concurrent executions per worker
+                    'global_concurrency': 10,  # max concurrent executions across workers
+                    'limiter': {'limit': 50, 'period': 30},  # rate limit
+                    'capacity': {'SCALE_UP_BACKLOG_AGE_SECONDS': 300},  # django-dbos only, see Worker capacity
+                },
+            },
         },
     },
 }
@@ -182,7 +235,7 @@ workers as you like, each scheduled firing still executes once.
 `manage.py migrate` creates the system database and applies DBOS' schema
 migrations once Django's own migrations are done: one command migrates
 everything, wherever you already run it (release step, container entrypoint,
-CI). It reads the URL and schema from `DJANGO_DBOS`, connects with a plain
+CI). It reads the URL and schema from the backend's `OPTIONS`, connects with a plain
 database handle (no worker, no background thread), prints a credential-free
 summary and is idempotent.
 
@@ -198,8 +251,13 @@ needs other credentials? Turn it off and run `dbos migrate` yourself, which
 also grants the schema to your runtime role:
 
 ```python
-DJANGO_DBOS = {
-    'MIGRATE_WITH_DJANGO': False,
+TASKS = {
+    'default': {
+        'BACKEND': 'django_dbos.backends.DBOSBackend',
+        'OPTIONS': {
+            'MIGRATE_WITH_DJANGO': False,
+        },
+    },
 }
 ```
 
@@ -218,8 +276,13 @@ DDL rights, and a DBOS upgrade changes the schema during the release, not
 whenever the first new worker boots.
 
 ```python
-DJANGO_DBOS = {
-    'RUN_MIGRATIONS': False,
+TASKS = {
+    'default': {
+        'BACKEND': 'django_dbos.backends.DBOSBackend',
+        'OPTIONS': {
+            'RUN_MIGRATIONS': False,
+        },
+    },
 }
 ```
 
@@ -237,8 +300,13 @@ instances:
 ```python
 import os
 
-DJANGO_DBOS = {
-    'EXECUTOR_ID': os.environ.get('WORKER_INSTANCE_ID'),  # whatever names an instance on your platform
+TASKS = {
+    'default': {
+        'BACKEND': 'django_dbos.backends.DBOSBackend',
+        'OPTIONS': {
+            'EXECUTOR_ID': os.environ.get('WORKER_INSTANCE_ID'),  # whatever names an instance on your platform
+        },
+    },
 }
 ```
 

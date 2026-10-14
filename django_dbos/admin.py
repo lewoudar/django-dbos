@@ -4,8 +4,8 @@ Custom admin views: workflow list/detail, schedules, and operational actions,
 all backed by a ``DBOSClient`` against the system database — plus a read-only
 ``ModelAdmin`` for worker heartbeats.
 
-Registration is gated by ``DJANGO_DBOS["ADMIN_ENABLED"]`` (default ``True``)
-and targets the admin sites listed in ``DJANGO_DBOS["ADMIN_SITE"]`` (dotted
+Registration is gated by ``OPTIONS["ADMIN_ENABLED"]`` (default ``True``)
+and targets the admin sites listed in ``OPTIONS["ADMIN_SITE"]`` (dotted
 paths, default: the default ``django.contrib.admin.site``).
 
 The pages expose destructive operations and every workflow's data (inputs,

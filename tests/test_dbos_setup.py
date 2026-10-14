@@ -4,13 +4,14 @@ import pytest
 
 from django_dbos import dbos_setup
 from django_dbos.exceptions import ImproperlyConfiguredDbos
+from tests.tests_helpers import set_dbos_options
 
 
 class TestBuildDbosConfig:
     def test_minimal_config(self, settings, monkeypatch):
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
         monkeypatch.delenv('DBOS__VMID', raising=False)
-        settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://db'}
+        set_dbos_options(settings, {'SYSTEM_DATABASE_URL': 'postgresql://db'})
         config = dbos_setup._build_dbos_config()
         assert config['name'] == 'django'
         assert config['system_database_url'] == 'postgresql://db'
@@ -23,16 +24,19 @@ class TestBuildDbosConfig:
 
     def test_full_config(self, settings, monkeypatch):
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
-        settings.DJANGO_DBOS = {
-            'NAME': 'myproject',
-            'SYSTEM_DATABASE_URL': 'postgresql://db',
-            'APPLICATION_VERSION': '1.2.3',
-            'SYSTEM_DB_SCHEMA': 'custom_schema',
-            'EXECUTOR_ID': 'machine-42',
-            'SERIALIZER': 'dbos.DBOSPortableJSONSerializer',
-            'RUN_MIGRATIONS': False,
-            'SCHEDULER_POLLING_INTERVAL_SEC': 2,
-        }
+        set_dbos_options(
+            settings,
+            {
+                'NAME': 'myproject',
+                'SYSTEM_DATABASE_URL': 'postgresql://db',
+                'APPLICATION_VERSION': '1.2.3',
+                'SYSTEM_DB_SCHEMA': 'custom_schema',
+                'EXECUTOR_ID': 'machine-42',
+                'SERIALIZER': 'dbos.DBOSPortableJSONSerializer',
+                'RUN_MIGRATIONS': False,
+                'SCHEDULER_POLLING_INTERVAL_SEC': 2,
+            },
+        )
         config = dbos_setup._build_dbos_config()
         assert config['name'] == 'myproject'
         assert config['application_version'] == '1.2.3'
@@ -45,23 +49,26 @@ class TestBuildDbosConfig:
     def test_executor_id_falls_back_to_dbos_env(self, settings, monkeypatch):
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
         monkeypatch.setenv('DBOS__VMID', 'vm-7')
-        settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://db'}
+        set_dbos_options(settings, {'SYSTEM_DATABASE_URL': 'postgresql://db'})
         assert dbos_setup._build_dbos_config()['executor_id'] == 'vm-7'
 
 
 class TestRegisterQueues:
     def test_all_queue_options_forwarded(self, settings, mocker):
         register_queue = mocker.patch.object(dbos_setup.DBOS, 'register_queue')
-        settings.DJANGO_DBOS = {
-            'QUEUES': {
-                'emails': {
-                    'worker_concurrency': 2,
-                    'global_concurrency': 3,
-                    'limiter': {'strategy': 'fixed_window', 'limit': 10, 'seconds': 60},
-                    'polling_interval_sec': 1.5,
-                }
+        set_dbos_options(
+            settings,
+            {
+                'QUEUES': {
+                    'emails': {
+                        'worker_concurrency': 2,
+                        'global_concurrency': 3,
+                        'limiter': {'strategy': 'fixed_window', 'limit': 10, 'seconds': 60},
+                        'polling_interval_sec': 1.5,
+                    }
+                },
             },
-        }
+        )
         dbos_setup._register_queues()
         register_queue.assert_called_once_with(
             'emails',
@@ -73,7 +80,7 @@ class TestRegisterQueues:
 
     def test_default_queue_has_no_options(self, settings, mocker):
         register_queue = mocker.patch.object(dbos_setup.DBOS, 'register_queue')
-        settings.DJANGO_DBOS = {}
+        set_dbos_options(settings, {})
         dbos_setup._register_queues()
         register_queue.assert_called_once_with('default')
 
@@ -83,7 +90,7 @@ class TestScrubbedSdkErrors:
 
     def test_initialization_failure_is_scrubbed_and_unchained(self, settings, monkeypatch, mocker):
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
-        settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://user:hunter2@db:5432/dbos_app'}
+        set_dbos_options(settings, {'SYSTEM_DATABASE_URL': 'postgresql://user:hunter2@db:5432/dbos_app'})
         mocker.patch.object(dbos_setup, '_initialized', False)
         mocker.patch.object(dbos_setup, 'DBOS', side_effect=self.DSN_ERROR)
 
@@ -112,7 +119,7 @@ class TestScrubbedSdkErrors:
 
     def test_configuration_errors_pass_through(self, settings, monkeypatch, mocker):
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
-        settings.DJANGO_DBOS = {'SYSTEM_DATABASE_URL': 'postgresql://db', 'QUEUES': {'emails': {'nope': 1}}}
+        set_dbos_options(settings, {'SYSTEM_DATABASE_URL': 'postgresql://db', 'QUEUES': {'emails': {'nope': 1}}})
         mocker.patch.object(dbos_setup, '_initialized', False)
         mocker.patch.object(dbos_setup, 'DBOS')
 
