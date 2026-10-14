@@ -18,7 +18,6 @@ from django_dbos.checks import (
     check_in_memory_system_database,
     check_serializer,
     check_single_dbos_backend,
-    check_system_database_engine,
     check_task_modules,
     check_unknown_settings,
 )
@@ -249,38 +248,3 @@ class TestCheckDbosBackendConfigured:
 
         assert [warning.id for warning in warnings] == ['django_dbos.W005']
         assert DBOS_BACKEND in warnings[0].hint
-
-
-class TestCheckSystemDatabaseEngine:
-    @pytest.fixture()
-    def engine(self, mocker):
-        def _set(engine: str) -> None:
-            mocker.patch.object(checks, '_default_database_engine', return_value=engine)
-
-        return _set
-
-    def test_explicit_url_reports_nothing(self, settings, engine):
-        engine('django.db.backends.oracle')
-        set_dbos_options(settings, {'SYSTEM_DATABASE_URL': 'postgresql://explicit'})
-        assert check_system_database_engine() == []
-
-    @pytest.mark.parametrize(
-        'engine_name',
-        ['django.db.backends.postgresql', 'django.db.backends.sqlite3'],
-    )
-    def test_supported_engine_reports_nothing(self, settings, engine, engine_name):
-        engine(engine_name)
-        set_dbos_options(settings, {})
-        assert check_system_database_engine() == []
-
-    def test_unsupported_engine_reports_an_info(self, settings, engine):
-        engine('django.db.backends.oracle')
-        set_dbos_options(settings, {})
-        infos = check_system_database_engine()
-        assert len(infos) == 1
-        assert infos[0].id == 'django_dbos.I001'
-        assert 'SYSTEM_DATABASE_URL' in infos[0].hint
-
-
-def test_default_database_engine_reads_the_default_connection():
-    assert checks._default_database_engine() == 'django.db.backends.sqlite3'

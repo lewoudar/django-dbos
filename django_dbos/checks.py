@@ -6,8 +6,7 @@ import difflib
 import sys
 from typing import Any
 
-from django.conf import settings
-from django.core.checks import CheckMessage, Error, Info, Tags, Warning, register
+from django.core.checks import CheckMessage, Error, Tags, Warning, register
 
 from . import discovery
 from . import settings as settings_module
@@ -169,25 +168,5 @@ def check_dbos_backend_configured(app_configs: Any = None, **kwargs: Any) -> lis
             'and the django-dbos settings are not read.',
             id='django_dbos.W005',
             hint="Add a TASKS entry with 'BACKEND': 'django_dbos.backends.DBOSBackend'.",
-        )
-    ]
-
-
-def _default_database_engine() -> str:
-    return (settings.DATABASES.get('default', {}) or {}).get('ENGINE', '')
-
-
-@register()
-def check_system_database_engine(app_configs: Any = None, **kwargs: Any) -> list[CheckMessage]:
-    explicit_url = settings_module.get_dbos_setting('SYSTEM_DATABASE_URL')
-    default_engine = _default_database_engine()
-    if explicit_url or 'postgres' in default_engine or 'sqlite' in default_engine:
-        return []
-
-    return [
-        Info(
-            'The default Django database engine does not allow django-dbos to derive a DBOS system database URL.',
-            id='django_dbos.I001',
-            hint=f'Set {settings_module.options_path("SYSTEM_DATABASE_URL")} or DBOS_SYSTEM_DATABASE_URL.',
         )
     ]
