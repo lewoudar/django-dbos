@@ -1,5 +1,6 @@
 """Tests for the resolution of the DBOS backend's OPTIONS."""
 
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -92,6 +93,16 @@ class TestSystemDatabaseUrlDerivation:
                 'postgresql+psycopg://:@localhost:5432/dbos_myproject',
                 id='postgres-defaults',
             ),
+            pytest.param(
+                {'ENGINE': 'django_cockroachdb', 'NAME': 'myproject', 'USER': 'kevin', 'PASSWORD': 'hunter2'},
+                'cockroachdb+psycopg2://kevin:hunter2@localhost:26257/dbos_myproject',
+                id='cockroachdb-defaults',
+            ),
+            pytest.param(
+                {'ENGINE': 'django_cockroachdb', 'NAME': 'myproject', 'HOST': 'crdb.example.com', 'PORT': 26000},
+                'cockroachdb+psycopg2://:@crdb.example.com:26000/dbos_myproject',
+                id='cockroachdb-full',
+            ),
         ],
     )
     def test_derivation(self, django_db, expected):
@@ -140,6 +151,21 @@ class TestSystemDatabaseUrlResolution:
         mocker.patch.object(dbos_settings, 'settings', SimpleNamespace(DATABASES={'default': default_db}))
         with pytest.raises(ImproperlyConfiguredDbos, match='No default Django database is configured'):
             dbos_settings.resolve_system_database_url()
+
+    @pytest.mark.parametrize('url', ['cockroachdb://root@crdb:26257/dbos', 'cockroachdb+psycopg2://root@crdb/dbos'])
+    def test_cockroachdb_psycopg2_url_is_kept(self, settings, url):
+        set_dbos_options(settings, {'SYSTEM_DATABASE_URL': url})
+        assert dbos_settings.resolve_system_database_url() == url
+        assert dbos_settings.is_cockroachdb_url(url)
+
+    @pytest.mark.parametrize('driver', ['cockroachdb+psycopg', 'cockroachdb+asyncpg'])
+    def test_cockroachdb_url_with_another_driver_raises(self, settings, driver):
+        set_dbos_options(settings, {'SYSTEM_DATABASE_URL': f'{driver}://root@crdb:26257/dbos'})
+        with pytest.raises(ImproperlyConfiguredDbos, match=rf"^The '{re.escape(driver)}' driver cannot reach"):
+            dbos_settings.resolve_system_database_url()
+
+    def test_postgres_url_is_not_cockroachdb(self):
+        assert not dbos_settings.is_cockroachdb_url('postgresql+psycopg://db/dbos')
 
 
 class TestQueues:

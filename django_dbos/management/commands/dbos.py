@@ -39,8 +39,8 @@ def main() -> None:
 )
 def migrate(app_role: str | None) -> None:
     """Create the DBOS system database and apply its migrations, without launching a worker."""
-    system_db.migrate_system_database(echo=click.echo, app_role=app_role)
-    click.secho('DBOS system database is up to date.', fg='green')
+    if system_db.migrate_system_database(echo=click.echo, app_role=app_role):
+        click.secho('DBOS system database is up to date.', fg='green')
 
 
 @main.command()

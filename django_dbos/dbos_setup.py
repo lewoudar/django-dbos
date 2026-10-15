@@ -25,6 +25,7 @@ from typing import Any
 from dbos import DBOS
 
 from . import settings as settings_module
+from . import system_engine
 from .exceptions import ImproperlyConfiguredDbos, describe_error
 from .scheduling import register_cron_workflows
 from .tasks_registry import register_all_task_workflows
@@ -32,6 +33,8 @@ from .tasks_registry import register_all_task_workflows
 _instance_lock = threading.Lock()
 _initialized = False
 _launched = False
+# What system_engine built for the singleton (a CockroachDB engine): DBOS never disposes of it.
+_engine_options: dict[str, Any] = {}
 
 
 def _build_dbos_config() -> dict[str, Any]:
@@ -59,6 +62,12 @@ def _build_dbos_config() -> dict[str, Any]:
     return config
 
 
+def _dispose_engine() -> None:
+    global _engine_options
+    system_engine.dispose(_engine_options)
+    _engine_options = {}
+
+
 def _register_queues() -> None:
     """Declare configured queues, persisting their configuration to the system database.
 
@@ -80,16 +89,19 @@ def _register_queues() -> None:
 
 def ensure_initialized() -> None:
     """Create the DBOS singleton if it does not exist yet."""
-    global _initialized
+    global _initialized, _engine_options
     with _instance_lock:
         if _initialized:
             return
         try:
             config = _build_dbos_config()
-            DBOS(config=config)  # type: ignore[arg-type]
+            _engine_options = system_engine.system_database_options(config['system_database_url'])
+            DBOS(config={**config, **_engine_options})  # type: ignore[arg-type]
         except ImproperlyConfiguredDbos:
+            _dispose_engine()
             raise
         except Exception as exc:  # noqa: BLE001 - deliberately unchained: the cause would print the DSN
+            _dispose_engine()
             # The SDK and SQLAlchemy echo the database URL in their messages:
             # re-raise without the chain, which would print it unmasked.
             raise ImproperlyConfiguredDbos(describe_error(exc)) from None
@@ -137,5 +149,6 @@ def shutdown(*, workflow_completion_timeout_sec: int = 10) -> None:
     if not _initialized:
         return
     DBOS.destroy(workflow_completion_timeout_sec=workflow_completion_timeout_sec)
+    _dispose_engine()
     _initialized = False
     _launched = False

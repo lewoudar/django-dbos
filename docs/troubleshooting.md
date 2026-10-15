@@ -214,6 +214,9 @@ you with `SILENCED_SYSTEM_CHECKS`.
 - **`django_dbos.E004`** — a `tasks.py` or `dbos_tasks.py` module cannot be
   imported. The check imports them as the worker does, so the error shows
   up in `runserver` rather than when the worker refuses to start.
+- **`django_dbos.E005`** — `RUN_MIGRATIONS` is `False` with a CockroachDB
+  system database. There, only the workers can apply DBOS' migrations
+  ([CockroachDB](configuration.md#cockroachdb)): remove the option.
 - **`django_dbos.W001`** — a task is defined in a module the worker does not
   import, so [it stays `READY` forever](#a-task-stays-ready-forever). Move
   it into (or import it from) the `tasks.py` or `dbos_tasks.py` module of an

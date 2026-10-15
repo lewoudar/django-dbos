@@ -16,7 +16,8 @@ monitors, admin pages and a worker-capacity report. Published on PyPI.
   into `docs/` — the docs dir resolves relative to the config file).
 - Tests in `tests/` are plain functions (not Django `TestCase` unless a DB is
   needed); integration tests are marked `integration` and run against a real
-  system database (PostgreSQL via testcontainers, SQLite file fallback).
+  system database (PostgreSQL via testcontainers, SQLite file fallback;
+  `test_cockroachdb.py` starts its own CockroachDB container).
 - `examples/` holds standalone runnable projects (own `pyproject.toml`/`uv.lock`,
   `django-dbos` pulled in as an editable path dependency) demonstrating the
   package end to end; not part of the root `uv` project or its dependency
@@ -103,6 +104,12 @@ or Settings › Pages — then every push to `main` deploys.
   stored, reported by `django_dbos.E001` and raised on enqueue. In tests,
   override the backend's `OPTIONS` with
   `tests_helpers.set_dbos_options(settings, {...})`.
+- CockroachDB system database: DBOS forces `postgresql+psycopg` when given a
+  URL alone, and its SQL fails on CockroachDB under psycopg 3 (typed
+  parameters, `float * int`). `system_engine` builds a `cockroachdb+psycopg2`
+  engine for the worker and the client (`use_listen_notify=False`), and
+  `DBOS.migrate()` takes no engine, so `migrate` only creates the database:
+  the worker applies DBOS' migrations on launch (`django_dbos.E005`).
 - **Never patch `django.conf.settings` attributes directly** (lazy object +
   pytest-django `settings` fixture teardown = state leaks between tests).
   Patch the module's own `settings` reference instead (see

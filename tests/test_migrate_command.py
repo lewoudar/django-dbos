@@ -44,6 +44,16 @@ class TestDbosMigrate:
         assert 'user:***@db/dbos_app' in output
         assert 'up to date' in output
 
+    def test_cockroachdb_does_not_claim_it_is_up_to_date(self, settings, monkeypatch, mocker):
+        monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
+        set_dbos_options(settings, {'SYSTEM_DATABASE_URL': 'cockroachdb+psycopg2://root@crdb:26257/dbos_app'})
+        create_database = mocker.patch('django_dbos.system_db._create_cockroachdb_database')
+
+        output = migrate()
+
+        create_database.assert_called_once()
+        assert 'up to date' not in output
+
     def test_never_launches_dbos(self, settings, monkeypatch, mocker):
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
         set_dbos_options(settings, {'SYSTEM_DATABASE_URL': 'postgresql://db'})

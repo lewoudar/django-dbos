@@ -31,6 +31,8 @@ django-dbos derives its URL from your default Django connection:
 
 - **PostgreSQL**: same server, dedicated database `dbos_<dbname>` (created
   by `manage.py migrate`, along with DBOS' tables and migrations).
+- **CockroachDB** ([django-cockroachdb](https://github.com/cockroachdb/django-cockroachdb)):
+  same, see [CockroachDB](#cockroachdb) below.
 - **SQLite**: a `<name>-dbos.sqlite` file next to your database. Handy for
   development and tests, not recommended in production.
 
@@ -54,6 +56,49 @@ TASKS = {
     The URL only carries DBOS' *system* tables. Your application data stays in
     the Django databases you already have; tasks executed by the worker use
     Django's ORM as usual.
+
+### CockroachDB
+
+DBOS supports [CockroachDB](https://docs.dbos.dev/integrations/cockroachdb)
+as its system database, through the `cockroachdb` extra (SQLAlchemy's
+CockroachDB dialect and the psycopg2 driver):
+
+```bash
+uv add "django-dbos[cockroachdb]"
+# or
+pip install "django-dbos[cockroachdb]"
+```
+
+The URL is derived from a `django_cockroachdb` default database, or set with
+the `cockroachdb+psycopg2://` driver (or plain `cockroachdb://`):
+
+```python
+TASKS = {
+    'default': {
+        'BACKEND': 'django_dbos.backends.DBOSBackend',
+        'OPTIONS': {
+            'SYSTEM_DATABASE_URL': 'cockroachdb+psycopg2://user:pass@crdb.example.com:26257/dbos_myproject?sslmode=verify-full',
+        },
+    },
+}
+```
+
+Three differences with PostgreSQL:
+
+- **psycopg2 only.** DBOS' queries fail on CockroachDB with psycopg 3, so a
+  `cockroachdb+psycopg://` URL is refused (`django_dbos.E001`).
+- **The worker creates DBOS' tables.** DBOS cannot migrate CockroachDB
+  outside a launched worker yet: `manage.py migrate` and `dbos migrate` only
+  create the database, and each worker applies DBOS' migrations when it
+  launches. Keep `RUN_MIGRATIONS` on (`django_dbos.E005` otherwise), and give
+  the workers' role the rights to create tables. `dbos migrate --app-role`
+  is not supported.
+- **No LISTEN/NOTIFY.** CockroachDB has none: DBOS polls for notifications
+  and events instead.
+
+The SSL options of your Django database are not carried over to a derived
+URL: for a secured cluster (CockroachDB Cloud), set `SYSTEM_DATABASE_URL`
+with its `sslmode` and certificates.
 
 ## Options
 
@@ -266,6 +311,9 @@ python manage.py migrate
 python manage.py dbos migrate            # creates the database and applies DBOS' migrations
 python manage.py dbos migrate --app-role app   # optionally grant the schema to your runtime role
 ```
+
+On CockroachDB, both only create the database: the workers apply DBOS'
+migrations (see [CockroachDB](#cockroachdb)).
 
 Workers migrate too: by default (`RUN_MIGRATIONS = True`), every worker
 creates the system database and applies DBOS' migrations when it launches.

@@ -9,6 +9,8 @@ system database URL is derived from the default Django database connection:
 - Postgres: same server, dedicated database ``<SYSTEM_DB_PREFIX><dbname>``
   (created with DBOS' migrations by ``manage.py dbos migrate``, or on worker
   launch unless ``RUN_MIGRATIONS`` is ``False``).
+- CockroachDB: same, through the ``cockroachdb+psycopg2`` driver (see
+  ``system_engine``).
 - SQLite: a file next to the Django database.
 """
 
@@ -27,6 +29,10 @@ from django.utils.module_loading import import_string
 from .exceptions import ImproperlyConfiguredDbos
 
 DEFAULT_SYSTEM_DB_PREFIX = 'dbos_'
+
+# DBOS needs psycopg2 on CockroachDB: psycopg 3 sends typed parameters
+# (``now() * 1000::INTEGER``), which CockroachDB rejects (float * int).
+COCKROACHDB_DRIVERS = ('cockroachdb', 'cockroachdb+psycopg2')
 
 # Every ``OPTIONS`` key django-dbos accepts; the system checks report any other one.
 KNOWN_SETTINGS = (
@@ -176,18 +182,15 @@ def _sqlite_system_database_url(django_db: dict[str, Any]) -> str:
     return f'sqlite:///{name}-dbos.sqlite'
 
 
-def _postgres_url_from_django(django_db: dict[str, Any], db_name: str) -> str:
+def _server_system_database_url(django_db: dict[str, Any], *, driver: str, default_port: str) -> str:
+    """A dedicated ``<SYSTEM_DB_PREFIX><dbname>`` database on the Django database's server."""
+    prefix = get_dbos_setting('SYSTEM_DB_PREFIX', DEFAULT_SYSTEM_DB_PREFIX)
     # percent-encode the credentials (a password may contain '@', ':' or '/')
     user = quote(django_db.get('USER') or '', safe='')
     password = quote(django_db.get('PASSWORD') or '', safe='')
     host = django_db.get('HOST') or 'localhost'
-    port = django_db.get('PORT') or '5432'
-    return f'postgresql+psycopg://{user}:{password}@{host}:{port}/{db_name}'
-
-
-def _postgres_system_database_url(django_db: dict[str, Any]) -> str:
-    prefix = get_dbos_setting('SYSTEM_DB_PREFIX', DEFAULT_SYSTEM_DB_PREFIX)
-    return _postgres_url_from_django(django_db, f'{prefix}{django_db["NAME"]}')
+    port = django_db.get('PORT') or default_port
+    return f'{driver}://{user}:{password}@{host}:{port}/{prefix}{django_db["NAME"]}'
 
 
 def derive_system_database_url(django_db: dict[str, Any]) -> str:
@@ -195,8 +198,10 @@ def derive_system_database_url(django_db: dict[str, Any]) -> str:
     engine = django_db.get('ENGINE') or ''
     if 'sqlite' in engine:
         return _sqlite_system_database_url(django_db)
+    if 'cockroach' in engine:  # django-cockroachdb's 'django_cockroachdb'
+        return _server_system_database_url(django_db, driver='cockroachdb+psycopg2', default_port='26257')
     if 'postgres' in engine:
-        return _postgres_system_database_url(django_db)
+        return _server_system_database_url(django_db, driver='postgresql+psycopg', default_port='5432')
     raise ImproperlyConfiguredDbos(
         f"Unsupported database engine '{engine}' for deriving the DBOS system "
         'database. Set '
@@ -214,9 +219,20 @@ def resolve_system_database_url() -> str:
     3. Derived from the default Django database connection
     """
     url = get_dbos_setting('SYSTEM_DATABASE_URL') or os.environ.get('DBOS_SYSTEM_DATABASE_URL')
-    if url:
-        return url
-    return derive_system_database_url(_django_database_settings())
+    if not url:
+        return derive_system_database_url(_django_database_settings())
+    driver = url.partition('://')[0]
+    if is_cockroachdb_url(url) and driver not in COCKROACHDB_DRIVERS:
+        raise ImproperlyConfiguredDbos(
+            f"The '{driver}' driver cannot reach a CockroachDB system database: DBOS needs psycopg2 there. "
+            "Use a 'cockroachdb+psycopg2://' URL."
+        )
+    return url
+
+
+def is_cockroachdb_url(url: str) -> bool:
+    """Whether the system database URL targets CockroachDB (``cockroachdb[+driver]://``)."""
+    return url.startswith('cockroachdb')
 
 
 def resolve_migrate_with_django() -> bool:
