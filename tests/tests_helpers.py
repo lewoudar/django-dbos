@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
 from typing import Any
 
 from sentry_sdk.transport import Transport
@@ -15,6 +22,71 @@ def noop() -> None: ...
 def set_dbos_options(settings: Any, options: dict[str, Any]) -> None:
     """Replace the ``OPTIONS`` of the test DBOS backend through pytest-django's ``settings`` fixture."""
     settings.TASKS = {**settings.TASKS, 'dbos': {**settings.TASKS['dbos'], 'OPTIONS': options}}
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+WORKER_SCRIPT = """
+import time
+
+import django
+
+django.setup()
+
+from dbos import DBOS
+
+from django_dbos import dbos_setup, discovery
+
+discovery.autodiscover_tasks()
+dbos_setup.ensure_launched()
+print('WORKER_READY', flush=True)
+
+deadline = time.monotonic() + 60
+while time.monotonic() < deadline and not DBOS.list_workflows(status='SUCCESS'):
+    time.sleep(0.2)
+dbos_setup.shutdown()
+"""
+
+
+@contextmanager
+def run_worker(system_database_url: str, *, startup_timeout: float = 60) -> Iterator[subprocess.Popen[str]]:
+    """A dbos worker-like subprocess on ``system_database_url``, until a workflow succeeds (60 s at most)."""
+    env = {
+        **os.environ,
+        'DBOS_SYSTEM_DATABASE_URL': system_database_url,
+        'DJANGO_SETTINGS_MODULE': 'tests.settings',
+        'PYTHONPATH': str(REPO_ROOT),
+        'PYTHONUNBUFFERED': '1',
+    }
+    process = subprocess.Popen(  # noqa: S603 - fixed interpreter and script
+        [sys.executable, '-c', WORKER_SCRIPT],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    assert process.stdout is not None
+    lines: list[str] = []
+    deadline = time.monotonic() + startup_timeout
+    while time.monotonic() < deadline:
+        line = process.stdout.readline()
+        if not line:
+            break
+        lines.append(line)
+        if 'WORKER_READY' in line:
+            break
+    else:
+        process.kill()
+        raise AssertionError('worker did not start:\n' + ''.join(lines))
+
+    try:
+        yield process
+        process.wait(timeout=60)
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.stdout.close()
 
 
 def make_dbos_task(**overrides: Any) -> DBOSTask:
