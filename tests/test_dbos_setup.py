@@ -19,7 +19,7 @@ class TestBuildDbosConfig:
         assert 'dbos_system_schema' not in config
         assert 'executor_id' not in config
         assert 'serializer' not in config
-        assert 'run_migrations' not in config
+        assert config['run_migrations'] is True  # DBOS' own default, made explicit
         assert 'scheduler_polling_interval_sec' not in config
 
     def test_full_config(self, settings, monkeypatch):
@@ -209,3 +209,43 @@ class TestShutdown:
         dbos_setup.shutdown()
 
         destroy.assert_not_called()
+
+
+class TestCockroachDbEngine:
+    URL = 'cockroachdb+psycopg2://root@crdb:26257/dbos'
+
+    @pytest.fixture(autouse=True)
+    def cockroachdb(self, settings, monkeypatch, mocker):
+        monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
+        set_dbos_options(settings, {'SYSTEM_DATABASE_URL': self.URL})
+        mocker.patch.object(dbos_setup, '_initialized', False)
+        mocker.patch.object(dbos_setup, '_launched', False)
+
+    def test_engine_is_handed_to_dbos_and_disposed_on_shutdown(self, mocker):
+        dbos_cls = mocker.patch.object(dbos_setup, 'DBOS')
+
+        dbos_setup.ensure_initialized()
+
+        config = dbos_cls.call_args.kwargs['config']
+        assert config['system_database_url'] == self.URL
+        assert config['use_listen_notify'] is False
+        dispose = mocker.spy(config['system_database_engine'], 'dispose')
+        dbos_setup.shutdown()
+        dispose.assert_called_once_with()
+        assert dbos_setup._engine_options == {}
+
+    @pytest.mark.parametrize('error', [RuntimeError('boom'), ImproperlyConfiguredDbos('bad')])
+    def test_engine_is_disposed_when_initialization_fails(self, mocker, error):
+        engine = mocker.Mock()
+        mocker.patch.object(
+            dbos_setup.system_engine,
+            'system_database_options',
+            return_value={'system_database_engine': engine, 'use_listen_notify': False},
+        )
+        mocker.patch.object(dbos_setup, 'DBOS', side_effect=error)
+
+        with pytest.raises(ImproperlyConfiguredDbos):
+            dbos_setup.ensure_initialized()
+
+        engine.dispose.assert_called_once_with()
+        assert dbos_setup._engine_options == {}

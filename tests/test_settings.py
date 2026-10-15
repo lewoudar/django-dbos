@@ -1,5 +1,6 @@
 """Tests for the resolution of the DBOS backend's OPTIONS."""
 
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -92,6 +93,16 @@ class TestSystemDatabaseUrlDerivation:
                 'postgresql+psycopg://:@localhost:5432/dbos_myproject',
                 id='postgres-defaults',
             ),
+            pytest.param(
+                {'ENGINE': 'django_cockroachdb', 'NAME': 'myproject', 'USER': 'kevin', 'PASSWORD': 'hunter2'},
+                'cockroachdb+psycopg2://kevin:hunter2@localhost:26257/dbos_myproject',
+                id='cockroachdb-defaults',
+            ),
+            pytest.param(
+                {'ENGINE': 'django_cockroachdb', 'NAME': 'myproject', 'HOST': 'crdb.example.com', 'PORT': 26000},
+                'cockroachdb+psycopg2://:@crdb.example.com:26000/dbos_myproject',
+                id='cockroachdb-full',
+            ),
         ],
     )
     def test_derivation(self, django_db, expected):
@@ -140,6 +151,59 @@ class TestSystemDatabaseUrlResolution:
         mocker.patch.object(dbos_settings, 'settings', SimpleNamespace(DATABASES={'default': default_db}))
         with pytest.raises(ImproperlyConfiguredDbos, match='No default Django database is configured'):
             dbos_settings.resolve_system_database_url()
+
+    @pytest.mark.parametrize('url', ['cockroachdb://root@crdb:26257/dbos', 'cockroachdb+psycopg2://root@crdb/dbos'])
+    def test_cockroachdb_psycopg2_url_is_kept(self, settings, url):
+        set_dbos_options(settings, {'SYSTEM_DATABASE_URL': url})
+        assert dbos_settings.resolve_system_database_url() == url
+        assert dbos_settings.is_cockroachdb_url(url)
+
+    @pytest.mark.parametrize('driver', ['cockroachdb+psycopg', 'cockroachdb+asyncpg'])
+    def test_cockroachdb_url_with_another_driver_raises(self, settings, driver):
+        set_dbos_options(settings, {'SYSTEM_DATABASE_URL': f'{driver}://root@crdb:26257/dbos'})
+        with pytest.raises(ImproperlyConfiguredDbos, match=rf"^The '{re.escape(driver)}' driver cannot reach"):
+            dbos_settings.resolve_system_database_url()
+
+    def test_postgres_url_is_not_cockroachdb(self):
+        assert not dbos_settings.is_cockroachdb_url('postgresql+psycopg://db/dbos')
+
+
+INVALID_BOOLEANS = [pytest.param('false', id='string'), pytest.param(0, id='zero'), pytest.param(1, id='one')]
+
+
+class TestBooleanOptions:
+    @pytest.mark.parametrize('key', list(dbos_settings.BOOLEAN_OPTIONS))
+    def test_unset_reads_the_default(self, settings, key):
+        set_dbos_options(settings, {})
+        assert dbos_settings.get_bool_option(key) is True
+
+    @pytest.mark.parametrize('value', [True, False])
+    def test_a_boolean_is_kept(self, settings, value):
+        set_dbos_options(settings, {'RUN_MIGRATIONS': value})
+        assert dbos_settings.get_bool_option('RUN_MIGRATIONS') is value
+
+    @pytest.mark.parametrize('value', INVALID_BOOLEANS)
+    def test_anything_else_raises(self, settings, value):
+        set_dbos_options(settings, {'MIGRATE_WITH_DJANGO': value})
+        with pytest.raises(ImproperlyConfiguredDbos) as excinfo:
+            dbos_settings.get_bool_option('MIGRATE_WITH_DJANGO')
+        assert str(excinfo.value) == (
+            f"TASKS['dbos']['OPTIONS']['MIGRATE_WITH_DJANGO'] must be True or False, got {value!r}."
+        )
+
+    @pytest.mark.parametrize('value', [None, True, 'false'])
+    def test_an_unknown_key_is_a_bug_whatever_the_settings(self, settings, value):
+        set_dbos_options(settings, {'SERIALIZER': value})
+        with pytest.raises(KeyError):
+            dbos_settings.get_bool_option('SERIALIZER')
+
+    @pytest.mark.parametrize('key', list(dbos_settings.BOOLEAN_OPTIONS))
+    def test_an_invalid_value_is_reported_by_e001(self, settings, monkeypatch, key):
+        monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
+        set_dbos_options(settings, {key: 'false'})
+        errors = check_dbos_settings()
+        assert [error.id for error in errors] == ['django_dbos.E001']
+        assert f"['{key}'] must be True or False" in errors[0].msg
 
 
 class TestQueues:

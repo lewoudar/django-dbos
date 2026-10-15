@@ -118,3 +118,37 @@ class TestGetClient:
 
         assert client.get_client() is concurrent_client
         create.assert_not_called()
+
+
+class TestCockroachDbEngine:
+    URL = 'cockroachdb+psycopg2://root@crdb:26257/dbos'
+
+    @pytest.fixture(autouse=True)
+    def cockroachdb(self, settings, monkeypatch):
+        monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
+        set_dbos_options(settings, {'SYSTEM_DATABASE_URL': self.URL})
+
+    def test_engine_is_handed_to_the_client_and_disposed_with_it(self, mocker):
+        client_cls = mocker.patch('django_dbos.client.DBOSClient')
+
+        client.get_client()
+
+        kwargs = client_cls.call_args.kwargs
+        assert kwargs['use_listen_notify'] is False
+        dispose = mocker.spy(kwargs['system_database_engine'], 'dispose')
+        client.close_client()
+        dispose.assert_called_once_with()
+
+    def test_engine_is_disposed_when_the_client_cannot_be_built(self, mocker):
+        engine = mocker.Mock()
+        mocker.patch.object(
+            client.system_engine,
+            'system_database_options',
+            return_value={'system_database_engine': engine, 'use_listen_notify': False},
+        )
+        mocker.patch('django_dbos.client.DBOSClient', side_effect=ValueError('boom'))
+
+        with pytest.raises(ImproperlyConfiguredDbos):
+            client.get_client()
+
+        engine.dispose.assert_called_once_with()

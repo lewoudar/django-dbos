@@ -12,6 +12,7 @@ from django_dbos import checks, discovery
 from django_dbos import settings as settings_module
 from django_dbos import tasks as tasks_module
 from django_dbos.checks import (
+    check_cockroachdb_migrations,
     check_dbos_backend_configured,
     check_dbos_settings,
     check_executor_id,
@@ -174,6 +175,38 @@ class TestCheckTaskModules:
         assert errors[0].id == 'django_dbos.E004'
         assert 'ImportError' in errors[0].msg
         assert 'hunter2' not in errors[0].msg
+
+
+class TestCheckCockroachDbMigrations:
+    URL = 'cockroachdb+psycopg2://root@crdb:26257/dbos'
+
+    @pytest.fixture(autouse=True)
+    def no_env_url(self, monkeypatch):
+        monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
+
+    def test_cockroachdb_without_migrations_reports_an_error(self, settings):
+        set_dbos_options(settings, {'SYSTEM_DATABASE_URL': self.URL, 'RUN_MIGRATIONS': False})
+
+        errors = check_cockroachdb_migrations()
+
+        assert [error.id for error in errors] == ['django_dbos.E005']
+        assert "TASKS['dbos']['OPTIONS']['RUN_MIGRATIONS'] is False" in errors[0].msg
+
+    @pytest.mark.parametrize(
+        'options',
+        [
+            pytest.param({'SYSTEM_DATABASE_URL': URL}, id='cockroachdb-migrating'),
+            pytest.param({'SYSTEM_DATABASE_URL': URL, 'RUN_MIGRATIONS': True}, id='cockroachdb-explicit'),
+            pytest.param({'SYSTEM_DATABASE_URL': 'postgresql://db', 'RUN_MIGRATIONS': False}, id='postgres'),
+            pytest.param(
+                {'SYSTEM_DATABASE_URL': 'cockroachdb+psycopg://db', 'RUN_MIGRATIONS': False}, id='bad-url-left-to-e001'
+            ),
+            pytest.param({'SYSTEM_DATABASE_URL': URL, 'RUN_MIGRATIONS': 'false'}, id='bad-value-left-to-e001'),
+        ],
+    )
+    def test_other_configurations_report_nothing(self, settings, options):
+        set_dbos_options(settings, options)
+        assert check_cockroachdb_migrations() == []
 
 
 class TestCheckInMemorySystemDatabase:

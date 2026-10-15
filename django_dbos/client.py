@@ -23,10 +23,13 @@ from typing import Any
 from dbos import DBOSClient
 
 from . import settings as settings_module
+from . import system_engine
 from .exceptions import ImproperlyConfiguredDbos, describe_error
 
 _client_lock = threading.Lock()
 _client: DBOSClient | None = None
+# What system_engine built for the client (a CockroachDB engine), disposed of with it.
+_engine_options: dict[str, Any] = {}
 
 
 def get_client() -> DBOSClient:
@@ -47,11 +50,14 @@ def get_client() -> DBOSClient:
 
 
 def _create_client() -> DBOSClient:
+    global _engine_options
     try:
         resolved = settings_module.resolve_settings()
         kwargs: dict[str, Any] = {}
         if resolved.serializer is not None:
             kwargs['serializer'] = resolved.serializer
+        _engine_options = system_engine.system_database_options(resolved.system_database_url)
+        kwargs.update(_engine_options)
         return DBOSClient(
             system_database_url=resolved.system_database_url,
             dbos_system_schema=resolved.dbos_system_schema or 'dbos',
@@ -65,7 +71,14 @@ def _create_client() -> DBOSClient:
     except ImproperlyConfiguredDbos:
         raise
     except Exception as exc:  # noqa: BLE001 - deliberately unchained: the cause would print the DSN
+        _dispose_engine()
         raise ImproperlyConfiguredDbos(describe_error(exc)) from None
+
+
+def _dispose_engine() -> None:
+    global _engine_options
+    system_engine.dispose(_engine_options)
+    _engine_options = {}
 
 
 def close_client() -> None:
@@ -75,3 +88,4 @@ def close_client() -> None:
         if _client is not None:
             _client.destroy()
             _client = None
+        _dispose_engine()

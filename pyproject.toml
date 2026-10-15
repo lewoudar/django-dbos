@@ -43,6 +43,8 @@ metrics = ["psutil>=7.0"]
 test = ["pytest>=8.4", "testcontainers[postgres]>=4.13"]
 # Fast, safe serializers (django_dbos.serializers).
 msgspec = ["msgspec>=0.21"]
+# CockroachDB as the DBOS system database: SQLAlchemy dialect and the psycopg2 driver DBOS needs there.
+cockroachdb = ["sqlalchemy-cockroachdb>=2.0", "psycopg2-binary>=2.9"]
 
 [dependency-groups]
 dev = [
@@ -58,11 +60,13 @@ dev = [
 test = [
     "model-bakery>=1.20",
     "msgspec>=0.21",
+    "psycopg2-binary>=2.9",
     "pytest>=8.4",
     "pytest-cov>=7.0",
     "pytest-django>=4.11",
     "pytest-mock>=3.14",
     "sentry-sdk>=2.19",
+    "sqlalchemy-cockroachdb>=2.0",
     "testcontainers[postgres]>=4.13",
     "time-machine>=2.16",
 ]
@@ -129,7 +133,7 @@ filterwarnings = [
     "always::pytest.PytestUnhandledThreadExceptionWarning",
 ]
 markers = [
-    "integration: tests that require a running Postgres via testcontainers",
+    "integration: tests that require a real system database (PostgreSQL or CockroachDB via testcontainers)",
 ]
 
 [tool.coverage.run]

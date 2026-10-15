@@ -10,6 +10,7 @@ from click.exceptions import Exit
 from django.apps import apps
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from sqlalchemy.dialects import postgresql
 
 from django_dbos import system_db
 from tests.tests_helpers import set_dbos_options
@@ -92,6 +93,14 @@ class TestMigrateAfterDjangoMigrate:
 
         run.assert_not_called()
 
+    def test_an_invalid_opt_out_fails(self, system_database_url, settings, run):
+        set_dbos_options(settings, {**settings.TASKS['dbos']['OPTIONS'], 'MIGRATE_WITH_DJANGO': 'false'})
+
+        with pytest.raises(CommandError, match=r"\['MIGRATE_WITH_DJANGO'\] must be True or False, got 'false'"):
+            send()
+
+        run.assert_not_called()
+
     def test_skips_an_in_memory_system_database(self, system_database_url, settings, run):
         set_dbos_options(settings, {'SYSTEM_DATABASE_URL': 'sqlite:///:memory:'})
 
@@ -162,6 +171,66 @@ def test_creates_a_usable_system_database(settings, monkeypatch, mocker, tmp_pat
         client.close_client()
 
 
+class TestCockroachDb:
+    URL = 'cockroachdb+psycopg2://root:hunter2@crdb:26257/dbos_app'
+
+    @pytest.fixture(autouse=True)
+    def cockroachdb(self, settings, monkeypatch):
+        monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
+        set_dbos_options(settings, {'SYSTEM_DATABASE_URL': self.URL})
+
+    @pytest.fixture
+    def engine(self, mocker):
+        create_engine = mocker.patch.object(system_db.system_engine, 'create_engine')
+        create_engine.return_value.dialect = postgresql.dialect()  # quotes identifiers like CockroachDB
+        return create_engine
+
+    def test_only_creates_the_database(self, run, engine):
+        messages: list[str] = []
+
+        assert system_db.migrate_system_database(echo=messages.append) is False
+
+        run.assert_not_called()  # DBOS' migration entry point cannot reach CockroachDB
+        (url,) = engine.call_args.args
+        assert url == 'cockroachdb+psycopg2://root:hunter2@crdb:26257/defaultdb?connect_timeout=10'
+        conn = engine.return_value.connect.return_value.execution_options.return_value.__enter__.return_value
+        (statement,) = conn.execute.call_args.args
+        assert str(statement) == 'CREATE DATABASE IF NOT EXISTS dbos_app'
+        engine.return_value.dispose.assert_called_once_with()
+        assert 'hunter2' not in ''.join(messages)
+        assert messages[-1] == 'The dbos worker creates the DBOS tables in it when it launches.'
+
+    def test_django_migrate_does_not_claim_it_is_up_to_date(self, run, engine, mocker):
+        mocker.patch('django_dbos.system_db._is_test_database', return_value=False)
+        out = StringIO()
+
+        send(stdout=out)
+
+        assert 'The dbos worker creates the DBOS tables' in out.getvalue()
+        assert 'up to date' not in out.getvalue()
+
+    def test_app_role_is_refused(self, run, engine):
+        with pytest.raises(CommandError, match='--app-role is not supported'):
+            system_db.migrate_system_database(echo=print, app_role='app')
+        engine.assert_not_called()
+
+    def test_a_missing_extra_is_reported(self, run, mocker):
+        error = system_db.ImproperlyConfiguredDbos('needs the django-dbos[cockroachdb] extra')
+        mocker.patch.object(system_db.system_engine, 'create_engine', side_effect=error)
+        with pytest.raises(CommandError, match=r'django-dbos\[cockroachdb\] extra'):
+            system_db.migrate_system_database(echo=lambda message: None)
+
+    def test_a_failure_is_described_without_the_password(self, run, engine):
+        connect = engine.return_value.connect
+        connect.side_effect = RuntimeError(f'cannot reach {self.URL}')
+
+        with pytest.raises(CommandError, match=r'^Creating the DBOS system database failed: RuntimeError') as exc_info:
+            system_db.migrate_system_database(echo=lambda message: None)
+
+        assert 'hunter2' not in str(exc_info.value)
+        engine.return_value.dispose.assert_called_once_with()
+
+
 class TestConnectTimeout:
     @pytest.mark.parametrize(
         ('url', 'expected'),
@@ -178,6 +247,11 @@ class TestConnectTimeout:
             ),
             pytest.param(
                 'postgresql://db/dbos_app?connect_timeout=3', 'postgresql://db/dbos_app?connect_timeout=3', id='own'
+            ),
+            pytest.param(
+                'cockroachdb+psycopg2://root@crdb:26257/dbos_app',
+                'cockroachdb+psycopg2://root@crdb:26257/dbos_app?connect_timeout=10',
+                id='cockroachdb',
             ),
             pytest.param('sqlite:///dbos.sqlite', 'sqlite:///dbos.sqlite', id='sqlite'),
         ],

@@ -4,6 +4,11 @@ Run by ``manage.py dbos migrate`` and, unless ``MIGRATE_WITH_DJANGO`` is
 ``False``, at the end of Django's own ``manage.py migrate`` (``post_migrate``).
 Migrating opens a plain database handle (no worker, no background thread): it
 never launches DBOS.
+
+On CockroachDB, only the database is created here: DBOS' migration entry point
+builds its own PostgreSQL engine, which cannot reach CockroachDB, whereas
+``DBOS.launch()`` accepts ours (``system_engine``). The worker creates DBOS'
+tables when it launches (``RUN_MIGRATIONS``, see ``django_dbos.E005``).
 """
 
 from __future__ import annotations
@@ -18,6 +23,7 @@ from django.core.management.base import CommandError
 from django.db import DEFAULT_DB_ALIAS, connections
 
 from . import settings as settings_module
+from . import system_engine
 from .exceptions import ImproperlyConfiguredDbos, describe_error, scrub_credentials
 
 
@@ -45,17 +51,22 @@ def _with_connect_timeout(url: str) -> str:
     return parsed.update_query_dict({'connect_timeout': str(CONNECT_TIMEOUT_SEC)}).render_as_string(hide_password=False)
 
 
-def migrate_system_database(*, echo: Callable[[str], object], app_role: str | None = None) -> None:
+def migrate_system_database(*, echo: Callable[[str], object], app_role: str | None = None) -> bool:
     """Create the DBOS system database if needed and apply DBOS' schema migrations.
 
     ``app_role`` is granted the permissions on the DBOS schema. Progress is
     reported through ``echo``, with credentials masked; failures raise a
-    ``CommandError`` without the DSN.
+    ``CommandError`` without the DSN. Returns whether DBOS' migrations were
+    applied: not on CockroachDB, where the worker applies them.
     """
     try:
         resolved = settings_module.resolve_settings()
     except ImproperlyConfiguredDbos as exc:
         raise CommandError(str(exc)) from None
+
+    if settings_module.is_cockroachdb_url(resolved.system_database_url):
+        _create_cockroachdb_database(resolved.system_database_url, echo=echo, app_role=app_role)
+        return False
 
     schema = resolved.dbos_system_schema or 'dbos'
     echo(f'Migrating the DBOS system database {scrub_credentials(resolved.system_database_url)} (schema {schema!r})')
@@ -67,6 +78,32 @@ def migrate_system_database(*, echo: Callable[[str], object], app_role: str | No
         # The SDK prints the actual error, then raises an Exit without a message.
         detail = describe_error(exc) if str(exc) else 'see the error above'
         raise CommandError(f'DBOS migrations failed: {detail}') from None
+    return True
+
+
+def _create_cockroachdb_database(url: str, *, echo: Callable[[str], object], app_role: str | None) -> None:
+    """Create the CockroachDB system database if needed; the worker creates DBOS' tables in it."""
+    if app_role:
+        raise CommandError('--app-role is not supported with a CockroachDB system database.')
+    parsed = sa.make_url(_with_connect_timeout(url))
+    echo(f'Creating the DBOS system database {scrub_credentials(url)} if needed (CockroachDB)')
+
+    try:
+        # Any existing database will do to run CREATE DATABASE; defaultdb always exists.
+        engine = system_engine.create_engine(parsed.set(database='defaultdb').render_as_string(hide_password=False))
+    except ImproperlyConfiguredDbos as exc:
+        raise CommandError(str(exc)) from None
+
+    try:
+        with engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
+            name = engine.dialect.identifier_preparer.quote(str(parsed.database))
+            conn.execute(sa.text(f'CREATE DATABASE IF NOT EXISTS {name}'))
+    except Exception as exc:  # noqa: BLE001 - deliberately unchained: the cause would print the DSN
+        raise CommandError(f'Creating the DBOS system database failed: {describe_error(exc)}') from None
+    finally:
+        engine.dispose()
+
+    echo('The dbos worker creates the DBOS tables in it when it launches.')
 
 
 def _is_test_database(alias: str) -> bool:
@@ -96,8 +133,11 @@ def migrate_after_django_migrate(
     sends no ``plan``; for a database other than the default one, from which
     the system database is derived; and on test databases.
     """
-    if not settings_module.resolve_migrate_with_django():
-        return
+    try:
+        if not settings_module.get_bool_option('MIGRATE_WITH_DJANGO'):
+            return
+    except ImproperlyConfiguredDbos as exc:
+        raise CommandError(str(exc)) from None
     if plan is None or using != DEFAULT_DB_ALIAS or _is_test_database(using):
         return
     try:
@@ -113,7 +153,8 @@ def migrate_after_django_migrate(
             out.write(f'{message}\n')
 
     try:
-        migrate_system_database(echo=echo)
+        migrated = migrate_system_database(echo=echo)
     except CommandError as exc:
         raise CommandError(f'{exc} {_opt_out_hint()}') from None
-    echo('DBOS system database is up to date.')
+    if migrated:
+        echo('DBOS system database is up to date.')
