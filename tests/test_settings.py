@@ -168,6 +168,44 @@ class TestSystemDatabaseUrlResolution:
         assert not dbos_settings.is_cockroachdb_url('postgresql+psycopg://db/dbos')
 
 
+INVALID_BOOLEANS = [pytest.param('false', id='string'), pytest.param(0, id='zero'), pytest.param(1, id='one')]
+
+
+class TestBooleanOptions:
+    @pytest.mark.parametrize('key', list(dbos_settings.BOOLEAN_OPTIONS))
+    def test_unset_reads_the_default(self, settings, key):
+        set_dbos_options(settings, {})
+        assert dbos_settings.get_bool_option(key) is True
+
+    @pytest.mark.parametrize('value', [True, False])
+    def test_a_boolean_is_kept(self, settings, value):
+        set_dbos_options(settings, {'RUN_MIGRATIONS': value})
+        assert dbos_settings.get_bool_option('RUN_MIGRATIONS') is value
+
+    @pytest.mark.parametrize('value', INVALID_BOOLEANS)
+    def test_anything_else_raises(self, settings, value):
+        set_dbos_options(settings, {'MIGRATE_WITH_DJANGO': value})
+        with pytest.raises(ImproperlyConfiguredDbos) as excinfo:
+            dbos_settings.get_bool_option('MIGRATE_WITH_DJANGO')
+        assert str(excinfo.value) == (
+            f"TASKS['dbos']['OPTIONS']['MIGRATE_WITH_DJANGO'] must be True or False, got {value!r}."
+        )
+
+    @pytest.mark.parametrize('value', [None, True, 'false'])
+    def test_an_unknown_key_is_a_bug_whatever_the_settings(self, settings, value):
+        set_dbos_options(settings, {'SERIALIZER': value})
+        with pytest.raises(KeyError):
+            dbos_settings.get_bool_option('SERIALIZER')
+
+    @pytest.mark.parametrize('key', list(dbos_settings.BOOLEAN_OPTIONS))
+    def test_an_invalid_value_is_reported_by_e001(self, settings, monkeypatch, key):
+        monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
+        set_dbos_options(settings, {key: 'false'})
+        errors = check_dbos_settings()
+        assert [error.id for error in errors] == ['django_dbos.E001']
+        assert f"['{key}'] must be True or False" in errors[0].msg
+
+
 class TestQueues:
     def test_default_queue(self, settings):
         set_dbos_options(settings, {})

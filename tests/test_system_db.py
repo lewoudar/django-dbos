@@ -93,6 +93,14 @@ class TestMigrateAfterDjangoMigrate:
 
         run.assert_not_called()
 
+    def test_an_invalid_opt_out_fails(self, system_database_url, settings, run):
+        set_dbos_options(settings, {**settings.TASKS['dbos']['OPTIONS'], 'MIGRATE_WITH_DJANGO': 'false'})
+
+        with pytest.raises(CommandError, match=r"\['MIGRATE_WITH_DJANGO'\] must be True or False, got 'false'"):
+            send()
+
+        run.assert_not_called()
+
     def test_skips_an_in_memory_system_database(self, system_database_url, settings, run):
         set_dbos_options(settings, {'SYSTEM_DATABASE_URL': 'sqlite:///:memory:'})
 

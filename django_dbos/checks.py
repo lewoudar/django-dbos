@@ -112,9 +112,10 @@ def check_cockroachdb_migrations(app_configs: Any = None, **kwargs: Any) -> list
     """On CockroachDB, only the worker can create DBOS' tables (see ``system_db``)."""
     try:
         url = settings_module.resolve_system_database_url()
+        run_migrations = settings_module.get_bool_option('RUN_MIGRATIONS')
     except ImproperlyConfiguredDbos:
         return []  # reported by django_dbos.E001
-    if not settings_module.is_cockroachdb_url(url) or settings_module.get_dbos_setting('RUN_MIGRATIONS') is not False:
+    if not settings_module.is_cockroachdb_url(url) or run_migrations:
         return []
     return [
         Error(

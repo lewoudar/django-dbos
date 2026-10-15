@@ -23,9 +23,10 @@ from django.urls import URLPattern, path
 from django.utils.module_loading import import_string
 
 from . import admin_views
+from .exceptions import ImproperlyConfiguredDbos
 from .logging import logger
 from .models import WorkerHeartbeat
-from .settings import get_dbos_setting
+from .settings import get_bool_option, get_dbos_setting
 
 APP_LABEL = 'django_dbos'
 ADMIN_URL_PREFIX = 'dbos/'
@@ -33,7 +34,12 @@ DEFAULT_ADMIN_SITES = ('django.contrib.admin.site',)
 
 
 def is_admin_enabled() -> bool:
-    return bool(get_dbos_setting('ADMIN_ENABLED', True))
+    try:
+        return get_bool_option('ADMIN_ENABLED')
+    except ImproperlyConfiguredDbos:
+        # Read by ready(), before the system checks: an invalid value keeps the
+        # default and is reported by django_dbos.E001 rather than crashing every command.
+        return True
 
 
 def get_admin_site_paths() -> tuple[str, ...]:

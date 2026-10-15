@@ -19,7 +19,7 @@ class TestBuildDbosConfig:
         assert 'dbos_system_schema' not in config
         assert 'executor_id' not in config
         assert 'serializer' not in config
-        assert 'run_migrations' not in config
+        assert config['run_migrations'] is True  # DBOS' own default, made explicit
         assert 'scheduler_polling_interval_sec' not in config
 
     def test_full_config(self, settings, monkeypatch):

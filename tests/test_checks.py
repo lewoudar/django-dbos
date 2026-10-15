@@ -199,8 +199,9 @@ class TestCheckCockroachDbMigrations:
             pytest.param({'SYSTEM_DATABASE_URL': URL, 'RUN_MIGRATIONS': True}, id='cockroachdb-explicit'),
             pytest.param({'SYSTEM_DATABASE_URL': 'postgresql://db', 'RUN_MIGRATIONS': False}, id='postgres'),
             pytest.param(
-                {'SYSTEM_DATABASE_URL': 'cockroachdb+psycopg://db', 'RUN_MIGRATIONS': False}, id='left-to-e001'
+                {'SYSTEM_DATABASE_URL': 'cockroachdb+psycopg://db', 'RUN_MIGRATIONS': False}, id='bad-url-left-to-e001'
             ),
+            pytest.param({'SYSTEM_DATABASE_URL': URL, 'RUN_MIGRATIONS': 'false'}, id='bad-value-left-to-e001'),
         ],
     )
     def test_other_configurations_report_nothing(self, settings, options):

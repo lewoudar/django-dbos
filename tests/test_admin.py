@@ -248,6 +248,8 @@ class TestAdminGating:
             pytest.param(None, True, id='unset-defaults-to-enabled'),
             pytest.param(True, True, id='explicit-true'),
             pytest.param(False, False, id='explicit-false'),
+            # reported by django_dbos.E001; ready() must not crash on it
+            pytest.param('false', True, id='invalid-keeps-the-default'),
         ],
     )
     def test_admin_enabled_setting(self, settings, admin_enabled, expected):

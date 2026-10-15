@@ -235,9 +235,30 @@ def is_cockroachdb_url(url: str) -> bool:
     return url.startswith('cockroachdb')
 
 
-def resolve_migrate_with_django() -> bool:
-    """Whether ``manage.py migrate`` also migrates the DBOS system database (default ``True``)."""
-    return bool(get_dbos_setting('MIGRATE_WITH_DJANGO', True))
+# Boolean options and their defaults (see ``get_bool_option``).
+BOOLEAN_OPTIONS: dict[str, bool] = {
+    # Whether workers create/migrate the system database on launch.
+    'RUN_MIGRATIONS': True,
+    # Whether ``manage.py migrate`` also migrates the system database.
+    'MIGRATE_WITH_DJANGO': True,
+    # Whether the DBOS pages are registered in the Django admin.
+    'ADMIN_ENABLED': True,
+}
+
+
+def get_bool_option(key: str) -> bool:
+    """A boolean option, its default when unset.
+
+    Only ``True`` and ``False`` are accepted: ``bool()`` would read ``"false"``
+    (say, from an environment variable) as true.
+    """
+    default = BOOLEAN_OPTIONS[key]  # first: an unknown key is a bug, whatever the settings
+    value = get_dbos_setting(key)
+    if value is None:
+        return default
+    if not isinstance(value, bool):
+        raise ImproperlyConfiguredDbos(f'{options_path(key)} must be True or False, got {value!r}.')
+    return value
 
 
 def resolve_app_name() -> str:
@@ -402,6 +423,8 @@ def resolve_queues(alias: str | None = None) -> tuple[QueueConfig, ...]:
 def resolve_settings() -> DbosSettings:
     """Build the final configuration from the DBOS backend's ``OPTIONS``."""
     _validate_options()
+    for key in BOOLEAN_OPTIONS:
+        get_bool_option(key)
     queues = resolve_queues()
     return DbosSettings(
         app_name=resolve_app_name(),

@@ -133,8 +133,11 @@ def migrate_after_django_migrate(
     sends no ``plan``; for a database other than the default one, from which
     the system database is derived; and on test databases.
     """
-    if not settings_module.resolve_migrate_with_django():
-        return
+    try:
+        if not settings_module.get_bool_option('MIGRATE_WITH_DJANGO'):
+            return
+    except ImproperlyConfiguredDbos as exc:
+        raise CommandError(str(exc)) from None
     if plan is None or using != DEFAULT_DB_ALIAS or _is_test_database(using):
         return
     try:
