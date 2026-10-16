@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+from dbos import WorkflowStatusString
 from django.tasks import TaskResult, TaskResultStatus
 from django.tasks.base import TaskError
 from django.tasks.exceptions import TaskResultDoesNotExist
@@ -15,13 +16,13 @@ from .workflow_names import task_from_workflow_name
 # Workflow statuses DBOS uses, mapped onto Django's TaskResultStatus. DBOS
 # has no RUNNING status: a dequeued workflow being executed is PENDING.
 _STATUS_MAPPING: dict[str, TaskResultStatus] = {
-    'DELAYED': TaskResultStatus.READY,
-    'ENQUEUED': TaskResultStatus.READY,
-    'PENDING': TaskResultStatus.RUNNING,
-    'SUCCESS': TaskResultStatus.SUCCESSFUL,
-    'ERROR': TaskResultStatus.FAILED,
-    'CANCELLED': TaskResultStatus.FAILED,
-    'MAX_RECOVERY_ATTEMPTS_EXCEEDED': TaskResultStatus.FAILED,
+    WorkflowStatusString.DELAYED.value: TaskResultStatus.READY,
+    WorkflowStatusString.ENQUEUED.value: TaskResultStatus.READY,
+    WorkflowStatusString.PENDING.value: TaskResultStatus.RUNNING,
+    WorkflowStatusString.SUCCESS.value: TaskResultStatus.SUCCESSFUL,
+    WorkflowStatusString.ERROR.value: TaskResultStatus.FAILED,
+    WorkflowStatusString.CANCELLED.value: TaskResultStatus.FAILED,
+    WorkflowStatusString.MAX_RECOVERY_ATTEMPTS_EXCEEDED.value: TaskResultStatus.FAILED,
 }
 
 
@@ -91,9 +92,9 @@ def build_task_result(workflow_id: str, status: Any) -> TaskResult:
     errors = []
     if status.error is not None:
         errors = [_task_error(status.error)]
-    elif dbos_status == 'CANCELLED':
+    elif dbos_status == WorkflowStatusString.CANCELLED.value:
         errors = [_task_error(_cancellation_reason(status))]
-    elif dbos_status == 'MAX_RECOVERY_ATTEMPTS_EXCEEDED':
+    elif dbos_status == WorkflowStatusString.MAX_RECOVERY_ATTEMPTS_EXCEEDED.value:
         errors = [_task_error(_recovery_exhausted(status))]
 
     inputs = status.input or {}

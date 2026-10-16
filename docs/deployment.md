@@ -46,6 +46,8 @@ settle, then shows the same setup on a few platforms.
     executor ID) for points 3 and 5. Warnings do not fail `check` without
     `--fail-level WARNING`. Silence a warning you accepted with
     `SILENCED_SYSTEM_CHECKS`, for example `['django_dbos.W003']`.
+8. **A retention policy** for the workflow history, which DBOS never
+   deletes on its own. See [Purging old workflows](#purging-old-workflows).
 
 A settings module covering the lot:
 
@@ -68,6 +70,47 @@ TASKS = {
 ```
 
 The examples below only differ in *where* those values come from.
+
+## Purging old workflows
+
+DBOS keeps every workflow it ran (status, inputs, output, steps) in the
+system database and never deletes them: left alone, the history grows
+without bound. `purge_workflows` deletes the finished ones (`SUCCESS`,
+`ERROR` and `CANCELLED`) completed more than a given duration ago; run it
+from a scheduled task:
+
+```python
+from datetime import timedelta
+
+from django.tasks import task
+from django_dbos import cron, purge_workflows
+
+
+@cron('0 0 * * *')  # every day at midnight
+@task
+def purge_old_workflows():
+    purge_workflows(older_than=timedelta(days=30))
+```
+
+It deletes in batches (`batch_size=1000` by default) and returns the number
+of workflows deleted. It leaves alone:
+
+- workflows still enqueued, delayed or running, whatever their age;
+- workflows that exhausted their recovery attempts
+  (`MAX_RECOVERY_ATTEMPTS_EXCEEDED`): they are dead letters, to inspect and
+  resume or delete from the [admin](admin.md);
+- the children of a purged workflow, which are purged on their own once
+  finished (a child may outlive its parent).
+
+The purge task itself leaves one workflow per run, deleted by the later
+runs. Pick `older_than` to cover how far back you want to inspect results
+in the admin or through `get_result`: a purged task can no longer be
+retrieved.
+
+!!! note
+    Worker heartbeats need no such cleanup: each worker run updates a single
+    row, deleted on clean shutdown, and the rows of crashed workers are
+    purged automatically after a day (see [Worker capacity](status.md)).
 
 ## fly.io
 
