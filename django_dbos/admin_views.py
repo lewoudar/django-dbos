@@ -11,6 +11,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
+from dbos import WorkflowStatusString
 from dbos import error as dbos_error
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
@@ -25,13 +26,13 @@ PAGE_SIZE = 50
 
 # Workflow status -> CSS class for the status badge in templates.
 STATUS_BADGES = {
-    'SUCCESS': 'success',
-    'ERROR': 'error',
-    'MAX_RECOVERY_ATTEMPTS_EXCEEDED': 'error',
-    'PENDING': 'info',  # DBOS' status of an executing workflow
-    'ENQUEUED': 'neutral',
-    'DELAYED': 'neutral',
-    'CANCELLED': 'warning',
+    WorkflowStatusString.SUCCESS.value: 'success',
+    WorkflowStatusString.ERROR.value: 'error',
+    WorkflowStatusString.MAX_RECOVERY_ATTEMPTS_EXCEEDED.value: 'error',
+    WorkflowStatusString.PENDING.value: 'info',  # DBOS' status of an executing workflow
+    WorkflowStatusString.ENQUEUED.value: 'neutral',
+    WorkflowStatusString.DELAYED.value: 'neutral',
+    WorkflowStatusString.CANCELLED.value: 'warning',
 }
 
 WORKFLOW_STATUSES = list(STATUS_BADGES)

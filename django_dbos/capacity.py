@@ -20,6 +20,8 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
+from dbos import WorkflowStatusString
+
 from .client import get_client
 from .heartbeat import read_heartbeats
 from .settings import CAPACITY_THRESHOLD_DEFAULTS, resolve_capacity, resolve_queues
@@ -33,7 +35,11 @@ DEFAULT_SCALE_DOWN_MAX_RUNNING = CAPACITY_THRESHOLD_DEFAULTS['SCALE_DOWN_MAX_RUN
 
 # DBOS has no RUNNING status: ENQUEUED waits for a worker, PENDING is being
 # executed, DELAYED waits for its ``run_after`` time.
-ACTIVE_STATUSES = ('ENQUEUED', 'PENDING', 'DELAYED')
+ACTIVE_STATUSES = (
+    WorkflowStatusString.ENQUEUED.value,
+    WorkflowStatusString.PENDING.value,
+    WorkflowStatusString.DELAYED.value,
+)
 
 
 def _active_workflows(queues: list[str] | None) -> list[Any]:
@@ -48,7 +54,7 @@ def _active_workflows(queues: list[str] | None) -> list[Any]:
 
 def _recovery_exceeded_count() -> int:
     dead_lettered = get_client().list_workflows(
-        status='MAX_RECOVERY_ATTEMPTS_EXCEEDED', load_input=False, load_output=False
+        status=WorkflowStatusString.MAX_RECOVERY_ATTEMPTS_EXCEEDED.value, load_input=False, load_output=False
     )
     return len(dead_lettered)
 
@@ -147,24 +153,27 @@ def _ingest_workflow(
 
     if queue_metrics is None:
         pass
-    elif workflow_status == 'ENQUEUED':
+    elif workflow_status == WorkflowStatusString.ENQUEUED.value:
         queue_metrics['enqueued'] += 1
         if status.created_at is not None:
             age = (now - datetime.fromtimestamp(status.created_at / 1000, tz=UTC)).total_seconds()
             backlog_age = queue_metrics['backlog_age_seconds']
             if backlog_age is None or age > backlog_age:
                 queue_metrics['backlog_age_seconds'] = age
-    elif workflow_status == 'DELAYED':
+    elif workflow_status == WorkflowStatusString.DELAYED.value:
         queue_metrics['delayed'] += 1
-    elif workflow_status == 'PENDING':
+    elif workflow_status == WorkflowStatusString.PENDING.value:
         queue_metrics['running'] += 1
         if status.dequeued_at is not None and status.created_at is not None:
             queue_wait_ms = status.dequeued_at - status.created_at
             queue_metrics['max_queue_wait_ms'] = max(queue_metrics['max_queue_wait_ms'] or 0, queue_wait_ms)
 
-    if workflow_status in ('ENQUEUED', 'PENDING') and status.executor_id:
+    if (
+        workflow_status in (WorkflowStatusString.ENQUEUED.value, WorkflowStatusString.PENDING.value)
+        and status.executor_id
+    ):
         executor = executors.setdefault(status.executor_id, {'running': 0, 'enqueued': 0})
-        executor['running' if workflow_status == 'PENDING' else 'enqueued'] += 1
+        executor['running' if workflow_status == WorkflowStatusString.PENDING.value else 'enqueued'] += 1
 
 
 def advise_queue(
