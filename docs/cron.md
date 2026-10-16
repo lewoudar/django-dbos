@@ -48,6 +48,9 @@ the missing ones, re-creates those whose crontab, timezone or queue changed,
 and deletes the django-dbos schedules whose task no longer carries `@cron`.
 Re-creating a schedule resets a pause made from the admin.
 
+A typical scheduled task is the purge of the workflow history: see
+[Purging old workflows](deployment.md#purging-old-workflows).
+
 ## Timezone
 
 The crontab is evaluated in Django's default timezone

@@ -371,6 +371,12 @@ actually about durability.
   exhausted their recovery attempts. Safe to run anywhere (it's a
   `DBOSClient`, not a worker) — good for a cron health check or an
   autoscaler.
+- DBOS never deletes the workflow history: schedule
+  `django_dbos.purge_workflows(older_than=timedelta(days=30))` from a
+  `@cron` task. It deletes only finished workflows (`SUCCESS`, `ERROR`,
+  `CANCELLED`), never active ones nor `MAX_RECOVERY_ATTEMPTS_EXCEEDED` dead
+  letters; purged results can't be fetched with `get_result` anymore.
+  Worker heartbeats clean themselves up — no purge needed.
 
 ## Deployment checklist
 
@@ -384,6 +390,7 @@ actually about durability.
 4. Decide the system database URL and serializer deliberately (see above).
 5. `DEBUG=False` — error pages otherwise print local variables, which can
    include the system database URL held by the SDK.
+6. A retention policy: a `@cron` task calling `purge_workflows`.
 
 ## Common pitfalls
 
