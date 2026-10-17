@@ -311,10 +311,21 @@ class TestDbosInline:
         pytester.makepyfile(
             conftest="""
             import sys
+            from importlib.abc import MetaPathFinder
 
-            # Simulate an environment without the [test] extra's testcontainers.
-            sys.modules['testcontainers'] = None
-            sys.modules['testcontainers.community.postgres'] = None
+
+            class BlockTestcontainers(MetaPathFinder):
+                # Simulate an environment without the [test] extra's testcontainers,
+                # raising the same error as a missing package. Not through
+                # sys.modules[...] = None: on Python 3.15, formatting that error
+                # re-imports the blocked parent package and crashes pytest.
+                def find_spec(self, name, path=None, target=None):
+                    if name.partition('.')[0] == 'testcontainers':
+                        raise ModuleNotFoundError(f'No module named {name!r}', name=name)
+                    return None
+
+
+            sys.meta_path.insert(0, BlockTestcontainers())
             """
         )
         pytester.makepyfile(
