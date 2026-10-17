@@ -196,7 +196,7 @@ you with `SILENCED_SYSTEM_CHECKS`.
   The message names the faulty key, for example:
 
     ```
-    (django_dbos.E001) TASKS['default']['OPTIONS']['QUEUES']['default']: unknown option(s) concurency. Valid options: worker_concurrency, global_concurrency, limiter, polling_interval_sec, capacity.
+    (django_dbos.E001) TASKS['default']['OPTIONS']['QUEUES']['default']: unknown option(s) concurency. Valid options: worker_concurrency, global_concurrency, limiter, polling_interval_sec, partition_concurrency, partition_worker_concurrency, partition_limiter, capacity.
     ```
 
 - **`django_dbos.E002`** — several `TASKS` entries use the DBOS backend.
@@ -217,6 +217,12 @@ you with `SILENCED_SYSTEM_CHECKS`.
 - **`django_dbos.E005`** — `RUN_MIGRATIONS` is `False` with a CockroachDB
   system database. There, only the workers can apply DBOS' migrations
   ([CockroachDB](configuration.md#cockroachdb)): remove the option.
+- **`django_dbos.E006`** — a task targets a
+  [partitioned queue](configuration.md#partitioned-queues) but has no
+  `partition_key` (its enqueues are refused), has a `deduplication_id`
+  (DBOS does not support it there) or is scheduled with `@cron` (its
+  executions carry no key and never run). Like W001, it only sees the tasks
+  the checking process has imported.
 - **`django_dbos.W001`** — a task is defined in a module the worker does not
   import, so [it stays `READY` forever](#a-task-stays-ready-forever). Move
   it into (or import it from) the `tasks.py` or `dbos_tasks.py` module of an

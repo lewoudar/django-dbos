@@ -150,6 +150,37 @@ def cleanup(): ...
 | `workflow_timeout` | `None` | Max wall-clock duration of the whole execution, in seconds, counted from the moment a worker starts it (time spent waiting in the queue or in `run_after` does not count). The task is [cancelled](#cancelling-a-task) at the deadline and its result reports `FAILED` with a `TaskTimedOut` error. |
 | `max_recovery_attempts` | DBOS default | How many times DBOS recovers the task after worker crashes. Beyond that it gives up: the result reports `FAILED` with a `MaxRecoveryAttemptsExceeded` error. |
 | `durable_operations` | `False` | Enable durable primitives inside the task (see below). |
+| `partition_key` | `None` | On a partitioned queue, the partition of each execution: the name of a task argument, or a callable receiving the task's arguments (see below). |
+
+### Partition keys
+
+On a [partitioned queue](configuration.md#partitioned-queues), each
+execution belongs to a partition, and the queue's `partition_*` limits apply
+per partition. `partition_key` tells django-dbos where to find it in the
+task's arguments, so the calling code stays plain Django:
+
+```python
+@dbos_params(partition_key='user_id')  # the value of the user_id argument, as a string
+@task(queue_name='reports')
+def build_report(user_id: int, kind: str = 'monthly'): ...
+
+
+build_report.enqueue(42)  # partition '42', positional or keyword alike
+```
+
+For a key that is not a single argument, pass a callable; it receives the
+arguments given to `enqueue()` and its result is converted to a string:
+
+```python
+@dbos_params(partition_key=lambda user_id, kind='monthly': f'{user_id}-{kind}')
+@task(queue_name='reports')
+def build_report(user_id: int, kind: str = 'monthly'): ...
+```
+
+The key cannot be `None` or empty. It is ignored when the task runs on a
+queue that is not partitioned (say, after `.using(queue_name='default')`),
+and a task without one cannot be enqueued on a partitioned queue. The
+partition of an execution is shown on its admin page.
 
 ## Durable workflows
 
