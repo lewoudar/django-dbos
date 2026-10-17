@@ -168,9 +168,6 @@ class TestSystemDatabaseUrlResolution:
         assert not dbos_settings.is_cockroachdb_url('postgresql+psycopg://db/dbos')
 
 
-INVALID_BOOLEANS = [pytest.param('false', id='string'), pytest.param(0, id='zero'), pytest.param(1, id='one')]
-
-
 class TestBooleanOptions:
     @pytest.mark.parametrize('key', list(dbos_settings.BOOLEAN_OPTIONS))
     def test_unset_reads_the_default(self, settings, key):
@@ -182,7 +179,9 @@ class TestBooleanOptions:
         set_dbos_options(settings, {'RUN_MIGRATIONS': value})
         assert dbos_settings.get_bool_option('RUN_MIGRATIONS') is value
 
-    @pytest.mark.parametrize('value', INVALID_BOOLEANS)
+    @pytest.mark.parametrize(
+        'value', [pytest.param('false', id='string'), pytest.param(0, id='zero'), pytest.param(1, id='one')]
+    )
     def test_anything_else_raises(self, settings, value):
         set_dbos_options(settings, {'MIGRATE_WITH_DJANGO': value})
         with pytest.raises(ImproperlyConfiguredDbos) as excinfo:
