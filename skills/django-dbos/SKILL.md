@@ -31,6 +31,7 @@ It is not about developing django-dbos itself.
 | A multi-stage job: several checkpoints, a durable sleep, waiting on an external signal | `@dbos_params(durable_operations=True)` + `get_dbos_context()` or `@DBOS.step`/`@DBOS.workflow` |
 | Run on a schedule | `@cron(...)` stacked on `@task` |
 | Reject duplicate concurrent runs | `@dbos_params(deduplication_id=...)` |
+| Limit concurrency per user/tenant (e.g. one report at a time per user) | Queue option `partition_concurrency` + `@dbos_params(partition_key='user_id')` |
 | Cap total wall-clock time | `@dbos_params(workflow_timeout=...)` |
 | Stop or relaunch a task | `get_client().cancel_workflow(id)` / `resume_workflow(id)` — see "Cancelling a task" |
 
@@ -149,6 +150,7 @@ def cleanup(): ...
 | `workflow_timeout` | `None` | Cancelled past this deadline; result reports `FAILED` with `TaskTimedOut`. Queue wait time doesn't count. |
 | `max_recovery_attempts` | DBOS default | Recovery attempts after worker crashes; beyond, `FAILED` with `MaxRecoveryAttemptsExceeded`. |
 | `durable_operations` | `False` | Run the function at workflow level — see below. |
+| `partition_key` | `None` | On a partitioned queue (any `partition_*` queue option), the execution's partition: an argument name or a callable `(*args, **kwargs)`, converted to `str`. Required there; ignored elsewhere. Incompatible with `deduplication_id` and `@cron` on that queue (`django_dbos.E006`). |
 
 ## Durable workflows (`durable_operations=True`)
 
@@ -336,7 +338,9 @@ actually about durability.
 - **Queues**: every queue name used by a task (`queue_name=`) must be
   declared, either in the backend's `QUEUES` list (names only) or in
   `OPTIONS['QUEUES']` (name → options: worker/global concurrency, rate
-  limiter, scaling thresholds) — not both; an empty `QUEUES` list is an error.
+  limiter, per-partition limits `partition_concurrency`/
+  `partition_worker_concurrency`/`partition_limiter`, scaling thresholds) —
+  not both; an empty `QUEUES` list is an error.
 - **Serialization**: pickle by default — fine, but treat the system database
   as trusted (anyone who can write to it can run code in your workers).
   When task args/results are plain data, prefer

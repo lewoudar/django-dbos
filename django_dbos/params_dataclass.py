@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 # Attribute of a task function holding the DbosTaskParams set by ``@dbos_params``.
 FUNC_PARAMS_ATTRIBUTE = '_django_dbos_params'
@@ -32,6 +34,10 @@ class DbosTaskParams:
             the task (``get_dbos_context()``: additional steps, durable sleep,
             events, messages). The task is then responsible for checkpointing
             its side effects.
+        partition_key: Partition of the enqueued execution on a partitioned
+            queue (one declaring a ``partition_*`` limit): the name of a task
+            argument, or a callable receiving the task's arguments, whose value
+            (as a string) is the key. Ignored on other queues.
     """
 
     max_recovery_attempts: int | None = None
@@ -42,3 +48,4 @@ class DbosTaskParams:
     deduplication_id: str | None = None
     workflow_timeout: float | None = None
     durable_operations: bool = False
+    partition_key: str | Callable[..., Any] | None = None

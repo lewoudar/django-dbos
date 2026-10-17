@@ -67,6 +67,8 @@ TASKS = {
             'QUEUES': {
                 'default': None,
                 'emails': None,
+                # Partitioned: one execution at a time per user.
+                'per_user': {'partition_concurrency': 1},
             },
         },
     },

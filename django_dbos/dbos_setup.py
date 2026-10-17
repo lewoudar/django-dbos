@@ -82,6 +82,9 @@ def _register_queues() -> None:
             kwargs['limiter'] = queue.limiter
         if queue.polling_interval_sec is not None:
             kwargs['polling_interval_sec'] = queue.polling_interval_sec
+        for name in settings_module.PARTITION_OPTIONS:
+            if getattr(queue, name) is not None:
+                kwargs[name] = getattr(queue, name)
         DBOS.register_queue(queue.name, **kwargs)
 
 

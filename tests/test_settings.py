@@ -168,9 +168,6 @@ class TestSystemDatabaseUrlResolution:
         assert not dbos_settings.is_cockroachdb_url('postgresql+psycopg://db/dbos')
 
 
-INVALID_BOOLEANS = [pytest.param('false', id='string'), pytest.param(0, id='zero'), pytest.param(1, id='one')]
-
-
 class TestBooleanOptions:
     @pytest.mark.parametrize('key', list(dbos_settings.BOOLEAN_OPTIONS))
     def test_unset_reads_the_default(self, settings, key):
@@ -182,7 +179,9 @@ class TestBooleanOptions:
         set_dbos_options(settings, {'RUN_MIGRATIONS': value})
         assert dbos_settings.get_bool_option('RUN_MIGRATIONS') is value
 
-    @pytest.mark.parametrize('value', INVALID_BOOLEANS)
+    @pytest.mark.parametrize(
+        'value', [pytest.param('false', id='string'), pytest.param(0, id='zero'), pytest.param(1, id='one')]
+    )
     def test_anything_else_raises(self, settings, value):
         set_dbos_options(settings, {'MIGRATE_WITH_DJANGO': value})
         with pytest.raises(ImproperlyConfiguredDbos) as excinfo:
@@ -274,6 +273,22 @@ class TestQueues:
         set_dbos_options(settings, {'QUEUES': {1: None, '1': None}})
         with pytest.raises(ImproperlyConfiguredDbos, match='Duplicate queue names'):
             dbos_settings.resolve_queues()
+
+    @pytest.mark.parametrize(
+        'options',
+        [
+            {'partition_concurrency': 2},
+            {'partition_worker_concurrency': 1},
+            {'partition_limiter': {'limit': 5, 'period': 60}},
+        ],
+        ids=['concurrency', 'worker-concurrency', 'limiter'],
+    )
+    def test_a_partition_option_makes_the_queue_partitioned(self, settings, options):
+        set_dbos_options(settings, {'QUEUES': {'per_user': options, 'emails': {'worker_concurrency': 1}}})
+        per_user, emails = dbos_settings.resolve_queues()
+        assert per_user == dbos_settings.QueueConfig(name='per_user', **options)
+        assert per_user.partitioned
+        assert not emails.partitioned
 
     def test_non_mapping_queue_capacity_raises(self, settings):
         set_dbos_options(settings, {'QUEUES': {'emails': {'capacity': 5}}})

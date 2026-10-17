@@ -191,7 +191,7 @@ class TestCollect:
         )
         mocker.patch('django_dbos.capacity._active_workflows', return_value=[child])
         report = capacity.collect()
-        assert set(report['queues']) == {'default', 'emails'}
+        assert set(report['queues']) == {'default', 'emails', 'per_user'}
         assert report['executors']['worker-1'] == {'running': 1, 'enqueued': 0}
 
     def test_collect_tolerates_partial_workflow_timestamps(self, dbos_environment, mocker):
@@ -270,7 +270,7 @@ class TestCollect:
             'workers',
             'max_recovery_attempts_exceeded',
         }
-        assert set(payload['queues']) == {'default', 'emails'}
+        assert set(payload['queues']) == {'default', 'emails', 'per_user'}
 
     def test_command_human_output(self, dbos_environment: Any) -> None:
         output = status()

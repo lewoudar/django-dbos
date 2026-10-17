@@ -8,15 +8,15 @@ import pytest
 from django.core.checks import Tags
 from django.core.checks.registry import registry
 
-from django_dbos import checks, discovery
+from django_dbos import checks, dbos_params, discovery
 from django_dbos import settings as settings_module
-from django_dbos import tasks as tasks_module
 from django_dbos.checks import (
     check_cockroachdb_migrations,
     check_dbos_backend_configured,
     check_dbos_settings,
     check_executor_id,
     check_in_memory_system_database,
+    check_partitioned_queue_tasks,
     check_serializer,
     check_single_dbos_backend,
     check_task_modules,
@@ -111,10 +111,8 @@ def placeholder() -> None:
 
 
 @pytest.fixture()
-def task_in(monkeypatch):
+def task_in(keep_known_tasks):
     """Build a DBOS task whose function lives in the given module."""
-    # Building a task records it among the known tasks: keep the registry intact.
-    monkeypatch.setattr(tasks_module, '_known_tasks', dict(tasks_module._known_tasks))
 
     def factory(module: str, **changes):
         func = types.FunctionType(placeholder.__code__, placeholder.__globals__, 'placeholder')
@@ -268,6 +266,58 @@ class TestDeploymentChecks:
         set_dbos_options(settings, {})
         monkeypatch.setenv('DBOS__VMID', 'machine-1')
         assert check_executor_id() == []
+
+
+@pytest.mark.usefixtures('keep_known_tasks')
+class TestCheckPartitionedQueueTasks:
+    def test_tasks_of_the_test_suite_report_nothing(self):
+        # greet_user targets the partitioned queue with a partition_key; the others use plain queues.
+        assert check_partitioned_queue_tasks() == []
+
+    @pytest.mark.parametrize(
+        ('build', 'problem'),
+        [
+            pytest.param(lambda: test_tasks.add.using(queue_name='per_user'), 'it has no partition_key', id='no-key'),
+            pytest.param(
+                lambda: dbos_params(partition_key='user_id', deduplication_id='dedup')(test_tasks.greet_user),
+                'it has a deduplication_id',
+                id='deduplication',
+            ),
+        ],
+    )
+    def test_misconfigured_task_reports_an_error(self, mocker, build, problem):
+        mocker.patch.object(checks, 'known_tasks', return_value=(build(),))
+
+        errors = check_partitioned_queue_tasks()
+
+        assert [error.id for error in errors] == ['django_dbos.E006']
+        assert errors[0].msg.startswith("Task 'tests.tasks.")
+        assert f"targets the partitioned queue 'per_user', but {problem}" in errors[0].msg
+
+    def test_cron_task_reports_an_error(self, mocker):
+        mocker.patch.object(checks, 'cron_tasks', return_value=(test_tasks.greet_user,))
+        errors = check_partitioned_queue_tasks()
+        assert [error.id for error in errors] == ['django_dbos.E006']
+        assert 'scheduled with @cron' in errors[0].msg
+
+    def test_each_problem_is_reported(self, mocker):
+        # No partition_key, a deduplication_id and @cron: one error each, not just the first.
+        task = dbos_params(deduplication_id='dedup')(test_tasks.add).using(queue_name='per_user')
+        mocker.patch.object(checks, 'known_tasks', return_value=(task,))
+        mocker.patch.object(checks, 'cron_tasks', return_value=(task,))
+
+        errors = check_partitioned_queue_tasks()
+
+        assert [error.id for error in errors] == ['django_dbos.E006'] * 3
+        assert 'it has no partition_key' in errors[0].msg
+        assert 'it has a deduplication_id' in errors[1].msg
+        assert 'it is scheduled with @cron' in errors[2].msg
+
+    def test_invalid_queues_are_left_to_e001(self, settings, monkeypatch):
+        monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
+        set_dbos_options(settings, {'QUEUES': ['default']})  # OPTIONS["QUEUES"] must be a mapping
+        assert check_partitioned_queue_tasks() == []
+        assert [error.id for error in check_dbos_settings()] == ['django_dbos.E001']
 
 
 class TestCheckDbosBackendConfigured:

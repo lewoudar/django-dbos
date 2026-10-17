@@ -93,6 +93,7 @@ class TestWorkflowPages:
             name='tests.tasks.add',
             status='PENDING',
             queue_name='default',
+            queue_partition_key='user-42',
             priority=0,
             created_at='2026-01-01T00:00:00+00:00',
             updated_at=None,
@@ -118,6 +119,7 @@ class TestWorkflowPages:
         assert response.context['steps'][0]['duration_ms'] is None
         assert response.context['input'] == '[[...]]'
         assert_text(response, '2026-01-01T00:00:00+00:00')
+        assert_text(response, 'user-42')
 
     @pytest.mark.parametrize('bad_page', ['abc', '-3'])
     def test_workflow_list_bad_page_inputs_render_page_1(self, admin_client, dbos_environment, bad_page):

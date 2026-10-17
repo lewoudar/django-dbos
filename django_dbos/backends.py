@@ -8,12 +8,13 @@ from typing import TYPE_CHECKING, Any
 from dbos import error as dbos_error
 from django.tasks import TaskResult
 from django.tasks.backends.base import BaseTaskBackend
-from django.tasks.exceptions import TaskResultDoesNotExist
+from django.tasks.exceptions import InvalidTask, TaskResultDoesNotExist
 
 from . import settings as settings_module
 from .client import get_client
 from .exceptions import ImproperlyConfiguredDbos
 from .logging import logger
+from .params import enqueue_signature, resolve_partition_key
 from .results import build_task_result
 from .tasks import DBOSTask
 from .workflow_names import workflow_name_for_task
@@ -62,16 +63,37 @@ class DBOSBackend(BaseTaskBackend):
         # is reported by django_dbos.E001 and raised on enqueue, not here: the
         # backend is built while importing task modules and running checks.
         self._queues_error: str | None = None
+        self._partitioned_queues: set[str] = set()
         try:
-            self.queues = {queue.name for queue in settings_module.resolve_queues(alias)}
+            queues = settings_module.resolve_queues(alias)
         except ImproperlyConfiguredDbos as exc:
             self._queues_error = str(exc)
+        else:
+            self.queues = {queue.name for queue in queues}
+            self._partitioned_queues = {queue.name for queue in queues if queue.partitioned}
+
+    def validate_task(self, task: DBOSTask) -> None:
+        super().validate_task(task)
+        partition_key = task.dbos_params.partition_key
+        if isinstance(partition_key, str) and partition_key not in enqueue_signature(task).parameters:
+            raise InvalidTask(f"partition_key {partition_key!r} is not an argument of task '{task.name}'.")
+
+    def is_partitioned(self, queue_name: str) -> bool:
+        """Whether a queue of this backend is partitioned: its enqueues need a partition key.
+
+        Args:
+            queue_name: The queue's name.
+
+        Returns:
+            ``True`` when the queue declares a ``partition_*`` limit.
+        """
+        return queue_name in self._partitioned_queues
 
     def enqueue(self, task: DBOSTask, args: Any, kwargs: Any) -> TaskResult:
         self._validate_queues_config()
         self.validate_task(task)
 
-        handle = get_client().enqueue(self._enqueue_options(task), *args, **kwargs)
+        handle = get_client().enqueue(self._enqueue_options(task, args, kwargs), *args, **kwargs)
         self._log_enqueued(task, handle.workflow_id)
         try:
             status = handle.get_status()
@@ -83,7 +105,7 @@ class DBOSBackend(BaseTaskBackend):
         self._validate_queues_config()
         self.validate_task(task)
 
-        handle = await get_client().enqueue_async(self._enqueue_options(task), *args, **kwargs)
+        handle = await get_client().enqueue_async(self._enqueue_options(task, args, kwargs), *args, **kwargs)
         self._log_enqueued(task, handle.workflow_id)
         try:
             status = await handle.get_status()
@@ -108,8 +130,8 @@ class DBOSBackend(BaseTaskBackend):
 
     # Internal helpers
 
-    def _enqueue_options(self, task: DBOSTask) -> EnqueueOptions:
-        """The DBOS enqueue options for a task: workflow name, queue, priority, delay, params."""
+    def _enqueue_options(self, task: DBOSTask, args: Any, kwargs: Any) -> EnqueueOptions:
+        """The DBOS enqueue options for a task: workflow name, queue, priority, delay, params, partition."""
         params = task.dbos_params
         options: dict[str, Any] = {
             'workflow_name': workflow_name_for_task(task),
@@ -123,7 +145,25 @@ class DBOSBackend(BaseTaskBackend):
             options['deduplication_id'] = params.deduplication_id
         if params.workflow_timeout is not None:
             options['workflow_timeout'] = params.workflow_timeout
+        if self.is_partitioned(task.queue_name):
+            # DBOSClient checks nothing: without a key, the execution would stay enqueued forever.
+            options['queue_partition_key'] = self._partition_key(task, args, kwargs)
         return options  # type: ignore[return-value]
+
+    @staticmethod
+    def _partition_key(task: DBOSTask, args: Any, kwargs: Any) -> str:
+        if task.dbos_params.deduplication_id is not None:
+            raise ImproperlyConfiguredDbos(
+                f"Task '{task.name}' has a deduplication_id, which DBOS does not support on the "
+                f"partitioned queue '{task.queue_name}'."
+            )
+        key = resolve_partition_key(task, args, kwargs)
+        if key is None:
+            raise ImproperlyConfiguredDbos(
+                f"Queue '{task.queue_name}' is partitioned: task '{task.name}' needs "
+                '@dbos_params(partition_key=...) to be enqueued there.'
+            )
+        return key
 
     def _validate_queues_config(self) -> None:
         if self._queues_error is not None:

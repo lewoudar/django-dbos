@@ -190,6 +190,7 @@ def workflow_detail(request: HttpRequest, workflow_id: str) -> HttpResponse:
                 ('Name', status.name),
                 ('Status', django_status),
                 ('Queue', status.queue_name),
+                ('Partition key', status.queue_partition_key),
                 ('Priority', status.priority),
                 ('Created at', _epoch_ms(status.created_at)),
                 ('Updated at', _epoch_ms(status.updated_at)),

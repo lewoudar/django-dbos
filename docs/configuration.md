@@ -207,6 +207,9 @@ options:
 | `global_concurrency` | unlimited | Max executions of this queue running at once across all workers. |
 | `limiter` | none | Rate limit, `{'limit': n, 'period': seconds}`: at most `n` executions started per `period`. |
 | `polling_interval_sec` | `1.0` | How often workers check the queue for new executions. |
+| `partition_concurrency` | unlimited | Max executions of one partition running at once across all workers (see [Partitioned queues](#partitioned-queues)). |
+| `partition_worker_concurrency` | unlimited | Max executions of one partition running at once in one worker. |
+| `partition_limiter` | none | Rate limit applied to each partition separately, `{'limit': n, 'period': seconds}`. |
 | `capacity` | global thresholds | Per-queue thresholds of the scaling advice (django-dbos only, see [Worker capacity](status.md#thresholds)). |
 
 An unknown option is a configuration error, reported by `manage.py check`.
@@ -229,6 +232,39 @@ TASKS = {
     },
 }
 ```
+
+### Partitioned queues
+
+A partitioned queue applies its limits to each *partition* separately, for
+example one execution at a time per user, however many users have work
+waiting. Any `partition_*` option makes the queue partitioned; its other
+options (`worker_concurrency`, `global_concurrency`, `limiter`) still apply
+to the queue as a whole.
+
+```python
+TASKS = {
+    'default': {
+        'BACKEND': 'django_dbos.backends.DBOSBackend',
+        'OPTIONS': {
+            'QUEUES': {
+                'default': None,
+                'reports': {
+                    'global_concurrency': 10,  # 10 reports at once overall...
+                    'partition_concurrency': 1,  # ...but one per user
+                },
+            },
+        },
+    },
+}
+```
+
+Every execution enqueued on a partitioned queue carries a partition key,
+derived from the task's arguments by
+[`@dbos_params(partition_key=...)`](tasks.md#partition-keys). A task
+without one is refused when enqueued there. Partitioned queues come with two
+limitations from DBOS: no `deduplication_id`, and no `@cron` tasks (their
+executions carry no key). `manage.py check` reports all three cases
+(`django_dbos.E006`).
 
 ## Processes
 

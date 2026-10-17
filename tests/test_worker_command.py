@@ -40,7 +40,7 @@ def test_worker_default_run(dbos_environment, worker_mocks):
     worker_mocks['register_cron_schedules'].assert_called_once_with()
 
     worker_mocks['heartbeat_cls'].assert_called_once_with(
-        executor_id='local', queues=('default', 'emails'), has_metrics=False
+        executor_id='local', queues=('default', 'emails', 'per_user'), has_metrics=False
     )
     heartbeat = worker_mocks['heartbeat_cls'].return_value
     heartbeat.start.assert_called_once_with()
