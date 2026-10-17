@@ -274,6 +274,22 @@ class TestQueues:
         with pytest.raises(ImproperlyConfiguredDbos, match='Duplicate queue names'):
             dbos_settings.resolve_queues()
 
+    @pytest.mark.parametrize(
+        'options',
+        [
+            {'partition_concurrency': 2},
+            {'partition_worker_concurrency': 1},
+            {'partition_limiter': {'limit': 5, 'period': 60}},
+        ],
+        ids=['concurrency', 'worker-concurrency', 'limiter'],
+    )
+    def test_a_partition_option_makes_the_queue_partitioned(self, settings, options):
+        set_dbos_options(settings, {'QUEUES': {'per_user': options, 'emails': {'worker_concurrency': 1}}})
+        per_user, emails = dbos_settings.resolve_queues()
+        assert per_user == dbos_settings.QueueConfig(name='per_user', **options)
+        assert per_user.partitioned
+        assert not emails.partitioned
+
     def test_non_mapping_queue_capacity_raises(self, settings):
         set_dbos_options(settings, {'QUEUES': {'emails': {'capacity': 5}}})
         with pytest.raises(ImproperlyConfiguredDbos, match="\\['emails'\\]\\['capacity'\\] must be a mapping"):

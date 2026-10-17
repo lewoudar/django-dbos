@@ -27,6 +27,12 @@ def send_email(address: str) -> str:
     return f'sent to {address}'
 
 
+@task(backend='dbos', queue_name='per_user')
+@dbos_params(partition_key='user_id')
+def greet_user(user_id: int, greeting: str = 'hello') -> str:
+    return f'{greeting} {user_id}'
+
+
 @task(backend='dbos')
 async def async_add(a: int, b: int) -> int:
     await asyncio.sleep(0)

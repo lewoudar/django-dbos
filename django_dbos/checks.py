@@ -11,6 +11,7 @@ from django.core.checks import CheckMessage, Error, Tags, Warning, register
 from . import discovery
 from . import settings as settings_module
 from .exceptions import ImproperlyConfiguredDbos, describe_error
+from .scheduling import cron_tasks
 from .tasks import DBOSTask, known_tasks
 
 
@@ -104,6 +105,42 @@ def check_task_modules(app_configs: Any = None, **kwargs: Any) -> list[CheckMess
         )
         for task in known_tasks()
         if not _is_discovered(task, discovered, exposed)
+    ]
+
+
+def _partitioned_queue_problems(task: DBOSTask, cron_paths: set[str]) -> list[str]:
+    problems = []
+    if task.dbos_params.partition_key is None:
+        problems.append('it has no partition_key, so its enqueues are refused')
+    if task.dbos_params.deduplication_id is not None:
+        problems.append('it has a deduplication_id, which DBOS does not support on a partitioned queue')
+    if task.module_path in cron_paths:
+        problems.append('it is scheduled with @cron, whose executions carry no partition key and never run')
+    return problems
+
+
+@register()
+def check_partitioned_queue_tasks(app_configs: Any = None, **kwargs: Any) -> list[CheckMessage]:
+    """Tasks targeting a partitioned queue need a partition key, and neither deduplication nor ``@cron``.
+
+    Like ``check_task_modules``, only the tasks this process has imported so
+    far can be inspected.
+    """
+    try:
+        partitioned = {queue.name for queue in settings_module.resolve_queues() if queue.partitioned}
+    except ImproperlyConfiguredDbos:
+        return []  # reported by django_dbos.E001
+    cron_paths = {task.module_path for task in cron_tasks()}
+    return [
+        Error(
+            f"Task '{task.module_path}' targets the partitioned queue '{task.queue_name}', but {problem}.",
+            id='django_dbos.E006',
+            hint='Give the task @dbos_params(partition_key=...) without deduplication_id, '
+            'and schedule cron tasks on a queue without partition_* options.',
+        )
+        for task in known_tasks()
+        if task.queue_name in partitioned
+        for problem in _partitioned_queue_problems(task, cron_paths)
     ]
 
 

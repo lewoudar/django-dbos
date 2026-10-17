@@ -114,6 +114,11 @@ def _validate_cron_task(task: DBOSTask) -> None:
             )
 
 
+def cron_tasks() -> tuple[DBOSTask, ...]:
+    """The tasks scheduled with ``@cron`` in this process so far."""
+    return tuple(registration.task for registration in _registry.values())
+
+
 def schedule_name_for_task(task: DBOSTask) -> str:
     return f'{SCHEDULE_PREFIX}{task.module_path}'
 

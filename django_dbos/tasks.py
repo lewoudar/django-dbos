@@ -23,12 +23,13 @@ class DBOSTask(Task):
     dbos_params: DbosTaskParams = field(default_factory=DbosTaskParams)
 
     def __post_init__(self) -> None:
-        super().__post_init__()
         # Pick up params attached to the function by @dbos_params when it was
-        # applied *under* @task (i.e. on the bare function).
+        # applied *under* @task (i.e. on the bare function), before the
+        # backend validates the task with them.
         func_params: DbosTaskParams | None = getattr(self.func, FUNC_PARAMS_ATTRIBUTE, None)
         if func_params is not None and self.dbos_params == DbosTaskParams():
             object.__setattr__(self, 'dbos_params', func_params)
+        super().__post_init__()
         _known_tasks[self.module_path] = self
 
 

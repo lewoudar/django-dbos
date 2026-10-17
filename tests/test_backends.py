@@ -5,15 +5,17 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from django.tasks import TaskResultStatus
-from django.tasks.exceptions import TaskResultDoesNotExist
+from django.tasks.exceptions import InvalidTask, TaskResultDoesNotExist
 from django.utils import timezone
 
 from django_dbos import dbos_params
 from django_dbos.backends import _delay_seconds, _django_to_dbos_priority
+from django_dbos.client import get_client
+from django_dbos.exceptions import ImproperlyConfiguredDbos
 from django_dbos.workflow_names import workflow_name_for_task
 
 from .conftest import wait_for_result
-from .tasks import add, async_add, context_task, failing_task
+from .tasks import add, async_add, context_task, failing_task, greet_user
 
 pytestmark = pytest.mark.integration
 
@@ -42,11 +44,12 @@ class TestHelpers:
         assert _django_to_dbos_priority(django_priority) == expected
 
 
+@pytest.mark.usefixtures('keep_known_tasks')
 class TestEnqueueOptions:
     def test_options_carry_every_dbos_param(self):
         task = dbos_params(deduplication_id='dedup', workflow_timeout=90)(add)
         task = task.using(priority=50, run_after=timezone.now() + timedelta(seconds=30))
-        options = add.get_backend()._enqueue_options(task)
+        options = add.get_backend()._enqueue_options(task, (1, 2), {})
 
         assert options['workflow_name'] == workflow_name_for_task(add)
         assert options['queue_name'] == 'default'
@@ -56,8 +59,52 @@ class TestEnqueueOptions:
         assert options['workflow_timeout'] == 90
 
     def test_options_omit_unset_params(self):
-        options = add.get_backend()._enqueue_options(add)
+        options = add.get_backend()._enqueue_options(add, (1, 2), {})
         assert set(options) == {'workflow_name', 'queue_name', 'priority'}
+
+
+@pytest.mark.usefixtures('keep_known_tasks')
+class TestPartitionedQueues:
+    @pytest.mark.parametrize(
+        ('args', 'kwargs'),
+        [pytest.param((42,), {}, id='positional'), pytest.param((), {'user_id': 42}, id='keyword')],
+    )
+    def test_the_key_is_read_from_the_arguments(self, args, kwargs):
+        options = greet_user.get_backend()._enqueue_options(greet_user, args, kwargs)
+        assert options['queue_partition_key'] == '42'
+
+    def test_the_key_is_ignored_on_a_queue_without_partitions(self):
+        task = greet_user.using(queue_name='default')
+        options = task.get_backend()._enqueue_options(task, (42,), {})
+        assert 'queue_partition_key' not in options
+
+    def test_a_task_without_partition_key_is_refused(self):
+        task = add.using(queue_name='per_user')
+        with pytest.raises(ImproperlyConfiguredDbos, match=r"^Queue 'per_user' is partitioned: task 'add' needs"):
+            task.get_backend()._enqueue_options(task, (1, 2), {})
+
+    def test_deduplication_is_refused(self):
+        task = dbos_params(partition_key='user_id', deduplication_id='dedup')(greet_user)
+        with pytest.raises(ImproperlyConfiguredDbos, match='has a deduplication_id, which DBOS does not support'):
+            task.get_backend()._enqueue_options(task, (42,), {})
+
+    def test_an_unknown_argument_name_is_an_invalid_task(self):
+        with pytest.raises(InvalidTask, match=r"^partition_key 'nope' is not an argument of task 'greet_user'\.$"):
+            dbos_params(partition_key='nope')(greet_user)
+
+    def test_the_context_parameter_is_not_an_argument(self):
+        with pytest.raises(InvalidTask, match="partition_key 'context' is not an argument"):
+            dbos_params(partition_key='context')(context_task)
+
+    def test_is_partitioned(self):
+        backend = greet_user.get_backend()
+        assert backend.is_partitioned('per_user')
+        assert not backend.is_partitioned('default')
+
+    def test_enqueue_records_the_partition_key(self, dbos_environment):
+        result = wait_for_result(greet_user.enqueue(7, greeting='hi'), TaskResultStatus.SUCCESSFUL)
+        assert result.return_value == 'hi 7'
+        assert get_client().retrieve_workflow(result.id).get_status().queue_partition_key == '7'
 
 
 class TestBackendBehavior:

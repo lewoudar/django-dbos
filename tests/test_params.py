@@ -1,10 +1,17 @@
 """Unit tests for the dbos_params decorator."""
 
+import dataclasses
+
+import pytest
 from django.tasks import task as django_task
+from django.tasks.exceptions import InvalidTask
 
 from django_dbos import dbos_params
+from django_dbos.exceptions import ImproperlyConfiguredDbos
+from django_dbos.params import resolve_partition_key
 from django_dbos.params_dataclass import FUNC_PARAMS_ATTRIBUTE, DbosTaskParams
 
+from .tasks import add, context_task, greet_user
 from .tests_helpers import make_dbos_task
 
 
@@ -51,3 +58,49 @@ class TestDbosParams:
         dbos_params(step_max_attempts=5)(bare_function)
         params: DbosTaskParams = getattr(bare_function, FUNC_PARAMS_ATTRIBUTE)
         assert params.step_max_attempts == 5
+
+    def test_partition_key_must_be_a_name_or_a_callable(self):
+        with pytest.raises(ImproperlyConfiguredDbos, match=r'^partition_key must be the name of a task argument'):
+            dbos_params(partition_key=42)
+
+    def test_partition_key_below_task_is_validated_with_the_task(self):
+        # @dbos_params under @task: the params are picked up before the backend validates the task.
+        dbos_params(partition_key='nope')(function_with_a_bad_partition_key)
+        with pytest.raises(InvalidTask, match="partition_key 'nope' is not an argument"):
+            dataclasses.replace(context_task, func=function_with_a_bad_partition_key)
+
+
+def function_with_a_bad_partition_key(context: object, user_id: int) -> None: ...
+
+
+def function_with_context(context: object, user_id: int) -> None: ...
+
+
+@pytest.mark.usefixtures('keep_known_tasks')
+class TestResolvePartitionKey:
+    def test_no_partition_key(self):
+        assert resolve_partition_key(add, (1, 2), {}) is None
+
+    def test_an_argument_left_to_its_default(self):
+        task = dbos_params(partition_key='greeting')(greet_user)
+        assert resolve_partition_key(task, (1,), {}) == 'hello'
+
+    def test_a_callable_receives_the_arguments(self):
+        task = dbos_params(partition_key=lambda user_id, greeting='': f'{greeting}-{user_id}')(greet_user)
+        assert resolve_partition_key(task, (1,), {'greeting': 'hi'}) == 'hi-1'
+
+    def test_the_context_parameter_is_skipped(self):
+        task = dataclasses.replace(
+            context_task, func=function_with_context, dbos_params=DbosTaskParams(partition_key='user_id')
+        )
+        assert resolve_partition_key(task, (5,), {}) == '5'
+
+    @pytest.mark.parametrize('value', [None, ''])
+    def test_an_empty_key_is_refused(self, value):
+        task = dbos_params(partition_key=lambda *args, **kwargs: value)(greet_user)
+        with pytest.raises(ImproperlyConfiguredDbos, match=r"^The partition key of task 'greet_user' is empty"):
+            resolve_partition_key(task, (1,), {})
+
+    def test_arguments_not_matching_the_signature_are_refused(self):
+        with pytest.raises(ImproperlyConfiguredDbos, match=r"^Cannot read the partition key of task 'greet_user'"):
+            resolve_partition_key(greet_user, (), {'unknown': 1})

@@ -78,6 +78,17 @@ class TestRegisterQueues:
             polling_interval_sec=1.5,
         )
 
+    def test_partition_options_forwarded(self, settings, mocker):
+        register_queue = mocker.patch.object(dbos_setup.DBOS, 'register_queue')
+        partition_options = {
+            'partition_concurrency': 2,
+            'partition_worker_concurrency': 1,
+            'partition_limiter': {'limit': 5, 'period': 60},
+        }
+        set_dbos_options(settings, {'QUEUES': {'per_user': partition_options}})
+        dbos_setup._register_queues()
+        register_queue.assert_called_once_with('per_user', **partition_options)
+
     def test_default_queue_has_no_options(self, settings, mocker):
         register_queue = mocker.patch.object(dbos_setup.DBOS, 'register_queue')
         set_dbos_options(settings, {})

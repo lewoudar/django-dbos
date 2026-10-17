@@ -125,9 +125,21 @@ class QueueConfig:
     global_concurrency: int | None = None
     limiter: dict[str, Any] | None = None
     polling_interval_sec: float | None = None
+    partition_concurrency: int | None = None
+    partition_worker_concurrency: int | None = None
+    partition_limiter: dict[str, Any] | None = None
     # Per-queue capacity thresholds (django-dbos only, never sent to DBOS),
     # same keys as ``OPTIONS["CAPACITY"]`` minus ``ADVISOR``.
     capacity: dict[str, Any] | None = None
+
+    @property
+    def partitioned(self) -> bool:
+        """Whether a per-partition limit is set, so that every enqueue needs a partition key."""
+        return any(getattr(self, name) is not None for name in PARTITION_OPTIONS)
+
+
+# The ``QueueConfig`` options that make a queue partitioned.
+PARTITION_OPTIONS = ('partition_concurrency', 'partition_worker_concurrency', 'partition_limiter')
 
 
 # ``OPTIONS["CAPACITY"]`` threshold keys and their defaults; see ``capacity.advise_queue``.
