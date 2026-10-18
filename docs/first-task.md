@@ -174,10 +174,16 @@ rather than from the top.
 ## Next steps
 
 - [Tasks](tasks.md): deferred execution, priorities, retries, timeouts.
+- [Cron scheduling](cron.md): run a task on a schedule.
+- [Workflows](workflows.md): checkpoint a task's own operations, one durable
+  step at a time.
+- [Testing](testing.md): run tasks synchronously in your test suite.
 - [Configuration](configuration.md): using PostgreSQL, declaring queues and
   their concurrency.
-- [Cron scheduling](cron.md): run a task on a schedule.
-- [Testing](testing.md): run tasks synchronously in your test suite.
+- [Admin](admin.md): inspect and operate on workflows from the Django admin.
+- [Worker capacity](status.md): decide whether to scale your workers up or
+  down.
 - [Deployment](deployment.md): what to settle before going to production.
 - [Troubleshooting](troubleshooting.md): a task stays `READY`, an error you
   don't understand.
+- [AI agents](ai-agents.md): teach your coding agent how to use django-dbos.
