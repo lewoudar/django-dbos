@@ -24,6 +24,7 @@ from .tasks import (
     context_without_durable_operations,
     durable_context_task,
     durable_onboarding,
+    durable_step_with_retries,
     failing_task,
     flaky_calls,
     flaky_with_retries,
@@ -75,6 +76,14 @@ def test_step_retry_after_transient_failure(dbos_environment):
     result = wait_for_result(result, TaskResultStatus.SUCCESSFUL)
     assert result.return_value == 2
     # The failing first attempt was checkpointed and retried by DBOS.
+    assert len(flaky_calls) == 2
+
+
+def test_run_step_retries_with_step_options(dbos_environment):
+    flaky_calls.clear()
+    result = durable_step_with_retries.enqueue()
+    result = wait_for_result(result, TaskResultStatus.SUCCESSFUL)
+    assert result.return_value == 2
     assert len(flaky_calls) == 2
 
 

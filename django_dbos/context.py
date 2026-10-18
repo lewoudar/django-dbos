@@ -40,31 +40,54 @@ class NoActiveDbosContext(DjangoDbosError):
     """get_dbos_context() was called outside a DBOS workflow execution."""
 
 
+def _step_options(name: str | None, step_options: StepOptions | None) -> StepOptions:
+    options = StepOptions(**step_options) if step_options else StepOptions()
+    if name:
+        options['name'] = name
+    return options
+
+
 @dataclass(frozen=True)
 class DbosTaskContext:
     """Durable primitives available inside a task with ``durable_operations``."""
 
     workflow_id: str
 
-    def run_step(self, func: Any, *args: Any, name: str | None = None, **kwargs: Any) -> Any:
+    def run_step(
+        self,
+        func: Any,
+        *args: Any,
+        name: str | None = None,
+        step_options: StepOptions | None = None,
+        **kwargs: Any,
+    ) -> Any:
         """Execute ``func`` as a checkpointed step of the enclosing workflow.
 
         Args:
             func: The function to run as a step.
             *args: Positional arguments passed to ``func``.
             name: Step name recorded by DBOS; defaults to the function's name.
+                Takes precedence over a ``name`` in ``step_options``.
+            step_options: DBOS step options, such as ``retries_allowed``,
+                ``max_attempts``, ``interval_seconds`` and ``backoff_rate``;
+                without them, the step is not retried.
             **kwargs: Keyword arguments passed to ``func``.
 
         Returns:
             The result of ``func``, replayed from the checkpoint on recovery.
         """
-        options = StepOptions(name=name) if name else StepOptions()
-        return DBOS.run_step(options, func, *args, **kwargs)
+        return DBOS.run_step(_step_options(name, step_options), func, *args, **kwargs)
 
-    async def run_step_async(self, func: Any, *args: Any, name: str | None = None, **kwargs: Any) -> Any:
+    async def run_step_async(
+        self,
+        func: Any,
+        *args: Any,
+        name: str | None = None,
+        step_options: StepOptions | None = None,
+        **kwargs: Any,
+    ) -> Any:
         """Async variant of ``run_step``."""
-        options = StepOptions(name=name) if name else StepOptions()
-        return await DBOS.run_step_async(options, func, *args, **kwargs)
+        return await DBOS.run_step_async(_step_options(name, step_options), func, *args, **kwargs)
 
     def sleep(self, seconds: float) -> None:
         """Sleep durably: the workflow stops and resumes after the delay."""

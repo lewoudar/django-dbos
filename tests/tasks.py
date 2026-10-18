@@ -58,6 +58,20 @@ def record_step(event: str) -> str:
     return event
 
 
+def flaky_step() -> int:
+    flaky_calls.append(1)
+    if len(flaky_calls) < 2:
+        raise RuntimeError('first attempt fails')
+    return len(flaky_calls)
+
+
+@task(backend='dbos')
+@dbos_params(durable_operations=True)
+def durable_step_with_retries() -> int:
+    step_options = {'retries_allowed': True, 'max_attempts': 2, 'interval_seconds': 0.1}
+    return get_dbos_context().run_step(flaky_step, step_options=step_options)
+
+
 @task(backend='dbos')
 @dbos_params(durable_operations=True)
 def durable_onboarding() -> list[str]:

@@ -37,10 +37,30 @@ class TestRunStep:
         ctx.run_step(lambda: None)
         assert _step_options(run_step).get('name') is None
 
+    def test_step_options_are_passed_to_dbos_not_to_func(self, ctx, mocker):
+        run_step = mocker.patch('django_dbos.context.DBOS.run_step')
+        step_options = {'retries_allowed': True, 'max_attempts': 5}
+        ctx.run_step(lambda x: x, 7, step_options=step_options, extra=1)
+        assert _step_options(run_step) == step_options
+        assert run_step.call_args[0][2:] == (7,)
+        assert run_step.call_args[1] == {'extra': 1}
+
+    def test_name_overrides_the_step_options_name(self, ctx, mocker):
+        run_step = mocker.patch('django_dbos.context.DBOS.run_step')
+        step_options = {'name': 'from-options', 'retries_allowed': True}
+        ctx.run_step(lambda: None, name='from-arg', step_options=step_options)
+        assert _step_options(run_step) == {'name': 'from-arg', 'retries_allowed': True}
+        assert step_options['name'] == 'from-options'  # the caller's dict is not mutated
+
     def test_run_step_async(self, ctx, mocker):
         run_step_async = mocker.patch('django_dbos.context.DBOS.run_step_async', return_value=3)
         assert asyncio.run(ctx.run_step_async(lambda: None, name='a')) == 3
         assert _step_options(run_step_async).get('name') == 'a'
+
+    def test_run_step_async_with_step_options(self, ctx, mocker):
+        run_step_async = mocker.patch('django_dbos.context.DBOS.run_step_async', return_value=3)
+        asyncio.run(ctx.run_step_async(lambda: None, step_options={'retries_allowed': True}))
+        assert _step_options(run_step_async) == {'retries_allowed': True}
 
 
 class TestDurablePrimitives:
