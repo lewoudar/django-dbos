@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import difflib
 import sys
 from typing import Any
@@ -11,6 +12,7 @@ from django.core.checks import CheckMessage, Error, Tags, Warning, register
 from . import discovery
 from . import settings as settings_module
 from .exceptions import ImproperlyConfiguredDbos, describe_error
+from .params_dataclass import DbosTaskParams
 from .scheduling import cron_tasks
 from .tasks import DBOSTask, known_tasks
 
@@ -142,6 +144,35 @@ def check_partitioned_queue_tasks(app_configs: Any = None, **kwargs: Any) -> lis
         if task.queue_name in partitioned
         for problem in _partitioned_queue_problems(task, cron_paths)
     ]
+
+
+_STEP_OPTIONS = ('step_retries_allowed', 'step_max_attempts', 'step_interval_seconds', 'step_backoff_rate')
+_STEP_OPTION_DEFAULTS = {field.name: field.default for field in dataclasses.fields(DbosTaskParams)}
+
+
+@register()
+def check_step_options_with_durable_operations(app_configs: Any = None, **kwargs: Any) -> list[CheckMessage]:
+    """``step_*`` options configure the task body run as a single step, which ``durable_operations`` turns off.
+
+    Like ``check_task_modules``, only the tasks this process has imported so
+    far can be inspected.
+    """
+    warnings: list[CheckMessage] = []
+    for task in known_tasks():
+        if not task.dbos_params.durable_operations:
+            continue
+        changed = [name for name in _STEP_OPTIONS if getattr(task.dbos_params, name) != _STEP_OPTION_DEFAULTS[name]]
+        if changed:
+            warnings.append(
+                Warning(
+                    f"Task '{task.module_path}' sets {', '.join(changed)} with durable_operations=True: "
+                    'its body does not run as a single step, so these options are ignored.',
+                    id='django_dbos.W006',
+                    hint='Configure retries on each step instead: @DBOS.step(retries_allowed=True, ...) '
+                    'or ctx.run_step(func, ..., step_options={...}).',
+                )
+            )
+    return warnings
 
 
 @register()

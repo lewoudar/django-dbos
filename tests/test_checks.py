@@ -19,6 +19,7 @@ from django_dbos.checks import (
     check_partitioned_queue_tasks,
     check_serializer,
     check_single_dbos_backend,
+    check_step_options_with_durable_operations,
     check_task_modules,
     check_unknown_settings,
 )
@@ -318,6 +319,27 @@ class TestCheckPartitionedQueueTasks:
         set_dbos_options(settings, {'QUEUES': ['default']})  # OPTIONS["QUEUES"] must be a mapping
         assert check_partitioned_queue_tasks() == []
         assert [error.id for error in check_dbos_settings()] == ['django_dbos.E001']
+
+
+class TestCheckStepOptionsWithDurableOperations:
+    def test_default_step_options_report_nothing(self, mocker):
+        task = dbos_params(durable_operations=True)(test_tasks.add)
+        mocker.patch.object(checks, 'known_tasks', return_value=(task,))
+        assert check_step_options_with_durable_operations() == []
+
+    def test_step_options_without_durable_operations_report_nothing(self, mocker):
+        mocker.patch.object(checks, 'known_tasks', return_value=(test_tasks.flaky_with_retries,))
+        assert check_step_options_with_durable_operations() == []
+
+    def test_step_options_with_durable_operations_report_a_warning(self, mocker):
+        task = dbos_params(durable_operations=True, step_retries_allowed=True, step_max_attempts=5)(test_tasks.add)
+        mocker.patch.object(checks, 'known_tasks', return_value=(task,))
+
+        warnings = check_step_options_with_durable_operations()
+
+        assert [warning.id for warning in warnings] == ['django_dbos.W006']
+        assert "Task 'tests.tasks.add' sets step_retries_allowed, step_max_attempts" in warnings[0].msg
+        assert 'step_options' in warnings[0].hint
 
 
 class TestCheckDbosBackendConfigured:
