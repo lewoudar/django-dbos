@@ -9,7 +9,7 @@ from django.tasks.exceptions import InvalidTask, TaskResultDoesNotExist
 from django.utils import timezone
 
 from django_dbos import dbos_params
-from django_dbos.backends import _delay_seconds, _django_to_dbos_priority
+from django_dbos.backends import _dbos_to_django_priority, _delay_seconds, _django_to_dbos_priority
 from django_dbos.client import get_client
 from django_dbos.exceptions import ImproperlyConfiguredDbos
 from django_dbos.workflow_names import workflow_name_for_task
@@ -42,6 +42,11 @@ class TestHelpers:
     )
     def test_priority_mapping_preserves_order(self, django_priority, expected):
         assert _django_to_dbos_priority(django_priority) == expected
+        assert _dbos_to_django_priority(expected) == django_priority
+
+    @pytest.mark.parametrize('dbos_priority', [None, 0, 202])
+    def test_priority_outside_the_django_scale_maps_to_none(self, dbos_priority):
+        assert _dbos_to_django_priority(dbos_priority) is None
 
 
 @pytest.mark.usefixtures('keep_known_tasks')

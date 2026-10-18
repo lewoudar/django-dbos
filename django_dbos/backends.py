@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 from dbos import error as dbos_error
 from django.tasks import TaskResult
 from django.tasks.backends.base import BaseTaskBackend
+from django.tasks.base import TASK_MAX_PRIORITY, TASK_MIN_PRIORITY
 from django.tasks.exceptions import InvalidTask, TaskResultDoesNotExist
 
 from . import settings as settings_module
@@ -30,6 +31,19 @@ _PRIORITY_OFFSET = 101
 
 def _django_to_dbos_priority(django_priority: int) -> int:
     return _PRIORITY_OFFSET - int(django_priority)
+
+
+def _dbos_to_django_priority(dbos_priority: int | None) -> int | None:
+    # Workflows not enqueued through the backend (cron runs, direct starts)
+    # carry 0 or None: they have no Django priority.
+    if dbos_priority is None:
+        return None
+
+    django_priority = _PRIORITY_OFFSET - dbos_priority
+    if TASK_MIN_PRIORITY <= django_priority <= TASK_MAX_PRIORITY:
+        return django_priority
+
+    return None
 
 
 def _delay_seconds(run_after: datetime | timedelta | None) -> float | None:

@@ -75,6 +75,17 @@ class TestWorkflowPages:
         assert_text(response, 'tests.tasks.add')
         assert_text(response, result.id)
 
+    def test_pages_show_the_django_priority(self, admin_client, dbos_environment):
+        # DBOS stores 101 - priority; the admin translates it back.
+        result = add.using(priority=50).enqueue(2, 3)
+
+        response = admin_client.get('/admin/dbos/workflows/')
+        row = next(row for row in response.context['rows'] if row['workflow_id'] == result.id)
+        assert row['priority'] == 50
+
+        response = admin_client.get(f'/admin/dbos/workflows/{result.id}/')
+        assert ('Priority', 50) in response.context['fields']
+
     def test_workflow_detail_shows_steps(self, admin_client, dbos_environment):
         result = wait_for_result(_enqueue_sample_workflow(), TaskResultStatus.SUCCESSFUL)
         response = admin_client.get(f'/admin/dbos/workflows/{result.id}/')
@@ -120,6 +131,8 @@ class TestWorkflowPages:
         assert response.context['input'] == '[[...]]'
         assert_text(response, '2026-01-01T00:00:00+00:00')
         assert_text(response, 'user-42')
+        # DBOS priority 0 (not enqueued through the backend) has no Django priority.
+        assert ('Priority', None) in response.context['fields']
 
     @pytest.mark.parametrize('bad_page', ['abc', '-3'])
     def test_workflow_list_bad_page_inputs_render_page_1(self, admin_client, dbos_environment, bad_page):

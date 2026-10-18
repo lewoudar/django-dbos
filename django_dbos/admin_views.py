@@ -18,6 +18,7 @@ from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
 
+from .backends import _dbos_to_django_priority
 from .client import get_client
 from .exceptions import ImproperlyConfiguredDbos, describe_error, system_database_errors
 from .logging import logger
@@ -88,7 +89,7 @@ def _row(status: Any) -> dict[str, Any]:
         'status': django_status,
         'badge': STATUS_BADGES.get(django_status, 'neutral'),
         'queue_name': status.queue_name,
-        'priority': status.priority,
+        'priority': _dbos_to_django_priority(status.priority),
         'created_at': _epoch_ms(status.created_at),
         'updated_at': _epoch_ms(status.updated_at),
         'error': status.error,
@@ -191,7 +192,7 @@ def workflow_detail(request: HttpRequest, workflow_id: str) -> HttpResponse:
                 ('Status', django_status),
                 ('Queue', status.queue_name),
                 ('Partition key', status.queue_partition_key),
-                ('Priority', status.priority),
+                ('Priority', _dbos_to_django_priority(status.priority)),
                 ('Created at', _epoch_ms(status.created_at)),
                 ('Updated at', _epoch_ms(status.updated_at)),
                 ('Completed at', _epoch_ms(status.completed_at)),
