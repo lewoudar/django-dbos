@@ -94,10 +94,90 @@ class TestDurablePrimitives:
         assert ctx.recv(topic='greetings', timeout_seconds=5) == 'msg'
         assert recv.call_args == call('greetings', 5)
 
+    def test_set_event_async(self, ctx, mocker):
+        set_event_async = mocker.patch('django_dbos.context.DBOS.set_event_async', return_value=None)
+        asyncio.run(ctx.set_event_async('ready', True))
+        assert set_event_async.call_args == call('ready', True)
+
+    def test_get_event_async(self, ctx, mocker):
+        get_event_async = mocker.patch('django_dbos.context.DBOS.get_event_async', return_value='value')
+        assert asyncio.run(ctx.get_event_async('other-wf', 'key', timeout_seconds=10)) == 'value'
+        assert get_event_async.call_args == call('other-wf', 'key', 10)
+
+    def test_get_all_events(self, ctx, mocker):
+        get_all_events = mocker.patch('django_dbos.context.DBOS.get_all_events', return_value={'a': 1})
+        assert ctx.get_all_events('other-wf') == {'a': 1}
+        assert get_all_events.call_args == call('other-wf')
+
+    def test_get_all_events_async(self, ctx, mocker):
+        get_all_events_async = mocker.patch('django_dbos.context.DBOS.get_all_events_async', return_value={'a': 1})
+        assert asyncio.run(ctx.get_all_events_async('other-wf')) == {'a': 1}
+        assert get_all_events_async.call_args == call('other-wf')
+
+    def test_send_async(self, ctx, mocker):
+        send_async = mocker.patch('django_dbos.context.DBOS.send_async', return_value=None)
+        asyncio.run(ctx.send_async('dest-wf', 'hello', topic='greetings'))
+        assert send_async.call_args == call('dest-wf', 'hello', 'greetings')
+
+    def test_recv_async(self, ctx, mocker):
+        recv_async = mocker.patch('django_dbos.context.DBOS.recv_async', return_value='msg')
+        assert asyncio.run(ctx.recv_async(topic='greetings', timeout_seconds=5)) == 'msg'
+        assert recv_async.call_args == call('greetings', 5)
+
     def test_start_child_workflow(self, ctx, mocker):
         start = mocker.patch('django_dbos.context.DBOS.start_workflow', return_value='handle')
         assert ctx.start_child_workflow(some_workflow, 1, kw=2) == 'handle'
         assert start.call_args == call(some_workflow, 1, kw=2)
+
+
+class TestStreams:
+    def test_write_stream(self, ctx, mocker):
+        write_stream = mocker.patch('django_dbos.context.DBOS.write_stream')
+        ctx.write_stream('progress', 1)
+        assert write_stream.call_args == call('progress', 1)
+
+    def test_write_stream_async(self, ctx, mocker):
+        write_stream_async = mocker.patch('django_dbos.context.DBOS.write_stream_async', return_value=None)
+        asyncio.run(ctx.write_stream_async('progress', 1))
+        assert write_stream_async.call_args == call('progress', 1)
+
+    def test_close_stream(self, ctx, mocker):
+        close_stream = mocker.patch('django_dbos.context.DBOS.close_stream')
+        ctx.close_stream('progress')
+        assert close_stream.call_args == call('progress')
+
+    def test_close_stream_async(self, ctx, mocker):
+        close_stream_async = mocker.patch('django_dbos.context.DBOS.close_stream_async', return_value=None)
+        asyncio.run(ctx.close_stream_async('progress'))
+        assert close_stream_async.call_args == call('progress')
+
+    def test_read_stream(self, ctx, mocker):
+        read_stream = mocker.patch('django_dbos.context.DBOS.read_stream', return_value=iter([1, 2]))
+        assert list(ctx.read_stream('other-wf', 'progress', offset=1, timeout_seconds=5)) == [1, 2]
+        assert read_stream.call_args == call('other-wf', 'progress', offset=1, timeout_seconds=5)
+
+    def test_read_stream_async(self, ctx, mocker):
+        async def values(*args, **kwargs):
+            for value in (1, 2):
+                yield value
+
+        read_stream_async = mocker.patch('django_dbos.context.DBOS.read_stream_async', side_effect=values)
+
+        async def read():
+            return [value async for value in ctx.read_stream_async('other-wf', 'progress')]
+
+        assert asyncio.run(read()) == [1, 2]
+        assert read_stream_async.call_args == call('other-wf', 'progress', offset=0, timeout_seconds=None)
+
+    def test_read_stream_offset(self, ctx, mocker):
+        read_stream_offset = mocker.patch('django_dbos.context.DBOS.read_stream_offset', return_value=2)
+        assert ctx.read_stream_offset('other-wf', 'progress', 1, timeout_seconds=5) == 2
+        assert read_stream_offset.call_args == call('other-wf', 'progress', 1, timeout_seconds=5)
+
+    def test_read_stream_offset_async(self, ctx, mocker):
+        read_stream_offset_async = mocker.patch('django_dbos.context.DBOS.read_stream_offset_async', return_value=2)
+        assert asyncio.run(ctx.read_stream_offset_async('other-wf', 'progress', 1)) == 2
+        assert read_stream_offset_async.call_args == call('other-wf', 'progress', 1, timeout_seconds=None)
 
 
 class TestGetDbosContext:

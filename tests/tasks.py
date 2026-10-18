@@ -89,6 +89,30 @@ def durable_onboarding() -> list[str]:
 
 
 @task(backend='dbos')
+@dbos_params(durable_operations=True)
+def streaming_task(count: int) -> dict[str, object]:
+    ctx = get_dbos_context()
+    for index in range(count):
+        ctx.write_stream('progress', index)
+    ctx.close_stream('progress')
+    ctx.set_event('first', 1)
+    ctx.set_event('second', 2)
+    return ctx.get_all_events(ctx.workflow_id)
+
+
+@task(backend='dbos')
+@dbos_params(durable_operations=True)
+async def async_streaming_task(count: int) -> dict[str, object]:
+    ctx = get_dbos_context()
+    for index in range(count):
+        await ctx.write_stream_async('progress', index)
+    await ctx.close_stream_async('progress')
+    await ctx.set_event_async('first', 1)
+    await ctx.set_event_async('second', 2)
+    return await ctx.get_all_events_async(ctx.workflow_id)
+
+
+@task(backend='dbos')
 def context_without_durable_operations() -> None:
     get_dbos_context()  # runs as a step: durable_operations is missing
 

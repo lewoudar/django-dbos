@@ -22,6 +22,7 @@ from .conftest import wait_for_result
 from .tasks import (
     add,
     async_add,
+    async_streaming_task,
     context_without_durable_operations,
     durable_context_task,
     durable_onboarding,
@@ -32,6 +33,7 @@ from .tasks import (
     send_email,
     slow_cron_task,
     slow_task,
+    streaming_task,
     sync_user,
 )
 
@@ -103,6 +105,17 @@ def test_run_step_retries_with_step_options(dbos_environment):
     result = wait_for_result(result, TaskResultStatus.SUCCESSFUL)
     assert result.return_value == 2
     assert len(flaky_calls) == 2
+
+
+@pytest.mark.parametrize('task', [streaming_task, async_streaming_task], ids=['sync', 'async'])
+def test_streams_and_events_from_a_durable_task(dbos_environment, task):
+    result = task.enqueue(3)
+    # Read from outside the worker, as a view would.
+    values = list(get_client().read_stream(result.id, 'progress', timeout_seconds=30))
+    assert values == [0, 1, 2]
+
+    result = wait_for_result(result, TaskResultStatus.SUCCESSFUL)
+    assert result.return_value == {'first': 1, 'second': 2}
 
 
 def test_durable_operations_in_task(dbos_environment):

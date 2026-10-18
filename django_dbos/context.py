@@ -28,6 +28,7 @@ need to go through ``ctx.run_step``.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -101,6 +102,10 @@ class DbosTaskContext:
         """Publish an event on the current workflow, for external consumers."""
         DBOS.set_event(key, value)
 
+    async def set_event_async(self, key: str, value: Any) -> None:
+        """Async variant of ``set_event``."""
+        await DBOS.set_event_async(key, value)
+
     def get_event(self, workflow_id: str, key: str, timeout_seconds: float = 60) -> Any:
         """Wait for an event set by another workflow.
 
@@ -114,6 +119,25 @@ class DbosTaskContext:
         """
         return DBOS.get_event(workflow_id, key, timeout_seconds)
 
+    async def get_event_async(self, workflow_id: str, key: str, timeout_seconds: float = 60) -> Any:
+        """Async variant of ``get_event``."""
+        return await DBOS.get_event_async(workflow_id, key, timeout_seconds)
+
+    def get_all_events(self, workflow_id: str) -> dict[str, Any]:
+        """Read every event currently set on a workflow, without waiting.
+
+        Args:
+            workflow_id: The workflow whose events are read.
+
+        Returns:
+            The events, keyed by event key.
+        """
+        return DBOS.get_all_events(workflow_id)
+
+    async def get_all_events_async(self, workflow_id: str) -> dict[str, Any]:
+        """Async variant of ``get_all_events``."""
+        return await DBOS.get_all_events_async(workflow_id)
+
     def send(self, destination_workflow_id: str, message: Any, topic: str | None = None) -> None:
         """Send a durable message to another workflow.
 
@@ -123,6 +147,10 @@ class DbosTaskContext:
             topic: Optional topic, matched by the receiver's ``recv``.
         """
         DBOS.send(destination_workflow_id, message, topic)
+
+    async def send_async(self, destination_workflow_id: str, message: Any, topic: str | None = None) -> None:
+        """Async variant of ``send``."""
+        await DBOS.send_async(destination_workflow_id, message, topic)
 
     def recv(self, topic: str | None = None, timeout_seconds: float = 60) -> Any:
         """Wait for a durable message sent to this workflow.
@@ -135,6 +163,109 @@ class DbosTaskContext:
             The message, or ``None`` on timeout.
         """
         return DBOS.recv(topic, timeout_seconds)
+
+    async def recv_async(self, topic: str | None = None, timeout_seconds: float = 60) -> Any:
+        """Async variant of ``recv``."""
+        return await DBOS.recv_async(topic, timeout_seconds)
+
+    def write_stream(self, key: str, value: Any) -> None:
+        """Append a value to a stream of the current workflow, for external readers.
+
+        Args:
+            key: The stream key.
+            value: The value to append.
+        """
+        DBOS.write_stream(key, value)
+
+    async def write_stream_async(self, key: str, value: Any) -> None:
+        """Async variant of ``write_stream``."""
+        await DBOS.write_stream_async(key, value)
+
+    def close_stream(self, key: str) -> None:
+        """Close a stream of the current workflow: its readers stop after the last value.
+
+        Args:
+            key: The stream key.
+        """
+        DBOS.close_stream(key)
+
+    async def close_stream_async(self, key: str) -> None:
+        """Async variant of ``close_stream``."""
+        await DBOS.close_stream_async(key)
+
+    def read_stream(
+        self,
+        workflow_id: str,
+        key: str,
+        *,
+        offset: int = 0,
+        timeout_seconds: float | None = None,
+    ) -> Iterator[Any]:
+        """Read the values of another workflow's stream, in order.
+
+        Args:
+            workflow_id: The workflow that writes the stream.
+            key: The stream key.
+            offset: Index of the first value to read.
+            timeout_seconds: How long to wait for each value; waits forever
+                when ``None``.
+
+        Yields:
+            Each value, until the stream is closed or its workflow ends.
+
+        Raises:
+            dbos.error.DBOSStreamTimeoutError: No value arrived within
+                ``timeout_seconds``.
+        """
+        yield from DBOS.read_stream(workflow_id, key, offset=offset, timeout_seconds=timeout_seconds)
+
+    async def read_stream_async(
+        self,
+        workflow_id: str,
+        key: str,
+        *,
+        offset: int = 0,
+        timeout_seconds: float | None = None,
+    ) -> AsyncIterator[Any]:
+        """Async variant of ``read_stream``."""
+        async for value in DBOS.read_stream_async(workflow_id, key, offset=offset, timeout_seconds=timeout_seconds):
+            yield value
+
+    def read_stream_offset(
+        self,
+        workflow_id: str,
+        key: str,
+        offset: int,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> Any:
+        """Read the single value at one offset of another workflow's stream, waiting for it.
+
+        Args:
+            workflow_id: The workflow that writes the stream.
+            key: The stream key.
+            offset: Index of the value to read.
+            timeout_seconds: How long to wait for it; waits forever when ``None``.
+
+        Returns:
+            The value at ``offset``.
+
+        Raises:
+            dbos.error.DBOSStreamTimeoutError: The value did not arrive within
+                ``timeout_seconds``, or the stream ended before ``offset``.
+        """
+        return DBOS.read_stream_offset(workflow_id, key, offset, timeout_seconds=timeout_seconds)
+
+    async def read_stream_offset_async(
+        self,
+        workflow_id: str,
+        key: str,
+        offset: int,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> Any:
+        """Async variant of ``read_stream_offset``."""
+        return await DBOS.read_stream_offset_async(workflow_id, key, offset, timeout_seconds=timeout_seconds)
 
     def start_child_workflow(self, func: Any, *args: Any, **kwargs: Any) -> Any:
         """Start a child workflow without waiting for it."""
