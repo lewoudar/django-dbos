@@ -127,9 +127,20 @@ def onboard_user(context, user_id: int) -> None:
 ```
 
 !!! note
-    `@cron` tasks skip the injected context argument when validating that the
-    function takes no required parameters, so `takes_context=True` combines
-    with `@cron` too.
+    `takes_context=True` also works with [`@cron`](cron.md). A cron task is
+    called without arguments, so `@cron` refuses functions with required
+    parameters, but the context doesn't count: Django injects it.
+
+    ```python
+    from django.tasks import task
+    from django_dbos import cron
+
+
+    @cron('0 3 * * *')
+    @task(takes_context=True)
+    def nightly_report(context) -> None:
+        print(f'attempt {context.attempt}')
+    ```
 
 ## Task options
 
