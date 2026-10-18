@@ -8,7 +8,7 @@ from django.tasks.exceptions import InvalidTask
 
 from django_dbos import dbos_params
 from django_dbos.exceptions import ImproperlyConfiguredDbos
-from django_dbos.params import resolve_partition_key
+from django_dbos.params import resolve_deduplication_id, resolve_partition_key
 from django_dbos.params_dataclass import FUNC_PARAMS_ATTRIBUTE, DbosTaskParams
 
 from .tasks import add, context_task, greet_user
@@ -63,6 +63,10 @@ class TestDbosParams:
         with pytest.raises(ImproperlyConfiguredDbos, match=r'^partition_key must be the name of a task argument'):
             dbos_params(partition_key=42)
 
+    def test_deduplication_id_must_be_a_string_or_a_callable(self):
+        with pytest.raises(ImproperlyConfiguredDbos, match=r'^deduplication_id must be a string or a callable'):
+            dbos_params(deduplication_id=42)
+
     def test_partition_key_below_task_is_validated_with_the_task(self):
         # @dbos_params under @task: the params are picked up before the backend validates the task.
         dbos_params(partition_key='nope')(function_with_a_bad_partition_key)
@@ -104,3 +108,30 @@ class TestResolvePartitionKey:
     def test_arguments_not_matching_the_signature_are_refused(self):
         with pytest.raises(ImproperlyConfiguredDbos, match=r"^Cannot read the partition key of task 'greet_user'"):
             resolve_partition_key(greet_user, (), {'unknown': 1})
+
+
+@pytest.mark.usefixtures('keep_known_tasks')
+class TestResolveDeduplicationId:
+    def test_no_deduplication_id(self):
+        assert resolve_deduplication_id(add, (1, 2), {}) is None
+
+    def test_a_fixed_id_is_kept_as_is(self):
+        task = dbos_params(deduplication_id='nightly-cleanup')(add)
+        assert resolve_deduplication_id(task, (1, 2), {}) == 'nightly-cleanup'
+
+    def test_a_callable_receives_the_arguments(self):
+        task = dbos_params(deduplication_id=lambda user_id, greeting='': f'{greeting}-{user_id}')(greet_user)
+        assert resolve_deduplication_id(task, (1,), {'greeting': 'hi'}) == 'hi-1'
+
+    def test_a_non_string_value_is_converted(self):
+        task = dbos_params(deduplication_id=lambda user_id, **kwargs: user_id)(greet_user)
+        assert resolve_deduplication_id(task, (42,), {}) == '42'
+
+    def test_none_skips_deduplication_for_this_enqueue(self):
+        task = dbos_params(deduplication_id=lambda *args, **kwargs: None)(greet_user)
+        assert resolve_deduplication_id(task, (1,), {}) is None
+
+    def test_an_empty_id_is_refused(self):
+        task = dbos_params(deduplication_id=lambda *args, **kwargs: '')(greet_user)
+        with pytest.raises(ImproperlyConfiguredDbos, match=r"^The deduplication ID of task 'greet_user' is empty"):
+            resolve_deduplication_id(task, (1,), {})

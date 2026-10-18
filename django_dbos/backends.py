@@ -15,7 +15,7 @@ from . import settings as settings_module
 from .client import get_client
 from .exceptions import ImproperlyConfiguredDbos
 from .logging import logger
-from .params import enqueue_signature, resolve_partition_key
+from .params import enqueue_signature, resolve_deduplication_id, resolve_partition_key
 from .results import build_task_result
 from .tasks import DBOSTask
 from .workflow_names import workflow_name_for_task
@@ -155,8 +155,9 @@ class DBOSBackend(BaseTaskBackend):
         delay_seconds = _delay_seconds(task.run_after)
         if delay_seconds is not None:
             options['delay_seconds'] = delay_seconds
-        if params.deduplication_id is not None:
-            options['deduplication_id'] = params.deduplication_id
+        deduplication_id = resolve_deduplication_id(task, args, kwargs)
+        if deduplication_id is not None:
+            options['deduplication_id'] = deduplication_id
         if params.workflow_timeout is not None:
             options['workflow_timeout'] = params.workflow_timeout
         if self.is_partitioned(task.queue_name):

@@ -63,6 +63,17 @@ class TestEnqueueOptions:
         assert options['deduplication_id'] == 'dedup'
         assert options['workflow_timeout'] == 90
 
+    def test_a_callable_deduplication_id_is_resolved_per_enqueue(self):
+        task = dbos_params(deduplication_id=lambda a, b: f'add-{a}-{b}')(add)
+        backend = add.get_backend()
+
+        assert backend._enqueue_options(task, (1, 2), {})['deduplication_id'] == 'add-1-2'
+        assert backend._enqueue_options(task, (3,), {'b': 4})['deduplication_id'] == 'add-3-4'
+
+    def test_a_callable_deduplication_id_returning_none_is_omitted(self):
+        task = dbos_params(deduplication_id=lambda a, b: None)(add)
+        assert 'deduplication_id' not in add.get_backend()._enqueue_options(task, (1, 2), {})
+
     def test_options_omit_unset_params(self):
         options = add.get_backend()._enqueue_options(add, (1, 2), {})
         assert set(options) == {'workflow_name', 'queue_name', 'priority'}

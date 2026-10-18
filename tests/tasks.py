@@ -39,6 +39,12 @@ async def async_add(a: int, b: int) -> int:
     return a + b
 
 
+@task(backend='dbos')
+@dbos_params(deduplication_id=lambda user_id: f'sync-user-{user_id}')
+def sync_user(user_id: int) -> int:
+    return user_id
+
+
 @task(backend='dbos', takes_context=True)
 def context_task(context: object) -> bool:
     return context is not None

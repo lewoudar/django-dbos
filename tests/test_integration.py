@@ -7,6 +7,7 @@ from datetime import timedelta
 
 import pytest
 from dbos import DBOS
+from dbos import error as dbos_error
 from django.tasks import TaskResultStatus
 from django.utils import timezone
 
@@ -31,6 +32,7 @@ from .tasks import (
     send_email,
     slow_cron_task,
     slow_task,
+    sync_user,
 )
 
 pytestmark = pytest.mark.integration
@@ -68,6 +70,22 @@ def test_deferred_task(dbos_environment):
     result = deferred.enqueue(1, 2)
     result = wait_for_result(result, TaskResultStatus.SUCCESSFUL)
     assert result.return_value == 3
+
+
+def test_callable_deduplication_id_rejects_duplicates_per_argument(dbos_environment):
+    # Deferred so the first execution of each user is still enqueued during the test.
+    deferred = sync_user.using(run_after=timezone.now() + timedelta(minutes=1))
+    first = deferred.enqueue(1)
+    other_user = deferred.enqueue(2)
+
+    with pytest.raises(dbos_error.DBOSQueueDeduplicatedError):
+        deferred.enqueue(1)
+
+    client = get_client()
+    assert client.retrieve_workflow(first.id).get_status().deduplication_id == 'sync-user-1'
+    assert client.retrieve_workflow(other_user.id).get_status().deduplication_id == 'sync-user-2'
+    for result in (first, other_user):
+        client.cancel_workflow(result.id)
 
 
 def test_step_retry_after_transient_failure(dbos_environment):

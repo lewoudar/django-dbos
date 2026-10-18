@@ -70,6 +70,35 @@ def resolve_partition_key(task: DBOSTask, args: Any, kwargs: Any) -> str | None:
     return key
 
 
+def resolve_deduplication_id(task: DBOSTask, args: Any, kwargs: Any) -> str | None:
+    """The deduplication ID of an enqueue, from the task's ``deduplication_id`` option.
+
+    Args:
+        task: The enqueued task.
+        args: The positional arguments of the enqueue.
+        kwargs: The keyword arguments of the enqueue.
+
+    Returns:
+        The fixed ID, or the value of the callable as a string; ``None`` when
+        the task has no ``deduplication_id`` or the callable returns ``None``
+        (this enqueue is not deduplicated).
+
+    Raises:
+        ImproperlyConfiguredDbos: The callable returns an empty string.
+    """
+    deduplication_id = task.dbos_params.deduplication_id
+    if deduplication_id is None or isinstance(deduplication_id, str):
+        return deduplication_id
+
+    value = deduplication_id(*args, **kwargs)
+    if value is None:
+        return None
+
+    if not str(value):
+        raise ImproperlyConfiguredDbos(f"The deduplication ID of task '{task.name}' is empty (got {value!r}).")
+    return str(value)
+
+
 def dbos_params(
     _task: Any = _UNSET,
     *,
@@ -78,7 +107,7 @@ def dbos_params(
     step_max_attempts: int = 3,
     step_interval_seconds: float = 1.0,
     step_backoff_rate: float = 2.0,
-    deduplication_id: str | None = None,
+    deduplication_id: str | Callable[..., Any] | None = None,
     workflow_timeout: float | None = None,
     durable_operations: bool = False,
     partition_key: str | Callable[..., Any] | None = None,
@@ -104,8 +133,8 @@ def dbos_params(
         The decorated task when ``_task`` is given, otherwise a decorator.
 
     Raises:
-        ImproperlyConfiguredDbos: ``partition_key`` is neither a string nor a
-            callable.
+        ImproperlyConfiguredDbos: ``partition_key`` or ``deduplication_id``
+            is neither a string nor a callable.
 
     Example:
         ```python
@@ -118,6 +147,9 @@ def dbos_params(
         raise ImproperlyConfiguredDbos(
             f'partition_key must be the name of a task argument or a callable, got {partition_key!r}.'
         )
+    if deduplication_id is not None and not (isinstance(deduplication_id, str) or callable(deduplication_id)):
+        raise ImproperlyConfiguredDbos(f'deduplication_id must be a string or a callable, got {deduplication_id!r}.')
+
     params = DbosTaskParams(
         max_recovery_attempts=max_recovery_attempts,
         step_retries_allowed=step_retries_allowed,

@@ -27,7 +27,10 @@ class DbosTaskParams:
             after each failed attempt.
         deduplication_id: Prevents duplicate enqueues on a queue: while a
             workflow with this ID is enqueued or running, further enqueues
-            raise an error.
+            raise an error. A fixed ID, or a callable receiving the task's
+            arguments, whose value (as a string) is the ID; the callable
+            returns ``None`` to skip deduplication for that enqueue (it is
+            never rejected and blocks no other enqueue).
         workflow_timeout: Max wall-clock duration of the whole workflow, in
             seconds.
         durable_operations: Run the task function at workflow level instead of
@@ -46,7 +49,7 @@ class DbosTaskParams:
     step_max_attempts: int = 3
     step_interval_seconds: float = 1.0
     step_backoff_rate: float = 2.0
-    deduplication_id: str | None = None
+    deduplication_id: str | Callable[..., Any] | None = None
     workflow_timeout: float | None = None
     durable_operations: bool = False
     partition_key: str | Callable[..., Any] | None = None
