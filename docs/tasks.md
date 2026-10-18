@@ -62,12 +62,29 @@ send_report.using(run_after=timezone.now() + timedelta(hours=1)).enqueue()
 
 ## Priorities
 
-Django priorities (-100 to 100, higher first) map onto DBOS queue priorities.
+A task's priority is an integer from -100 to 100, and **the larger the
+number, the sooner the task runs**: a task with priority 10 is picked up
+before one with priority 1, which is itself picked up before one with
+priority -5. The default is 0.
 
 ```python
 @task(priority=50)
 def urgent_task(): ...
+
+
+@task(priority=-50)
+def cleanup_task(): ...
+
+
+# Override the priority for a single enqueue.
+cleanup_task.using(priority=80).enqueue()
 ```
+
+Priorities only order the tasks **waiting in the same queue**: when a worker
+has a free slot, it takes the waiting task with the highest priority, and
+the oldest one among tasks with equal priority. A task that is already
+running is never interrupted, and tasks in different queues don't compete
+with each other.
 
 ## Task context
 
