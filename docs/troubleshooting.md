@@ -243,6 +243,11 @@ you with `SILENCED_SYSTEM_CHECKS`.
 - **`django_dbos.W005`** — `django_dbos` is in `INSTALLED_APPS` but no
   `TASKS` entry uses `django_dbos.backends.DBOSBackend`: tasks run on
   another backend and the django-dbos options are never read.
+- **`django_dbos.W006`** — a task sets `step_*` options in `@dbos_params`
+  together with `durable_operations=True`. Its function no longer runs as a
+  single step, so the options are ignored: set retries on each step instead
+  (see [Retrying a step](workflows.md#retrying-a-step)). Like W001, it only
+  sees the tasks imported so far.
 
 ## `@cron` task "must not require arguments"
 

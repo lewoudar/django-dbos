@@ -59,6 +59,44 @@ def onboard_user(user_id: int) -> None:
 
 Both styles checkpoint the same way and can be mixed freely.
 
+### Retrying a step
+
+A step is not retried by default: if it raises, the task fails. The
+`step_*` options of `@dbos_params` don't help here, they only apply to a
+task running as a single step, so configure retries on each step instead.
+
+With `run_step`, pass DBOS's step options in `step_options`; the other
+keyword arguments still go to the function:
+
+```python
+@dbos_params(durable_operations=True)
+@task
+def onboard_user(user_id: int) -> None:
+    ctx = get_dbos_context()
+    ctx.run_step(
+        send_welcome_email,
+        user_id,
+        step_options={'retries_allowed': True, 'max_attempts': 5, 'interval_seconds': 2.0, 'backoff_rate': 2.0},
+    )
+```
+
+With `@DBOS.step`, pass the same options to the decorator:
+
+```python
+@DBOS.step(retries_allowed=True, max_attempts=5)
+def send_welcome_email(user_id: int) -> None: ...
+```
+
+| Option | DBOS default | Description |
+| --- | --- | --- |
+| `retries_allowed` | `False` | Retry the step when it raises. |
+| `max_attempts` | `3` | Max attempts, the first one included. |
+| `interval_seconds` | `1.0` | Delay before the first retry. |
+| `backoff_rate` | `2.0` | Multiplier applied to the delay after each failed attempt. |
+
+`step_options` can also carry the step's `name`; the `name=` argument takes
+precedence over it.
+
 ## Durable sleep: `sleep` / `sleep_async`
 
 The workflow stops entirely — no thread, no worker slot held — and resumes

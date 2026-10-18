@@ -18,7 +18,8 @@ class DbosTaskParams:
         max_recovery_attempts: How many times DBOS recovers a workflow that
             crashed mid-execution before giving up.
         step_retries_allowed: Whether the task function (run as a DBOS step)
-            is retried on failure.
+            is retried on failure. The ``step_*`` options are ignored with
+            ``durable_operations``, where the function is not a step.
         step_max_attempts: Max attempts for the task function when step
             retries are enabled.
         step_interval_seconds: Delay between step retries.

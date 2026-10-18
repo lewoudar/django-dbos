@@ -180,6 +180,17 @@ def cleanup(): ...
 | `durable_operations` | `False` | Enable durable primitives inside the task (see below). |
 | `partition_key` | `None` | On a partitioned queue, the partition of each execution: the name of a task argument, or a callable receiving the task's arguments (see below). |
 
+!!! note "Step retries and durable operations"
+    The `step_*` options retry the task function **as a whole**, which is
+    what happens by default: the function runs as a single DBOS step. With
+    `durable_operations=True`, the function is no longer a step, so these
+    options are ignored (`django_dbos.W006`): set retries on each step
+    instead, see [Retrying a step](workflows.md#retrying-a-step).
+
+    In the default mode, a `@DBOS.step` function called by the task runs
+    inside the task's own step, so DBOS executes it as a plain function:
+    its own retry options don't apply either, only the `step_*` options do.
+
 ### Partition keys
 
 On a [partitioned queue](configuration.md#partitioned-queues), each
@@ -236,7 +247,7 @@ Available on the context:
 
 | Method | Description |
 | --- | --- |
-| `run_step(func, *args, name=...)` | Execute a function as a checkpointed step. |
+| `run_step(func, *args, name=..., step_options=...)` | Execute a function as a checkpointed step, optionally retried. |
 | `run_step_async(...)` | Async variant. |
 | `sleep(seconds)` / `sleep_async(seconds)` | Durable sleep: the workflow stops and resumes later. |
 | `set_event(key, value)` | Publish an event on the current workflow. |

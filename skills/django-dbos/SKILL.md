@@ -182,7 +182,7 @@ def onboard_user(user_id: int) -> None:
 
 | Method | Use for |
 | --- | --- |
-| `run_step(func, *args, name=...)` / `run_step_async(...)` | Checkpoint a plain function call. Prefer this for functions you don't own, or when the step name must be computed per call (e.g. `f'email-{user_id}'` in a loop). |
+| `run_step(func, *args, name=..., step_options=...)` / `run_step_async(...)` | Checkpoint a plain function call. Prefer this for functions you don't own, or when the step name must be computed per call (e.g. `f'email-{user_id}'` in a loop). Not retried unless `step_options={'retries_allowed': True, 'max_attempts': ..., 'interval_seconds': ..., 'backoff_rate': ...}`; other keyword arguments go to `func`. |
 | `sleep(seconds)` / `sleep_async(...)` | Durable sleep — the workflow stops, no thread/worker slot held, resumes even across a restart. |
 | `set_event(key, value)` / `get_event(workflow_id, key, timeout_seconds=60)` | Publish/read a value on a workflow. A view polling progress reads it with `get_client().get_event(workflow_id, key, timeout_seconds=1)` — never `DBOS.get_event` outside the worker. |
 | `send(workflow_id, message, topic=None)` / `recv(topic=None, timeout_seconds=60)` | Point-to-point, consumed-once message. `recv` blocks the *calling* workflow (must be called from inside one); typical use: pause for a human decision, which a view delivers with `get_client().send(workflow_id, True, topic='approval')`. |
@@ -406,6 +406,13 @@ actually about durability.
   created yet`; use `get_client()`.
 - `get_dbos_context()` in a task without `durable_operations=True` →
   `NoActiveDbosContext`.
+- `step_*` options of `@dbos_params` on a `durable_operations` task → ignored
+  (`django_dbos.W006`): retry each step with `run_step(..., step_options=...)`
+  or `@DBOS.step(retries_allowed=True, ...)`. Conversely, without
+  `durable_operations` a `@DBOS.step` called by the task runs as a plain
+  function inside the task's step: only the `step_*` options apply.
+- Passing `retries_allowed=...` to `run_step` as a plain keyword → it goes to
+  the function (`TypeError`), not to DBOS; use `step_options`.
 - Expecting a cancellation to stop a running task → it only stops at the next
   step boundary; a task without `durable_operations` runs to its end.
 - First enqueue fails with a missing table/database → the system database
