@@ -22,6 +22,10 @@ works through each primitive with a realistic example.
 [Task context](tasks.md#task-context)) — a task can read `context.attempt`
 and call `get_dbos_context()` in the same function.
 
+Every primitive below but `start_child_workflow` has an `_async` variant
+(`sleep_async`, `set_event_async`, `read_stream_async`, ...) to `await` from
+an `async def` task.
+
 ## Steps: `run_step` / `run_step_async`
 
 The bread and butter of a durable workflow: run a function once, checkpoint
@@ -156,6 +160,10 @@ def report_progress(request, workflow_id):
 useful here, since "no value yet" and "still on the first stage" both read as
 legitimate states while the workflow starts up.
 
+Inside a workflow, `ctx.get_all_events(workflow_id)` reads every event a
+workflow has set so far, as a dict, without waiting. The client has no
+equivalent: a view reads events one key at a time with `get_event`.
+
 ## Messages: `send` / `recv`
 
 Where events are a value anyone can read, messages are point-to-point and
@@ -191,6 +199,57 @@ def approve_refund(request, workflow_id):
 
 `recv` (unlike `get_event`) must be called from inside a running workflow —
 it has no meaning otherwise.
+
+## Streams: `write_stream` / `close_stream` / `read_stream`
+
+An event holds one value, overwritten by the next `set_event`; a stream is
+an ordered, append-only sequence of values. The workflow appends to it with
+`write_stream` and closes it with `close_stream`; readers get every value, in
+order, as it is written. Typical use: send a task's output to the browser
+while it is still running.
+
+```python
+@dbos_params(durable_operations=True)
+@task
+def export_orders(customer_id: int) -> int:
+    ctx = get_dbos_context()
+    order_ids = ctx.run_step(list_order_ids, customer_id)
+    for order_id in order_ids:
+        line = ctx.run_step(render_order_line, order_id)
+        ctx.write_stream('lines', line)
+    ctx.close_stream('lines')
+    return len(order_ids)
+```
+
+A view reads the stream through the client and hands it to Django's
+`StreamingHttpResponse`:
+
+```python
+from django.http import StreamingHttpResponse
+
+from django_dbos.client import get_client
+
+
+def export_lines(request, workflow_id):
+    lines = get_client().read_stream(workflow_id, 'lines', timeout_seconds=30)
+    return StreamingHttpResponse((f'{line}\n' for line in lines), content_type='text/plain')
+```
+
+`read_stream` yields each value as soon as it is written and stops when the
+stream is closed or the workflow ends. Reading again starts from the first
+value: pass `offset=` to resume where a previous reader stopped, or use
+`read_stream_offset(workflow_id, key, offset)` to wait for a single value.
+`timeout_seconds` limits the wait for each value and raises
+`dbos.error.DBOSStreamTimeoutError` when it expires; without it, a reader
+waits forever on a stream that is never closed.
+
+!!! tip
+    Under WSGI, a streaming response holds a worker thread until the stream
+    ends. Under ASGI, use an async view with `read_stream_async`, which
+    returns an async iterator `StreamingHttpResponse` accepts as is.
+
+A workflow can also read another workflow's stream with
+`ctx.read_stream(...)` / `ctx.read_stream_offset(...)`.
 
 ## Child workflows: `start_child_workflow`
 

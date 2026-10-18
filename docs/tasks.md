@@ -304,17 +304,23 @@ Available on the context:
 | Method | Description |
 | --- | --- |
 | `run_step(func, *args, name=..., step_options=...)` | Execute a function as a checkpointed step, optionally retried. |
-| `run_step_async(...)` | Async variant. |
-| `sleep(seconds)` / `sleep_async(seconds)` | Durable sleep: the workflow stops and resumes later. |
+| `sleep(seconds)` | Durable sleep: the workflow stops and resumes later. |
 | `set_event(key, value)` | Publish an event on the current workflow. |
 | `get_event(workflow_id, key)` | Wait for an event from another workflow. |
+| `get_all_events(workflow_id)` | Read every event a workflow has set so far, without waiting. |
 | `send(workflow_id, message, topic)` | Send a durable message to another workflow. |
 | `recv(topic, timeout_seconds)` | Wait for a durable message. |
+| `write_stream(key, value)` / `close_stream(key)` | Append a value to a stream of the current workflow / close it. |
+| `read_stream(workflow_id, key)` / `read_stream_offset(workflow_id, key, offset)` | Read another workflow's stream, value by value / at one offset. |
 | `start_child_workflow(func, *args)` | Start a child workflow without waiting for it. |
+
+Every method but `start_child_workflow` has an `_async` variant
+(`run_step_async`, `sleep_async`, `read_stream_async`, ...) for `async def`
+tasks.
 
 See [Workflows](workflows.md) for a worked example of each primitive —
 progress reporting with events, pausing for an external decision with
-messages, fanning out with child workflows.
+messages, streaming output to the browser, fanning out with child workflows.
 
 !!! warning
     With `durable_operations=True`, the task function must be deterministic and

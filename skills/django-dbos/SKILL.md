@@ -185,8 +185,15 @@ def onboard_user(user_id: int) -> None:
 | `run_step(func, *args, name=..., step_options=...)` / `run_step_async(...)` | Checkpoint a plain function call. Prefer this for functions you don't own, or when the step name must be computed per call (e.g. `f'email-{user_id}'` in a loop). Not retried unless `step_options={'retries_allowed': True, 'max_attempts': ..., 'interval_seconds': ..., 'backoff_rate': ...}`; other keyword arguments go to `func`. |
 | `sleep(seconds)` / `sleep_async(...)` | Durable sleep — the workflow stops, no thread/worker slot held, resumes even across a restart. |
 | `set_event(key, value)` / `get_event(workflow_id, key, timeout_seconds=60)` | Publish/read a value on a workflow. A view polling progress reads it with `get_client().get_event(workflow_id, key, timeout_seconds=1)` — never `DBOS.get_event` outside the worker. |
+| `get_all_events(workflow_id)` | Every event set on a workflow so far, as a dict, without waiting. Context only: `DBOSClient` has no equivalent, a view reads events key by key. |
 | `send(workflow_id, message, topic=None)` / `recv(topic=None, timeout_seconds=60)` | Point-to-point, consumed-once message. `recv` blocks the *calling* workflow (must be called from inside one); typical use: pause for a human decision, which a view delivers with `get_client().send(workflow_id, True, topic='approval')`. |
+| `write_stream(key, value)` / `close_stream(key)` | Append-only ordered stream on the current workflow (vs an event: one value, overwritten). Always close it, or readers without `timeout_seconds` wait forever. A view streams it to the browser with `StreamingHttpResponse(get_client().read_stream(workflow_id, key, timeout_seconds=30))` (`read_stream_async` under ASGI); it stops when the stream is closed or the workflow ends. |
+| `read_stream(workflow_id, key, offset=0, timeout_seconds=None)` / `read_stream_offset(workflow_id, key, offset)` | Read another workflow's stream from inside a workflow: generator of every value / the single value at `offset`. Timeouts raise `dbos.error.DBOSStreamTimeoutError`. |
 | `start_child_workflow(func, *args)` | Start another DBOS workflow (must be `@DBOS.workflow`-decorated) without waiting; returns a handle (`handle.get_result()`). Independent checkpointing/recovery from the parent — not for calling another `@task`, just use `.enqueue()` for that. |
+
+Every method but `start_child_workflow` has an `_async` variant
+(`set_event_async`, `recv_async`, `read_stream_async`, ...) for `async def`
+tasks.
 
 If you own the step function, DBOS's own `@DBOS.step` decorator works too —
 call it with normal arguments, no context object needed, as long as the call
