@@ -141,8 +141,10 @@ except dbos_error.DBOSQueueDeduplicatedError:
     pass  # already scheduled
 ```
 
-The ID is set on the decorator, so it is the same for every enqueue of that
-task: at most one execution of it can be pending at any time.
+A fixed ID is the same for every enqueue of that task: at most one execution
+of it can be pending at any time. To only reject duplicates of the same
+arguments, compute the ID with a callable (see
+[Deduplication](tasks.md#deduplication)).
 
 ## A task is `FAILED` with `TaskCancelled` or `TaskTimedOut`
 

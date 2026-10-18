@@ -174,7 +174,7 @@ def cleanup(): ...
 | `step_max_attempts` | `3` | Max attempts when step retries are enabled. |
 | `step_interval_seconds` | `1.0` | Delay between step retries. |
 | `step_backoff_rate` | `2.0` | Multiplier applied to the interval after each failure. |
-| `deduplication_id` | `None` | While a workflow with this ID is enqueued or running, further enqueues raise an error. |
+| `deduplication_id` | `None` | While a workflow with this ID is enqueued or running, further enqueues raise an error: a fixed string, or a callable receiving the task's arguments (see below). |
 | `workflow_timeout` | `None` | Max wall-clock duration of the whole execution, in seconds, counted from the moment a worker starts it (time spent waiting in the queue or in `run_after` does not count). The task is [cancelled](#cancelling-a-task) at the deadline and its result reports `FAILED` with a `TaskTimedOut` error. |
 | `max_recovery_attempts` | DBOS default | How many times DBOS recovers the task after worker crashes. Beyond that it gives up: the result reports `FAILED` with a `MaxRecoveryAttemptsExceeded` error. |
 | `durable_operations` | `False` | Enable durable primitives inside the task (see below). |
@@ -220,6 +220,62 @@ The key cannot be `None` or empty. It is ignored when the task runs on a
 queue that is not partitioned (say, after `.using(queue_name='default')`),
 and a task without one cannot be enqueued on a partitioned queue. The
 partition of an execution is shown on its admin page.
+
+### Deduplication
+
+`deduplication_id` rejects an enqueue while another execution with the same
+ID is still waiting or running on the queue: the enqueue raises
+`DBOSQueueDeduplicatedError` (see
+[Troubleshooting](troubleshooting.md#dbosqueuededuplicatederror-when-enqueuing)).
+
+A string is a fixed ID, shared by every enqueue of the task: at most one
+execution of it can be pending at any time.
+
+```python
+@dbos_params(deduplication_id='nightly-cleanup')
+@task
+def cleanup(): ...
+```
+
+To deduplicate per argument, pass a callable; it receives the arguments
+given to `enqueue()` and its result is converted to a string:
+
+```python
+@dbos_params(deduplication_id=lambda user_id: f'sync-user-{user_id}')
+@task
+def sync_user(user_id: int): ...
+
+
+sync_user.enqueue(42)
+sync_user.enqueue(7)  # fine: another user
+sync_user.enqueue(42)  # DBOSQueueDeduplicatedError while the first one is pending
+```
+
+When the callable returns `None`, that enqueue is not deduplicated: it is
+never rejected and blocks no other enqueue. Use it to bypass deduplication
+on demand, for example to force a sync:
+
+```python
+@dbos_params(deduplication_id=lambda user_id, force=False: None if force else f'sync-user-{user_id}')
+@task
+def sync_user(user_id: int, force: bool = False): ...
+
+
+sync_user.enqueue(42)  # ID sync-user-42
+sync_user.enqueue(42)  # DBOSQueueDeduplicatedError: sync-user-42 is still pending
+sync_user.enqueue(42, force=True)  # no ID: accepted
+```
+
+!!! warning
+    DBOS compares deduplication IDs per queue, regardless of the task. If
+    `sync_user` and `notify_user` share a queue and both use the bare
+    `user_id` as their ID, `sync_user(42)` pending makes `notify_user(42)`
+    fail as a duplicate. Prefix the ID with the task's name (`sync-user-42`,
+    not `42`).
+
+Deduplication is not supported on a partitioned queue (`django_dbos.E006`).
+Unlike a partition with `partition_concurrency=1`, which queues the second
+execution behind the first, deduplication refuses it.
 
 ## Durable workflows
 

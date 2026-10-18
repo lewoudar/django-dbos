@@ -30,7 +30,7 @@ It is not about developing django-dbos itself.
 | Retry the task function itself on failure | `@dbos_params(step_retries_allowed=True, ...)` |
 | A multi-stage job: several checkpoints, a durable sleep, waiting on an external signal | `@dbos_params(durable_operations=True)` + `get_dbos_context()` or `@DBOS.step`/`@DBOS.workflow` |
 | Run on a schedule | `@cron(...)` stacked on `@task` |
-| Reject duplicate concurrent runs | `@dbos_params(deduplication_id=...)` |
+| Reject duplicate concurrent runs (of the whole task, or per argument) | `@dbos_params(deduplication_id='fixed-id')` / `@dbos_params(deduplication_id=lambda user_id: f'sync-user-{user_id}')` |
 | Limit concurrency per user/tenant (e.g. one report at a time per user) | Queue option `partition_concurrency` + `@dbos_params(partition_key='user_id')` |
 | Cap total wall-clock time | `@dbos_params(workflow_timeout=...)` |
 | Stop or relaunch a task | `get_client().cancel_workflow(id)` / `resume_workflow(id)` — see "Cancelling a task" |
@@ -146,7 +146,7 @@ def cleanup(): ...
 | `step_max_attempts` | `3` | Max attempts when step retries are enabled. |
 | `step_interval_seconds` | `1.0` | Delay between step retries. |
 | `step_backoff_rate` | `2.0` | Multiplier applied to the interval after each failure. |
-| `deduplication_id` | `None` | While a workflow with this ID is enqueued or running, further enqueues raise `dbos.error.DBOSQueueDeduplicatedError`. Fixed per task: at most one pending execution of it. |
+| `deduplication_id` | `None` | While a workflow with this ID is enqueued or running, further enqueues raise `dbos.error.DBOSQueueDeduplicatedError`. A string is fixed per task (at most one pending execution of it); a callable `(*args, **kwargs)` computes it per enqueue, converted to `str` (`None` = don't deduplicate this one), e.g. `lambda user_id: f'sync-user-{user_id}'`. IDs are compared per queue regardless of the task: two tasks on one queue both using a bare `user_id` collide (`sync_user(42)` pending rejects `notify_user(42)`), so prefix the ID with the task's name. Unlike a `partition_concurrency=1` partition (which queues the duplicate), it refuses it. |
 | `workflow_timeout` | `None` | Cancelled past this deadline; result reports `FAILED` with `TaskTimedOut`. Queue wait time doesn't count. |
 | `max_recovery_attempts` | DBOS default | Recovery attempts after worker crashes; beyond, `FAILED` with `MaxRecoveryAttemptsExceeded`. |
 | `durable_operations` | `False` | Run the function at workflow level — see below. |
