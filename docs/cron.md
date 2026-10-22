@@ -36,7 +36,9 @@ def nightly_report(): ...
 
 !!! note
     Scheduled tasks must not require arguments. django-dbos validates this when
-    the module loads.
+    the module loads. The context of `@task(takes_context=True)` doesn't count:
+    Django injects it, so a scheduled task can still use it (see
+    [Task context](tasks.md#task-context)).
 
 There is no separate scheduler process to run: every `dbos worker` fires the
 schedules. With several workers, each firing gets a deterministic ID (the
