@@ -8,12 +8,17 @@ import sys
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from sentry_sdk.transport import Transport
 
 from django_dbos.tasks import DBOSTask
+from django_dbos.workflow_names import workflow_name_for_task
+
+from .tasks import add
 
 
 def noop() -> None: ...
@@ -106,3 +111,32 @@ class MemoryTransport(Transport):
 
     def capture_envelope(self, envelope: Any) -> None:
         self.envelopes.append(envelope)
+
+
+WORKFLOW_ID = 'wf-1'
+CREATED_AT_MS = 1_700_000_000_000
+
+
+def make_status(**overrides: Any) -> SimpleNamespace:
+    """A DBOS workflow status of the ``add`` task, successful unless ``overrides`` say otherwise."""
+    values = {
+        'status': 'SUCCESS',
+        'name': workflow_name_for_task(add),
+        'error': None,
+        'input': {'args': [1, 2], 'kwargs': {}},
+        'output': 3,
+        'created_at': CREATED_AT_MS,
+        'updated_at': CREATED_AT_MS + 1_000,
+        'dequeued_at': CREATED_AT_MS + 200,
+        'completed_at': CREATED_AT_MS + 1_000,
+        'workflow_timeout_ms': None,
+        'workflow_deadline_epoch_ms': None,
+        'recovery_attempts': 1,
+        'executor_id': 'worker-1',
+    }
+    return SimpleNamespace(**(values | overrides))
+
+
+def ms(value: datetime | None) -> int | None:
+    """A result timestamp as epoch milliseconds, to compare with DBOS' values."""
+    return None if value is None else round(value.timestamp() * 1000)
