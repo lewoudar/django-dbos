@@ -25,8 +25,8 @@ from django_dbos.exceptions import (
 from django_dbos.results import build_task_result
 from django_dbos.workflow_names import workflow_name_for_task
 
+from .helpers import set_dbos_options
 from .tasks import add, async_add
-from .tests_helpers import set_dbos_options
 
 WORKFLOW_ID = 'wf-1'
 CREATED_AT_MS = 1_700_000_000_000

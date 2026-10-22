@@ -17,8 +17,8 @@ from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 
 from django_dbos import client, system_db
 
+from .helpers import run_worker
 from .tasks import add
-from .tests_helpers import run_worker
 
 pytestmark = pytest.mark.integration
 

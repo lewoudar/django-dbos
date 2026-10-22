@@ -10,7 +10,7 @@ import pytest
 from click.exceptions import Exit
 from django.core.management import call_command
 
-from tests.tests_helpers import set_dbos_options
+from tests.helpers import set_dbos_options
 
 
 def migrate(*args: str) -> str:

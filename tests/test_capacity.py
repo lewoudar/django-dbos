@@ -25,7 +25,7 @@ from django_dbos.exceptions import ImproperlyConfiguredDbos
 from django_dbos.heartbeat import STALE_AFTER_SECONDS, write_heartbeat
 from django_dbos.models import WorkerHeartbeat
 from django_dbos.settings import resolve_capacity, resolve_queues, resolve_settings
-from tests.tests_helpers import set_dbos_options
+from tests.helpers import set_dbos_options
 
 from .tasks import add
 

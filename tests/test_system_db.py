@@ -13,7 +13,7 @@ from django.core.management.base import CommandError
 from sqlalchemy.dialects import postgresql
 
 from django_dbos import system_db
-from tests.tests_helpers import set_dbos_options
+from tests.helpers import set_dbos_options
 
 
 @pytest.fixture

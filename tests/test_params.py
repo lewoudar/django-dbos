@@ -11,8 +11,8 @@ from django_dbos.exceptions import ImproperlyConfiguredDbos
 from django_dbos.params import resolve_deduplication_id, resolve_partition_key
 from django_dbos.params_dataclass import FUNC_PARAMS_ATTRIBUTE, DbosTaskParams
 
+from .helpers import make_dbos_task
 from .tasks import add, context_task, greet_user
-from .tests_helpers import make_dbos_task
 
 
 def bare_function() -> None: ...

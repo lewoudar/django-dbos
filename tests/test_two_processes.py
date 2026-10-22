@@ -15,8 +15,8 @@ from django.tasks import TaskResultStatus
 
 from django_dbos import client
 
+from .helpers import run_worker
 from .tasks import add
-from .tests_helpers import run_worker
 
 pytestmark = pytest.mark.integration
 

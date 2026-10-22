@@ -6,7 +6,7 @@ import pytest
 
 from django_dbos import sentry
 from django_dbos.sentry import crontab_to_monitor_config, monitor_slug
-from tests.tests_helpers import MemoryTransport, make_dbos_task
+from tests.helpers import MemoryTransport, make_dbos_task
 
 
 class TestMonitorSlug:
@@ -110,7 +110,7 @@ class TestMonitorCronExecution:
         enabled.return_value = True
         with sentry.monitor_cron_execution(task, self.CONFIG):
             pass
-        monitor.assert_called_once_with('tests-tests_helpers-noop', monitor_config=self.CONFIG)
+        monitor.assert_called_once_with('tests-helpers-noop', monitor_config=self.CONFIG)
 
     def test_is_sentry_enabled_without_sdk(self, mocker):
         # A missing module import raises ImportError: sys.modules[...] = None.
