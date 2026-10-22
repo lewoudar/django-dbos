@@ -5,7 +5,7 @@ from django.tasks import TaskResultStatus
 from django.tasks.exceptions import TaskResultDoesNotExist
 
 from django_dbos.exceptions import MaxRecoveryAttemptsExceeded, TaskCancelled, TaskFailure, TaskTimedOut
-from django_dbos.results import build_task_result
+from django_dbos.results import build_task_result, is_cancelled, is_recovery_exhausted, is_timed_out
 
 from .helpers import CREATED_AT_MS, WORKFLOW_ID, make_status, ms
 
@@ -158,3 +158,34 @@ class TestBuildTaskResult:
 
         assert result.status == TaskResultStatus.SUCCESSFUL
         assert result.return_value is None
+
+
+TIMED_OUT = {'workflow_timeout_ms': 500, 'workflow_deadline_epoch_ms': CREATED_AT_MS + 500}
+
+
+class TestFailureReasons:
+    @pytest.mark.parametrize(
+        ('fields', 'cancelled', 'timed_out', 'recovery_exhausted'),
+        [
+            pytest.param({'status': 'CANCELLED'}, True, False, False, id='cancelled'),
+            pytest.param({'status': 'CANCELLED', **TIMED_OUT}, True, True, False, id='timed-out'),
+            pytest.param({'status': 'MAX_RECOVERY_ATTEMPTS_EXCEEDED'}, False, False, True, id='recovery-exhausted'),
+            pytest.param({'status': 'ERROR', 'error': ValueError('boom')}, False, False, False, id='task-error'),
+            pytest.param({'status': 'SUCCESS'}, False, False, False, id='successful'),
+            pytest.param({'status': 'PENDING'}, False, False, False, id='running'),
+        ],
+    )
+    def test_reason(self, fields, cancelled, timed_out, recovery_exhausted):
+        result = build_task_result(WORKFLOW_ID, make_status(output=None, **fields))
+
+        assert is_cancelled(result) is cancelled
+        assert is_timed_out(result) is timed_out
+        assert is_recovery_exhausted(result) is recovery_exhausted
+
+    def test_error_class_that_no_longer_exists_is_not_imported(self):
+        error = TaskFailure('myapp.errors.RemovedError', 'boom')
+        result = build_task_result(WORKFLOW_ID, make_status(status='ERROR', output=None, error=error))
+
+        assert not is_cancelled(result)
+        assert not is_timed_out(result)
+        assert not is_recovery_exhausted(result)
