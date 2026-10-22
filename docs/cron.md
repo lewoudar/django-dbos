@@ -61,7 +61,14 @@ when `USE_TZ` is enabled, otherwise in UTC.
 
 ## Sentry monitoring
 
-Install the extra:
+Nobody waits for the result of a scheduled task: if the workers are down or
+the task keeps failing, nothing tells you. [Sentry](https://sentry.io), the
+error-tracking service, closes that gap with [cron
+monitors](https://docs.sentry.io/product/crons/): the worker checks in when a
+scheduled execution starts and ends, and Sentry alerts you when one is
+missed, fails or runs longer than expected.
+
+django-dbos sends these check-ins once the `sentry` extra is installed:
 
 ```bash
 uv add "django-dbos[sentry]"
@@ -69,8 +76,7 @@ uv add "django-dbos[sentry]"
 pip install "django-dbos[sentry]"
 ```
 
-Scheduled tasks are then monitored with [Sentry cron
-monitors](https://docs.sentry.io/product/crons/): the monitor is upserted by
+Scheduled tasks are then monitored automatically: the monitor is upserted by
 Sentry on each check-in, so there is nothing to create in the UI. Its slug is
 derived from the task's module path (`myapp.tasks.cleanup` →
 `myapp-tasks-cleanup`; long paths are cut from the left to Sentry's 50
