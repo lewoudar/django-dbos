@@ -4,7 +4,7 @@ import pytest
 
 from django_dbos import dbos_setup
 from django_dbos.exceptions import ImproperlyConfiguredDbos
-from tests.tests_helpers import set_dbos_options
+from tests.helpers import set_dbos_options
 
 
 class TestBuildDbosConfig:

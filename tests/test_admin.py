@@ -28,7 +28,7 @@ from django_dbos.admin import (
 from django_dbos.heartbeat import write_heartbeat
 from django_dbos.models import WorkerHeartbeat
 from django_dbos.scheduling import register_cron_schedules
-from tests.tests_helpers import set_dbos_options
+from tests.helpers import set_dbos_options
 
 from .conftest import wait_for_result
 from .tasks import add

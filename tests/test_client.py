@@ -5,7 +5,7 @@ from dbos import DBOSPortableJSONSerializer
 
 from django_dbos import client
 from django_dbos.exceptions import ImproperlyConfiguredDbos
-from tests.tests_helpers import set_dbos_options
+from tests.helpers import set_dbos_options
 
 
 @pytest.fixture(autouse=True)

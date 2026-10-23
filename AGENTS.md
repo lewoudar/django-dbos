@@ -103,7 +103,7 @@ or Settings › Pages — then every push to `main` deploys.
   importing task modules and running its checks. A bad queue declaration is
   stored, reported by `django_dbos.E001` and raised on enqueue. In tests,
   override the backend's `OPTIONS` with
-  `tests_helpers.set_dbos_options(settings, {...})`.
+  `tests.helpers.set_dbos_options(settings, {...})`.
 - CockroachDB system database: DBOS forces `postgresql+psycopg` when given a
   URL alone, and its SQL fails on CockroachDB under psycopg 3 (typed
   parameters, `float * int`). `system_engine` builds a `cockroachdb+psycopg2`

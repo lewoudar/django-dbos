@@ -12,7 +12,7 @@ import pytest
 from django_dbos.checks import check_dbos_settings
 from django_dbos.exceptions import ImproperlyConfiguredDbos, TaskFailure
 from django_dbos.serializers import MsgspecJSONSerializer, MsgspecMsgpackSerializer
-from tests.tests_helpers import set_dbos_options
+from tests.helpers import set_dbos_options
 
 SERIALIZERS = [MsgspecJSONSerializer, MsgspecMsgpackSerializer]
 

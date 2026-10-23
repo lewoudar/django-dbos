@@ -25,7 +25,7 @@ from django_dbos.checks import (
 )
 from django_dbos.exceptions import ImproperlyConfiguredDbos
 from tests import tasks as test_tasks
-from tests.tests_helpers import set_dbos_options
+from tests.helpers import set_dbos_options
 
 DBOS_BACKEND = 'django_dbos.backends.DBOSBackend'
 

@@ -9,7 +9,7 @@ from dbos import DBOSPortableJSONSerializer
 from django_dbos import settings as dbos_settings
 from django_dbos.checks import check_dbos_settings
 from django_dbos.exceptions import ImproperlyConfiguredDbos, scrub_credentials
-from tests.tests_helpers import set_dbos_options
+from tests.helpers import set_dbos_options
 
 DBOS_BACKEND = 'django_dbos.backends.DBOSBackend'
 

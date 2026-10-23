@@ -358,14 +358,20 @@ by its `workflow_timeout` is cancelled the same way, and reports
 `TaskTimedOut`, a subclass of `TaskCancelled`:
 
 ```python
-from django.tasks import TaskResultStatus
-
-from django_dbos.exceptions import TaskCancelled
+from django_dbos.results import is_cancelled, is_timed_out
 
 result.refresh()
-if result.status == TaskResultStatus.FAILED and issubclass(result.errors[0].exception_class, TaskCancelled):
-    ...  # cancelled, or timed out
+if is_timed_out(result):
+    ...  # stopped by its workflow_timeout
+elif is_cancelled(result):
+    ...  # cancelled from the admin or the client
 ```
+
+`is_cancelled` is also true for a timed-out task, as `TaskTimedOut` is a
+`TaskCancelled`. `is_recovery_exhausted(result)` likewise tells a task DBOS
+gave up on after [too many crashes](#options-reference). These functions
+read the result as it is, without querying the system database: call
+`result.refresh()` first. They return `False` for results of other backends.
 
 `get_client().resume_workflow(result.id)` (the admin's **Resume**) undoes a
 cancellation: the task continues after the last step that completed — from

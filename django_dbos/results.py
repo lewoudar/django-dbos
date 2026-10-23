@@ -33,8 +33,7 @@ def _task_error(error: BaseException) -> TaskError:
             exception_class_path=error.exception_class_path,
             traceback=error.traceback or f'{error.exception_class_path}: {error.message}',
         )
-    error_class = type(error)
-    return TaskError(exception_class_path=f'{error_class.__module__}.{error_class.__qualname__}', traceback=repr(error))
+    return TaskError(exception_class_path=_class_path(type(error)), traceback=repr(error))
 
 
 def _cancellation_reason(status: Any) -> TaskCancelled:
@@ -123,6 +122,67 @@ def build_task_result(workflow_id: str, status: Any) -> TaskResult:
     if django_status == TaskResultStatus.SUCCESSFUL and status.output is not None:
         object.__setattr__(result, '_return_value', status.output)
     return result
+
+
+def is_cancelled(result: TaskResult) -> bool:
+    """Whether the task was cancelled, from the admin, the client or its ``workflow_timeout``.
+
+    Reads the result as it is: call ``result.refresh()`` first for the latest state.
+
+    Args:
+        result: A task result, from any backend.
+
+    Returns:
+        ``True`` if the result is ``FAILED`` with ``TaskCancelled`` or its
+        subclass ``TaskTimedOut``; ``False`` otherwise, including for results
+        of other backends.
+    """
+    return _failed_with(result, TaskCancelled, TaskTimedOut)
+
+
+def is_timed_out(result: TaskResult) -> bool:
+    """Whether the task was cancelled because it exceeded its ``workflow_timeout``.
+
+    Reads the result as it is: call ``result.refresh()`` first for the latest state.
+
+    Args:
+        result: A task result, from any backend.
+
+    Returns:
+        ``True`` if the result is ``FAILED`` with ``TaskTimedOut``; ``False``
+        otherwise, including for results of other backends.
+    """
+    return _failed_with(result, TaskTimedOut)
+
+
+def is_recovery_exhausted(result: TaskResult) -> bool:
+    """Whether DBOS gave up recovering the task after more worker crashes than ``max_recovery_attempts`` allows.
+
+    Reads the result as it is: call ``result.refresh()`` first for the latest state.
+
+    Args:
+        result: A task result, from any backend.
+
+    Returns:
+        ``True`` if the result is ``FAILED`` with ``MaxRecoveryAttemptsExceeded``;
+        ``False`` otherwise, including for results of other backends.
+    """
+    return _failed_with(result, MaxRecoveryAttemptsExceeded)
+
+
+def _failed_with(result: TaskResult, *error_classes: type[BaseException]) -> bool:
+    """Whether the error that ended the task is one of ``error_classes``.
+
+    Compares class paths: ``TaskError.exception_class`` imports the class, and
+    a task error whose class no longer exists would raise ``ImportError``.
+    """
+    if result.status != TaskResultStatus.FAILED or not result.errors:
+        return False
+    return result.errors[-1].exception_class_path in {_class_path(error_class) for error_class in error_classes}
+
+
+def _class_path(error_class: type[BaseException]) -> str:
+    return f'{error_class.__module__}.{error_class.__qualname__}'
 
 
 def _epoch_to_datetime(epoch_ms: int | None) -> datetime | None:
