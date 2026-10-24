@@ -75,10 +75,15 @@ real backend (and Django's immediate backend) would — instead of propagating
 it into the test. Queues are validated against the
 backend's declared queues exactly as in production.
 
-Features the inline mode cannot reproduce (deferred tasks, durable
-operations) execute anyway; pass `--dbos-inline-strict` to turn them into
-errors instead, so your tests don't silently diverge from production
-semantics.
+Two features have no inline equivalent:
+
+- **Durable operations**: enqueueing a task with
+  `@dbos_params(durable_operations=True)` raises a `DjangoDbosError`. Its
+  primitives (`get_dbos_context()`, steps, sleeps, events...) only exist
+  inside a DBOS workflow: test it with [`dbos_system`](#real-system-database-dbos_system).
+- **Deferred tasks**: a task enqueued with `run_after` runs at once, its
+  delay ignored. Pass `--dbos-inline-strict` to make the enqueue raise
+  instead, so your tests don't silently diverge from production semantics.
 
 ## Real system database: `dbos_system`
 
