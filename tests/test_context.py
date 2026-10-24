@@ -5,7 +5,7 @@ from unittest.mock import call
 
 import pytest
 
-from django_dbos.context import DbosTaskContext, NoActiveDbosContext, get_dbos_context
+from django_dbos.context import DbosTaskContext, NoActiveDbosContext, as_completed, get_dbos_context
 
 
 @pytest.fixture()
@@ -129,6 +129,16 @@ class TestDurablePrimitives:
         assert ctx.start_child_workflow(some_workflow, 1, kw=2) == 'handle'
         assert start.call_args == call(some_workflow, 1, kw=2)
 
+    def test_wait_first(self, ctx, mocker):
+        wait_first = mocker.patch('django_dbos.context.DBOS.wait_first', return_value='h2')
+        assert ctx.wait_first(['h1', 'h2']) == 'h2'
+        assert wait_first.call_args == call(['h1', 'h2'])  # DBOS' own default interval
+
+    def test_wait_first_with_polling_interval(self, ctx, mocker):
+        wait_first = mocker.patch('django_dbos.context.DBOS.wait_first', return_value='h1')
+        ctx.wait_first(['h1'], polling_interval_sec=0.1)
+        assert wait_first.call_args == call(['h1'], polling_interval_sec=0.1)
+
 
 class TestStreams:
     def test_write_stream(self, ctx, mocker):
@@ -197,3 +207,33 @@ class TestGetDbosContext:
         mocker.patch('django_dbos.context.DBOS.workflow_id', 'wf-123')
         mocker.patch('django_dbos.context.DBOS.step_id', None)
         assert get_dbos_context().workflow_id == 'wf-123'
+
+
+class TestAsCompleted:
+    @pytest.fixture(autouse=True)
+    def in_workflow(self, mocker):
+        mocker.patch('django_dbos.context.DBOS.workflow_id', 'wf-123')
+        mocker.patch('django_dbos.context.DBOS.step_id', None)
+
+    def test_yields_handles_in_completion_order(self, mocker):
+        finished = iter(['h2', 'h3', 'h1'])
+        waited_on = []
+
+        def wait_first(handles, polling_interval_sec):
+            waited_on.append((list(handles), polling_interval_sec))
+            return next(finished)
+
+        mocker.patch('django_dbos.context.DBOS.wait_first', side_effect=wait_first)
+        assert list(as_completed(iter(['h1', 'h2', 'h3']), polling_interval_sec=0.1)) == ['h2', 'h3', 'h1']
+        # Each call waits on the handles still pending.
+        assert waited_on == [(['h1', 'h2', 'h3'], 0.1), (['h1', 'h3'], 0.1), (['h1'], 0.1)]
+
+    def test_no_handles(self, mocker):
+        wait_first = mocker.patch('django_dbos.context.DBOS.wait_first')
+        assert list(as_completed([])) == []
+        wait_first.assert_not_called()
+
+    def test_requires_a_durable_task(self, mocker):
+        mocker.patch('django_dbos.context.DBOS.workflow_id', None)
+        with pytest.raises(NoActiveDbosContext):
+            next(as_completed(['h1']))

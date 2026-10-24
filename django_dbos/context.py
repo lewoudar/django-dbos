@@ -28,11 +28,11 @@ need to go through ``ctx.run_step``.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Iterable, Iterator
 from dataclasses import dataclass
 from typing import Any
 
-from dbos import DBOS, StepOptions
+from dbos import DBOS, StepOptions, WorkflowHandle
 
 from .exceptions import DjangoDbosError
 
@@ -270,6 +270,59 @@ class DbosTaskContext:
     def start_child_workflow(self, func: Any, *args: Any, **kwargs: Any) -> Any:
         """Start a child workflow without waiting for it."""
         return DBOS.start_workflow(func, *args, **kwargs)
+
+    def wait_first(
+        self, handles: list[WorkflowHandle[Any]], *, polling_interval_sec: float | None = None
+    ) -> WorkflowHandle[Any]:
+        """Wait for the first of several workflows to finish.
+
+        The wait is checkpointed: on replay, the same handle is returned.
+
+        Args:
+            handles: Handles of the workflows to wait for, e.g. from
+                ``start_child_workflow``.
+            polling_interval_sec: How often to check the workflows' status,
+                in seconds; DBOS' default when ``None``.
+
+        Returns:
+            The handle of a workflow that has finished, successfully or not.
+
+        Raises:
+            ValueError: ``handles`` is empty or holds the same workflow twice.
+        """
+        if polling_interval_sec is None:
+            return DBOS.wait_first(handles)
+        return DBOS.wait_first(handles, polling_interval_sec=polling_interval_sec)
+
+
+def as_completed(
+    handles: Iterable[WorkflowHandle[Any]], *, polling_interval_sec: float | None = None
+) -> Iterator[WorkflowHandle[Any]]:
+    """Iterate over workflows as they finish, from inside a task with ``durable_operations``.
+
+    A loop over ``DbosTaskContext.wait_first``: each wait is checkpointed, so
+    a replay goes through the handles in the same order.
+
+    Args:
+        handles: Handles of the workflows to wait for, e.g. from
+            ``start_child_workflow``.
+        polling_interval_sec: How often to check the workflows' status, in
+            seconds; DBOS' default when ``None``.
+
+    Yields:
+        Each handle once its workflow has finished, successfully or not:
+        ``handle.get_result()`` returns its result or raises its error.
+
+    Raises:
+        NoActiveDbosContext: Called outside a task with ``durable_operations``.
+        ValueError: ``handles`` holds the same workflow twice.
+    """
+    ctx = get_dbos_context()
+    pending = list(handles)
+    while pending:
+        handle = ctx.wait_first(pending, polling_interval_sec=polling_interval_sec)
+        pending.remove(handle)
+        yield handle
 
 
 def get_dbos_context() -> DbosTaskContext:

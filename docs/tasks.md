@@ -313,10 +313,11 @@ Available on the context:
 | `write_stream(key, value)` / `close_stream(key)` | Append a value to a stream of the current workflow / close it. |
 | `read_stream(workflow_id, key)` / `read_stream_offset(workflow_id, key, offset)` | Read another workflow's stream, value by value / at one offset. |
 | `start_child_workflow(func, *args)` | Start a child workflow without waiting for it. |
+| `wait_first(handles)` | Wait for the first of several workflows to finish (see also `as_completed`). |
 
-Every method but `start_child_workflow` has an `_async` variant
-(`run_step_async`, `sleep_async`, `read_stream_async`, ...) for `async def`
-tasks.
+Every method but `start_child_workflow` and `wait_first` has an `_async`
+variant (`run_step_async`, `sleep_async`, `read_stream_async`, ...) for
+`async def` tasks.
 
 See [Workflows](workflows.md) for a worked example of each primitive —
 progress reporting with events, pausing for an external decision with

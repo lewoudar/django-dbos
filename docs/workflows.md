@@ -22,9 +22,10 @@ works through each primitive with a realistic example.
 [Task context](tasks.md#task-context)) — a task can read `context.attempt`
 and call `get_dbos_context()` in the same function.
 
-Every primitive below but `start_child_workflow` has an `_async` variant
-(`sleep_async`, `set_event_async`, `read_stream_async`, ...) to `await` from
-an `async def` task.
+Every primitive below but those of child workflows (`start_child_workflow`,
+`wait_first`, `as_completed`) has an `_async` variant (`sleep_async`,
+`set_event_async`, `read_stream_async`, ...) to `await` from an `async def`
+task.
 
 ## Steps: `run_step` / `run_step_async`
 
@@ -137,6 +138,10 @@ def generate_report(report_id: int) -> str:
     return path
 ```
 
+A key holds a single value: each `set_event` on it replaces the previous
+one, so a reader always gets the latest — here, the stage the report has
+reached when it asks.
+
 A view polling that same workflow (`result.id` from `.enqueue()`, or the
 workflow ID shown in the admin) reads the event through django-dbos' client,
 the same `DBOSClient` the backend uses to enqueue tasks:
@@ -156,9 +161,10 @@ def report_progress(request, workflow_id):
     [Processes](configuration.md#processes)). In a web process they raise
     `No DBOS was created yet`.
 
-`get_event` returns `None` if it times out waiting, rather than raising —
-useful here, since "no value yet" and "still on the first stage" both read as
-legitimate states while the workflow starts up.
+`get_event` returns at once when the key has a value. Before the workflow
+sets it for the first time, it waits up to `timeout_seconds` and returns
+`None` rather than raising: the view reports `{"stage": null}`, the report
+hasn't started yet.
 
 Inside a workflow, `ctx.get_all_events(workflow_id)` reads every event a
 workflow has set so far, as a dict, without waiting. The client has no
@@ -283,3 +289,76 @@ def process_upload(attachment_id: int) -> None:
 If you don't need the result, drop the `get_result()` loop — the children
 keep running and get recovered independently even if the parent finishes or
 crashes first.
+
+### Results in completion order: `wait_first` / `as_completed`
+
+The loop above reads the results in the order the children were started: a
+slow first child holds back the results of the others, even when they are
+already done. `as_completed` yields each handle as soon as its child
+finishes:
+
+```python
+from django_dbos import as_completed
+
+
+@dbos_params(durable_operations=True)
+@task
+def process_upload(attachment_id: int) -> None:
+    ctx = get_dbos_context()
+    handles = [ctx.start_child_workflow(resize_image, attachment_id, size) for size in ('thumbnail', 'medium', 'large')]
+    for handle in as_completed(handles):
+        url = handle.get_result()  # the child's result; raises if the child failed
+        ctx.run_step(publish_rendition, attachment_id, url)
+```
+
+It is a loop over `ctx.wait_first(handles)`, which waits for the first of
+several workflows to finish and returns its handle. Call it directly for
+more control, such as stopping at the first result:
+
+```python
+fastest = ctx.wait_first(handles)
+```
+
+Each wait is checkpointed: after a crash, the replay goes through the
+children in the same order. Both check the children's status at DBOS'
+default interval (one second today); `polling_interval_sec=` changes it.
+
+## Crashes and failing steps
+
+What happens to a workflow stopped halfway depends on why it stopped. Take
+`export_orders` from the streams example above, with four orders: the first
+order's line is rendered and written to the stream, then the workflow stops
+while rendering the second one.
+
+| The workflow stopped because... | What happens next |
+| --- | --- |
+| the worker crashed or was redeployed | DBOS recovers it: the function replays from the top, but every operation already checkpointed returns its recorded result instead of running — `list_order_ids`, the first `render_order_line` and the first `write_stream` included, so the first order's line is not written to the stream twice. Only the second order is rendered again. |
+| it was cancelled, then resumed | The same: it continues after the last completed step. |
+| `render_order_line` raised | The task is `FAILED` and stays so: recovery is for crashes, and resuming doesn't apply to a failed workflow. Enqueueing the task again starts a new workflow, from the first order. |
+
+A step that can fail transiently (a network call, a locked row) should
+therefore retry: see [Retrying a step](#retrying-a-step).
+
+### Restarting a failed workflow from its failing step
+
+`fork_workflow` copies a workflow and runs the copy from a given step: the
+steps before it return the original's recorded results without running, and
+the values they wrote to streams are copied too. Once the cause of the
+failure is fixed:
+
+```python
+from django_dbos.client import get_client
+
+handle = get_client().fork_workflow(result.id, start_step=4)
+forked = export_orders.get_result(handle.workflow_id)  # a task result like any other
+```
+
+The step to start from is in the **Step ID** column of the workflow's [admin](admin.md)
+page, where the failing step shows its error. Stream writes count as steps:
+here `list_order_ids` is step 1, the first `render_order_line` step 2, its
+`write_stream` step 3, and the failing `render_order_line` step 4. The fork
+re-renders orders 2 to 4, and its stream holds all four lines.
+
+The fork is a new execution with its own ID: read its result and its stream
+through `handle.workflow_id`. The admin's **Fork** button forks from step 0,
+which runs the whole workflow again.
