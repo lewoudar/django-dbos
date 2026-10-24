@@ -288,3 +288,43 @@ def process_upload(attachment_id: int) -> None:
 If you don't need the result, drop the `get_result()` loop — the children
 keep running and get recovered independently even if the parent finishes or
 crashes first.
+
+## Crashes and failing steps
+
+What happens to a workflow stopped halfway depends on why it stopped. Take
+`export_orders` from the streams example above, with four orders: the first
+order's line is rendered and written to the stream, then the workflow stops
+while rendering the second one.
+
+| The workflow stopped because... | What happens next |
+| --- | --- |
+| the worker crashed or was redeployed | DBOS recovers it: the function replays from the top, but every operation already checkpointed returns its recorded result instead of running — `list_order_ids`, the first `render_order_line` and the first `write_stream` included, so the first order's line is not written to the stream twice. Only the second order is rendered again. |
+| it was cancelled, then resumed | The same: it continues after the last completed step. |
+| `render_order_line` raised | The task is `FAILED` and stays so: recovery is for crashes, and resuming doesn't apply to a failed workflow. Enqueueing the task again starts a new workflow, from the first order. |
+
+A step that can fail transiently (a network call, a locked row) should
+therefore retry: see [Retrying a step](#retrying-a-step).
+
+### Restarting a failed workflow from its failing step
+
+`fork_workflow` copies a workflow and runs the copy from a given step: the
+steps before it return the original's recorded results without running, and
+the values they wrote to streams are copied too. Once the cause of the
+failure is fixed:
+
+```python
+from django_dbos.client import get_client
+
+handle = get_client().fork_workflow(result.id, start_step=4)
+forked = export_orders.get_result(handle.workflow_id)  # a task result like any other
+```
+
+The step to start from is in the **Step ID** column of the workflow's [admin](admin.md)
+page, where the failing step shows its error. Stream writes count as steps:
+here `list_order_ids` is step 1, the first `render_order_line` step 2, its
+`write_stream` step 3, and the failing `render_order_line` step 4. The fork
+re-renders orders 2 to 4, and its stream holds all four lines.
+
+The fork is a new execution with its own ID: read its result and its stream
+through `handle.workflow_id`. The admin's **Fork** button forks from step 0,
+which runs the whole workflow again.
