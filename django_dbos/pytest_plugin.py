@@ -46,8 +46,7 @@ def pytest_addoption(parser: Any) -> None:
         '--dbos-inline-strict',
         action='store_true',
         default=False,
-        help="Make django-dbos' dbos_inline fixture fail on features it cannot "
-        'reproduce (deferred tasks, durable operations).',
+        help="Make django-dbos' dbos_inline fixture refuse deferred tasks (run_after) instead of running them at once.",
     )
     group.addoption(
         '--dbos-system-db',
@@ -97,21 +96,24 @@ def _inline_result(task: Any, args: tuple[Any, ...], kwargs: dict[str, Any], out
 
 
 def _check_inline_support(backend: Any, task: Any) -> None:
-    """Mirror the real backend's validation, and refuse what inline cannot reproduce in strict mode."""
+    """Mirror the real backend's validation, and refuse what inline cannot reproduce.
+
+    Durable operations are always refused: outside a DBOS workflow,
+    ``get_dbos_context()`` raises, so the task could only yield a FAILED
+    result. A deferred task can run at once, unless in strict mode.
+    """
     backend._validate_queues_config()
     backend.validate_task(task)
-    if not backend._inline_strict:
-        return
-    if task.run_after is not None:
-        raise DjangoDbosError(
-            f"Task '{task.name}' is deferred (run_after) and cannot be "
-            'executed inline. Test the task body with run_task() or use '
-            'the dbos_system fixture.'
-        )
     if task.dbos_params.durable_operations:
         raise DjangoDbosError(
             f"Task '{task.name}' uses durable operations, which the inline "
             'mode cannot reproduce. Use the dbos_system fixture.'
+        )
+    if backend._inline_strict and task.run_after is not None:
+        raise DjangoDbosError(
+            f"Task '{task.name}' is deferred (run_after) and cannot be "
+            'executed inline. Test the task body with run_task() or use '
+            'the dbos_system fixture.'
         )
 
 
