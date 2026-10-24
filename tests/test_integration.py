@@ -29,6 +29,7 @@ from .tasks import (
     durable_step_with_retries,
     export_task,
     failing_task,
+    fan_out_task,
     flaky_calls,
     flaky_with_retries,
     send_email,
@@ -139,6 +140,11 @@ def test_failed_durable_task_is_forked_from_its_failing_step(dbos_environment):
     # The stream values written before the fork point are copied.
     lines = list(client.read_stream(forked.id, 'lines', timeout_seconds=5))
     assert lines == ['order 1', 'order 2', 'order 3', 'order 4']
+
+
+def test_child_workflows_as_completed(dbos_environment):
+    result = wait_for_result(fan_out_task.enqueue(), TaskResultStatus.SUCCESSFUL)
+    assert result.return_value == ['fast', 'medium', 'slow']
 
 
 def test_durable_operations_in_task(dbos_environment):

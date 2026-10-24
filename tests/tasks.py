@@ -3,9 +3,10 @@
 import asyncio
 import time
 
+from dbos import DBOS
 from django.tasks import task
 
-from django_dbos import cron, dbos_params, get_dbos_context
+from django_dbos import as_completed, cron, dbos_params, get_dbos_context
 
 results: dict[str, list[object]] = {'events': []}
 flaky_calls: list[int] = []
@@ -184,3 +185,20 @@ def export_task() -> int:
         ctx.write_stream('lines', ctx.run_step(render_export_line, order_id))
     ctx.close_stream('lines')
     return len(order_ids)
+
+
+@DBOS.workflow()
+def sleeping_child(label: str, seconds: float) -> str:
+    time.sleep(seconds)
+    return label
+
+
+@task(backend='dbos')
+@dbos_params(durable_operations=True)
+def fan_out_task() -> list[str]:
+    ctx = get_dbos_context()
+    handles = [
+        ctx.start_child_workflow(sleeping_child, label, seconds)
+        for label, seconds in [('slow', 2), ('fast', 0), ('medium', 1)]
+    ]
+    return [handle.get_result() for handle in as_completed(handles, polling_interval_sec=0.1)]
