@@ -137,6 +137,10 @@ def generate_report(report_id: int) -> str:
     return path
 ```
 
+A key holds a single value: each `set_event` on it replaces the previous
+one, so a reader always gets the latest — here, the stage the report has
+reached when it asks.
+
 A view polling that same workflow (`result.id` from `.enqueue()`, or the
 workflow ID shown in the admin) reads the event through django-dbos' client,
 the same `DBOSClient` the backend uses to enqueue tasks:
@@ -156,9 +160,10 @@ def report_progress(request, workflow_id):
     [Processes](configuration.md#processes)). In a web process they raise
     `No DBOS was created yet`.
 
-`get_event` returns `None` if it times out waiting, rather than raising —
-useful here, since "no value yet" and "still on the first stage" both read as
-legitimate states while the workflow starts up.
+`get_event` returns at once when the key has a value. Before the workflow
+sets it for the first time, it waits up to `timeout_seconds` and returns
+`None` rather than raising: the view reports `{"stage": null}`, the report
+hasn't started yet.
 
 Inside a workflow, `ctx.get_all_events(workflow_id)` reads every event a
 workflow has set so far, as a dict, without waiting. The client has no
