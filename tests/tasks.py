@@ -157,3 +157,30 @@ def slow_cron_task() -> None:
 async def async_cron_body() -> str:
     await asyncio.sleep(0)
     return 'async cron ran'
+
+
+export_calls: list[str] = []
+export_failures: set[int] = set()
+
+
+def list_export_ids() -> list[int]:
+    export_calls.append('list')
+    return [1, 2, 3, 4]
+
+
+def render_export_line(order_id: int) -> str:
+    export_calls.append(f'render-{order_id}')
+    if order_id in export_failures:
+        raise RuntimeError(f'cannot render order {order_id}')
+    return f'order {order_id}'
+
+
+@task(backend='dbos')
+@dbos_params(durable_operations=True)
+def export_task() -> int:
+    ctx = get_dbos_context()
+    order_ids = ctx.run_step(list_export_ids)
+    for order_id in order_ids:
+        ctx.write_stream('lines', ctx.run_step(render_export_line, order_id))
+    ctx.close_stream('lines')
+    return len(order_ids)

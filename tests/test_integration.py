@@ -27,6 +27,7 @@ from .tasks import (
     durable_context_task,
     durable_onboarding,
     durable_step_with_retries,
+    export_task,
     failing_task,
     flaky_calls,
     flaky_with_retries,
@@ -116,6 +117,28 @@ def test_streams_and_events_from_a_durable_task(dbos_environment, task):
 
     result = wait_for_result(result, TaskResultStatus.SUCCESSFUL)
     assert result.return_value == {'first': 1, 'second': 2}
+
+
+def test_failed_durable_task_is_forked_from_its_failing_step(dbos_environment):
+    tasks_module.export_calls.clear()
+    tasks_module.export_failures.add(2)
+    try:
+        result = wait_for_result(export_task.enqueue(), TaskResultStatus.FAILED)
+    finally:
+        tasks_module.export_failures.clear()
+    client = get_client()
+    [failed_step] = [step for step in client.list_workflow_steps(result.id) if step['error'] is not None]
+
+    tasks_module.export_calls.clear()
+    handle = client.fork_workflow(result.id, failed_step['function_id'])
+
+    # The fork is a task result like any other, and reuses the steps before the failing one.
+    forked = wait_for_result(export_task.get_result(handle.workflow_id), TaskResultStatus.SUCCESSFUL)
+    assert forked.return_value == 4
+    assert tasks_module.export_calls == ['render-2', 'render-3', 'render-4']
+    # The stream values written before the fork point are copied.
+    lines = list(client.read_stream(forked.id, 'lines', timeout_seconds=5))
+    assert lines == ['order 1', 'order 2', 'order 3', 'order 4']
 
 
 def test_durable_operations_in_task(dbos_environment):
