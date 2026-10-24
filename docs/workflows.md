@@ -22,9 +22,10 @@ works through each primitive with a realistic example.
 [Task context](tasks.md#task-context)) — a task can read `context.attempt`
 and call `get_dbos_context()` in the same function.
 
-Every primitive below but `start_child_workflow` has an `_async` variant
-(`sleep_async`, `set_event_async`, `read_stream_async`, ...) to `await` from
-an `async def` task.
+Every primitive below but those of child workflows (`start_child_workflow`,
+`wait_first`, `as_completed`) has an `_async` variant (`sleep_async`,
+`set_event_async`, `read_stream_async`, ...) to `await` from an `async def`
+task.
 
 ## Steps: `run_step` / `run_step_async`
 
@@ -288,6 +289,39 @@ def process_upload(attachment_id: int) -> None:
 If you don't need the result, drop the `get_result()` loop — the children
 keep running and get recovered independently even if the parent finishes or
 crashes first.
+
+### Results in completion order: `wait_first` / `as_completed`
+
+The loop above reads the results in the order the children were started: a
+slow first child holds back the results of the others, even when they are
+already done. `as_completed` yields each handle as soon as its child
+finishes:
+
+```python
+from django_dbos import as_completed
+
+
+@dbos_params(durable_operations=True)
+@task
+def process_upload(attachment_id: int) -> None:
+    ctx = get_dbos_context()
+    handles = [ctx.start_child_workflow(resize_image, attachment_id, size) for size in ('thumbnail', 'medium', 'large')]
+    for handle in as_completed(handles):
+        url = handle.get_result()  # the child's result; raises if the child failed
+        ctx.run_step(publish_rendition, attachment_id, url)
+```
+
+It is a loop over `ctx.wait_first(handles)`, which waits for the first of
+several workflows to finish and returns its handle. Call it directly for
+more control, such as stopping at the first result:
+
+```python
+fastest = ctx.wait_first(handles)
+```
+
+Each wait is checkpointed: after a crash, the replay goes through the
+children in the same order. Both check the children's status at DBOS'
+default interval (one second today); `polling_interval_sec=` changes it.
 
 ## Crashes and failing steps
 
