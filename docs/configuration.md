@@ -116,7 +116,7 @@ one (`django_dbos.E003`, see [System checks](troubleshooting.md#system-checks)).
 | Key | Default | Description |
 | --- | --- | --- |
 | `NAME` | `DBOS_APPLICATION_NAME` env, else `"django"` | DBOS application name. |
-| `APPLICATION_VERSION` | auto | Application version recorded with workflow executions. By default DBOS derives it from the workflow source code. |
+| `APPLICATION_VERSION` | `DBOS__APPVERSION` env, else computed | Version recorded with workflow executions: decides which workers recover and dequeue them. Set it explicitly, see [Application version](#application-version). |
 | `SYSTEM_DATABASE_URL` | derived | URL of the DBOS system database (see above). |
 | `SYSTEM_DB_PREFIX` | `"dbos_"` | Prefix of the derived system database name. |
 | `SYSTEM_DB_SCHEMA` | `"dbos"` | Schema holding DBOS system tables (PostgreSQL). |
@@ -488,3 +488,56 @@ TASKS = {
 `None` falls back to the `DBOS__VMID` environment variable DBOS itself reads,
 then to `"local"`. [Deployment](deployment.md) shows which variable to use on
 common platforms.
+
+### Application version
+
+DBOS records an application version on every workflow execution, and uses
+it to decide who may run it:
+
+- **Recovery**: a restarting worker recovers the interrupted workflows of
+  its own executor ID *and* its own version only.
+- **Queues**: tasks enqueued from web processes carry no version; only the
+  workers running the **latest** version — the one registered by the most
+  recent worker launch — dequeue them.
+
+`OPTIONS["APPLICATION_VERSION"]` sets it, then the `DBOS__APPVERSION`
+environment variable. Without either, DBOS computes one: a hash of the
+source code of the registered workflows, of the DBOS version and of the
+application name. With django-dbos, those workflows are the generic wrappers
+running your tasks, not your task functions, so the computed version:
+
+- does **not** change when you edit a task: a new worker recovers workflows
+  interrupted under the old code, and replays a durable task's checkpoints
+  with the new one;
+- **does** change when you add or remove a task or a `@cron`, or upgrade
+  DBOS: workflows left interrupted under the old version are no longer
+  recovered by the new workers.
+
+Set the version explicitly, with one of two policies:
+
+1. **A stable version, bumped on incompatible changes** to a durable task
+   (steps added, removed or reordered, a changed signature). Ordinary
+   deployments keep the version, so recovery carries on across them; bumping
+   it when needed is up to you. Tasks running as a single step (the default)
+   restart from the beginning when recovered and rarely need a bump: this is
+   the simple choice for most projects.
+2. **One version per release**, such as the commit SHA. Code never replays
+   checkpoints recorded by another version, but a workflow interrupted under
+   one release is not recovered by the workers of the next: let the old
+   workers finish their workflows before stopping them (blue/green
+   deployments), or resume them by hand.
+
+```python
+import os
+
+TASKS = {
+    'default': {
+        'BACKEND': 'django_dbos.backends.DBOSBackend',
+        'OPTIONS': {
+            'APPLICATION_VERSION': '3',  # policy 1; or os.environ['GIT_SHA'] for policy 2
+        },
+    },
+}
+```
+
+The version of each execution is shown on its admin page.
