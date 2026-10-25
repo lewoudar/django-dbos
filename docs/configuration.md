@@ -146,9 +146,13 @@ serializer:
 | `'django_dbos.serializers.MsgspecMsgpackSerializer'` | yes | fast | base64 msgpack | JSON types, aware `datetime`, `bytes` |
 | `'dbos.DBOSPortableJSONSerializer'` | yes | slow | JSON | JSON types |
 
-On a 1000-row payload, a round trip takes about 0.36 ms with msgspec JSON,
-0.56 ms with msgspec msgpack, 0.78 ms with pickle and 2.9 ms with DBOS'
-portable JSON.
+As an order of magnitude, measured on a developer laptop: a round trip
+(serialization then deserialization) of a list of 1000 dicts, each with six
+fields (ints, strings, a float, a boolean, a short list), takes about 0.5 ms
+with msgspec JSON, 1 ms with msgspec msgpack, 1.5 ms with pickle and 7 ms with
+DBOS' portable JSON. Absolute times depend on your hardware and payload; the
+ratios carry over. Next to the system database round trip every checkpoint
+costs, they rarely matter: choose on safety and supported types first.
 
 The msgspec serializers need the `msgspec` extra:
 
