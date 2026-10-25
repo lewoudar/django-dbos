@@ -30,7 +30,9 @@ DBOS records workflow executions in a **system database**. By default,
 django-dbos derives its URL from your default Django connection:
 
 - **PostgreSQL**: same server, dedicated database `dbos_<dbname>` (created
-  by `manage.py migrate`, along with DBOS' tables and migrations).
+  by `manage.py migrate`, along with DBOS' tables and migrations). The tables
+  live in its `dbos` schema (`SYSTEM_DB_SCHEMA`), and `SYSTEM_DB_PREFIX`
+  changes the `dbos_` prefix.
 - **CockroachDB** ([django-cockroachdb](https://github.com/cockroachdb/django-cockroachdb)):
   same, see [CockroachDB](#cockroachdb) below.
 - **SQLite**: a `<name>-dbos.sqlite` file next to your database. Handy for
@@ -56,6 +58,12 @@ TASKS = {
     The URL only carries DBOS' *system* tables. Your application data stays in
     the Django databases you already have; tasks executed by the worker use
     Django's ORM as usual.
+
+!!! tip "Keeping DBOS' tables in your Django database"
+    Point `SYSTEM_DATABASE_URL` at your Django database itself: DBOS' tables
+    then go to their own `dbos` schema, next to Django's tables in `public`,
+    and no second database is created. Handy where creating a database is
+    awkward, or when the migrating role cannot (no `CREATEDB` privilege).
 
 ### CockroachDB
 
