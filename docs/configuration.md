@@ -30,7 +30,9 @@ DBOS records workflow executions in a **system database**. By default,
 django-dbos derives its URL from your default Django connection:
 
 - **PostgreSQL**: same server, dedicated database `dbos_<dbname>` (created
-  by `manage.py migrate`, along with DBOS' tables and migrations).
+  by `manage.py migrate`, along with DBOS' tables and migrations). The tables
+  live in its `dbos` schema (`SYSTEM_DB_SCHEMA`), and `SYSTEM_DB_PREFIX`
+  changes the `dbos_` prefix.
 - **CockroachDB** ([django-cockroachdb](https://github.com/cockroachdb/django-cockroachdb)):
   same, see [CockroachDB](#cockroachdb) below.
 - **SQLite**: a `<name>-dbos.sqlite` file next to your database. Handy for
@@ -56,6 +58,12 @@ TASKS = {
     The URL only carries DBOS' *system* tables. Your application data stays in
     the Django databases you already have; tasks executed by the worker use
     Django's ORM as usual.
+
+!!! tip "Keeping DBOS' tables in your Django database"
+    Point `SYSTEM_DATABASE_URL` at your Django database itself: DBOS' tables
+    then go to their own `dbos` schema, next to Django's tables in `public`,
+    and no second database is created. Handy where creating a database is
+    awkward, or when the migrating role cannot (no `CREATEDB` privilege).
 
 ### CockroachDB
 
@@ -108,7 +116,7 @@ one (`django_dbos.E003`, see [System checks](troubleshooting.md#system-checks)).
 | Key | Default | Description |
 | --- | --- | --- |
 | `NAME` | `DBOS_APPLICATION_NAME` env, else `"django"` | DBOS application name. |
-| `APPLICATION_VERSION` | auto | Application version recorded with workflow executions. By default DBOS derives it from the workflow source code. |
+| `APPLICATION_VERSION` | `DBOS__APPVERSION` env, else computed | Version recorded with workflow executions: decides which workers recover and dequeue them. Set it explicitly, see [Application version](#application-version). |
 | `SYSTEM_DATABASE_URL` | derived | URL of the DBOS system database (see above). |
 | `SYSTEM_DB_PREFIX` | `"dbos_"` | Prefix of the derived system database name. |
 | `SYSTEM_DB_SCHEMA` | `"dbos"` | Schema holding DBOS system tables (PostgreSQL). |
@@ -138,9 +146,13 @@ serializer:
 | `'django_dbos.serializers.MsgspecMsgpackSerializer'` | yes | fast | base64 msgpack | JSON types, aware `datetime`, `bytes` |
 | `'dbos.DBOSPortableJSONSerializer'` | yes | slow | JSON | JSON types |
 
-On a 1000-row payload, a round trip takes about 0.36 ms with msgspec JSON,
-0.56 ms with msgspec msgpack, 0.78 ms with pickle and 2.9 ms with DBOS'
-portable JSON.
+As an order of magnitude, measured on a developer laptop: a round trip
+(serialization then deserialization) of a list of 1000 dicts, each with six
+fields (ints, strings, a float, a boolean, a short list), takes about 0.5 ms
+with msgspec JSON, 1 ms with msgspec msgpack, 1.5 ms with pickle and 7 ms with
+DBOS' portable JSON. Absolute times depend on your hardware and payload; the
+ratios carry over. Next to the system database round trip every checkpoint
+costs, they rarely matter: choose on safety and supported types first.
 
 The msgspec serializers need the `msgspec` extra:
 
@@ -294,6 +306,89 @@ database passwords are masked.
     frame — including URLs held by the SDK. Keep `DEBUG=False` in
     production, as always.
 
+## Database connections
+
+Each process holds two sets of connections, configured separately: Django's
+own, to your application databases, and DBOS', to the system database.
+
+### Django's connections in the worker
+
+The worker runs each task in a thread of DBOS' executor and recycles Django's
+connections around it, as a request would (see
+[Database connections](tasks.md#database-connections)). With Django's default
+`CONN_MAX_AGE = 0`, every task that touches the ORM therefore opens a new
+connection and closes it at the end: a few milliseconds per task, often more
+than a short task itself, and a steady churn of connections under load. Keep
+connections open instead, in one of two ways (Django refuses the
+combination):
+
+```python
+# Persistent connections: one per thread running a task, reused task after task.
+DATABASES['default']['CONN_MAX_AGE'] = 600
+
+# Or Django's connection pool (psycopg 3, `psycopg[pool]`), shared by the threads.
+DATABASES['default']['CONN_MAX_AGE'] = 0
+DATABASES['default']['OPTIONS'] = {'pool': {'min_size': 0, 'max_size': 16, 'timeout': 30}}
+```
+
+A worker needs one connection per task running at the same time, plus one
+for its heartbeat, so size a pool's `max_size` on the worker's concurrency
+(the `worker_concurrency` of its queues): a task finding the pool exhausted waits up to `timeout`, then
+fails.
+
+Add `CONN_HEALTH_CHECKS = True` when something may close idle connections
+behind Django's back — a proxy, a firewall, or a serverless database
+suspending its compute when idle (Neon, for example). Django then checks a
+persistent connection before reusing it, at a small cost per task.
+
+### DBOS' connections to the system database
+
+DBOS keeps its own SQLAlchemy pool to the system database, used for
+checkpoints, queues and events — never for your tasks' queries. With DBOS'
+defaults:
+
+| Process | Connections to the system database |
+| --- | --- |
+| `dbos worker` | A pool of 20, plus one dedicated connection listening for notifications (`LISTEN`). |
+| Web processes and commands (`DBOSClient`) | A pool of 5, opened on first use. No listener. |
+
+When the system database lives on the same server as your application
+database (the default, see [System database](#system-database)), both sets
+count towards the server's `max_connections`: plan for about 21 per worker,
+5 per web process, plus Django's own connections.
+
+### Connection poolers
+
+A pooler in **transaction mode** — PgBouncer and the poolers of managed
+providers, such as the `-pooler` connection strings of Neon — lends a server
+connection to a client for one transaction only. `LISTEN` then runs without
+error, but the notifications reach a connection already handed back to the
+pool, and are lost.
+
+DBOS doesn't fail over it: it re-checks the system database every 60 seconds
+in case a notification was dropped. Inside a worker, `recv`,
+`ctx.get_event` and `ctx.read_stream` (see [Workflows](workflows.md)) then
+wake up on that re-check only, up to a minute late instead of within
+milliseconds. Queues are not affected: they poll.
+
+- **Give the worker a direct connection to the system database**, without
+  a pooler. Its pool is long-lived and fixed in size, so a pooler would save
+  little anyway.
+- Web processes don't listen and would work through a pooler, but they share
+  the worker's URL unless each process sets its own
+  `DBOS_SYSTEM_DATABASE_URL`. The direct URL everywhere is the simple choice.
+- Your application database can stay behind the pooler. Django recommends
+  `DISABLE_SERVER_SIDE_CURSORS = True` in transaction mode.
+
+!!! warning
+    A derived system database URL copies the host of your default Django
+    database. If that one goes through a pooler, so does the system
+    database: set `SYSTEM_DATABASE_URL` to the direct host.
+
+A worker also polls its queues continuously: on a serverless database that
+suspends its compute when idle, the compute stays up as long as a worker
+runs.
+
 ## Launching workers
 
 Tasks are executed by the `dbos worker` management command:
@@ -397,3 +492,56 @@ TASKS = {
 `None` falls back to the `DBOS__VMID` environment variable DBOS itself reads,
 then to `"local"`. [Deployment](deployment.md) shows which variable to use on
 common platforms.
+
+### Application version
+
+DBOS records an application version on every workflow execution, and uses
+it to decide who may run it:
+
+- **Recovery**: a restarting worker recovers the interrupted workflows of
+  its own executor ID *and* its own version only.
+- **Queues**: tasks enqueued from web processes carry no version; only the
+  workers running the **latest** version — the one registered by the most
+  recent worker launch — dequeue them.
+
+`OPTIONS["APPLICATION_VERSION"]` sets it, then the `DBOS__APPVERSION`
+environment variable. Without either, DBOS computes one: a hash of the
+source code of the registered workflows, of the DBOS version and of the
+application name. With django-dbos, those workflows are the generic wrappers
+running your tasks, not your task functions, so the computed version:
+
+- does **not** change when you edit a task: a new worker recovers workflows
+  interrupted under the old code, and replays a durable task's checkpoints
+  with the new one;
+- **does** change when you add or remove a task or a `@cron`, or upgrade
+  DBOS: workflows left interrupted under the old version are no longer
+  recovered by the new workers.
+
+Set the version explicitly, with one of two policies:
+
+1. **A stable version, bumped on incompatible changes** to a durable task
+   (steps added, removed or reordered, a changed signature). Ordinary
+   deployments keep the version, so recovery carries on across them; bumping
+   it when needed is up to you. Tasks running as a single step (the default)
+   restart from the beginning when recovered and rarely need a bump: this is
+   the simple choice for most projects.
+2. **One version per release**, such as the commit SHA. Code never replays
+   checkpoints recorded by another version, but a workflow interrupted under
+   one release is not recovered by the workers of the next: let the old
+   workers finish their workflows before stopping them (blue/green
+   deployments), or resume them by hand.
+
+```python
+import os
+
+TASKS = {
+    'default': {
+        'BACKEND': 'django_dbos.backends.DBOSBackend',
+        'OPTIONS': {
+            'APPLICATION_VERSION': '3',  # policy 1; or os.environ['GIT_SHA'] for policy 2
+        },
+    },
+}
+```
+
+The version of each execution is shown on its admin page.

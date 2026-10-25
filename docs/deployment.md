@@ -24,12 +24,19 @@ settle, then shows the same setup on a few platforms.
    keyed by it. Use the platform's instance name, never something that
    changes on every restart such as a pid. See
    [Executor identity](configuration.md#executor-identity).
+   Set `APPLICATION_VERSION` explicitly too: it decides which workers
+   recover and dequeue a workflow, and the version DBOS computes otherwise
+   ignores your task code. See
+   [Application version](configuration.md#application-version).
 4. **The system database URL.** Either let django-dbos derive it from the
    default Django database (same server, database `dbos_<name>` — the
    migrating role must be allowed to create it), or set
    `SYSTEM_DATABASE_URL` explicitly. Sharing the Django database with DBOS'
    tables in their own `dbos` schema is fine and avoids creating a second
    database on platforms where that is awkward.
+   Behind a connection pooler in transaction mode, give the workers a direct
+   URL, and keep Django's connections open in the workers (`CONN_MAX_AGE` or
+   a pool): see [Database connections](configuration.md#database-connections).
 5. **Serialization.** Decide whether pickle (the default) is acceptable for
    your system database, or switch to a safe serializer such as
    `django_dbos.serializers.MsgspecJSONSerializer`. See
@@ -61,6 +68,7 @@ TASKS = {
             'NAME': 'myproject',
             'SYSTEM_DATABASE_URL': os.environ['DBOS_SYSTEM_DATABASE_URL'],
             'EXECUTOR_ID': os.environ.get('WORKER_INSTANCE_ID'),
+            'APPLICATION_VERSION': '1',  # bumped on incompatible durable task changes
             'RUN_MIGRATIONS': False,
             'SERIALIZER': 'django_dbos.serializers.MsgspecJSONSerializer',  # django-dbos[msgspec]
             'QUEUES': {'default': None, 'emails': {'worker_concurrency': 4}},

@@ -268,7 +268,9 @@ class TestDbosInline:
         result = pytester.runpytest_subprocess('--ds=settings', '-p', 'no:cacheprovider')
         result.assert_outcomes(passed=4)
 
-    def test_strict_mode_rejects_durable_operations(self, pytester: pytest.Pytester):
+    @pytest.mark.parametrize('strict', [False, True], ids=['default', 'strict'])
+    def test_durable_operations_are_rejected(self, pytester: pytest.Pytester, strict: bool):
+        # Outside a workflow get_dbos_context() raises: a durable task could only fail.
         _make_project(pytester)
         pytester.makepyfile(
             """
@@ -283,9 +285,30 @@ class TestDbosInline:
                 assert add.enqueue(1, 2).return_value == 3
             """
         )
-        result = pytester.runpytest_subprocess('--ds=settings', '--dbos-inline-strict', '-p', 'no:cacheprovider')
+        options = ['--dbos-inline-strict'] if strict else []
+        result = pytester.runpytest_subprocess('--ds=settings', *options, '-p', 'no:cacheprovider')
         result.assert_outcomes(failed=1, passed=1)
         result.stdout.fnmatch_lines(['*uses durable operations*'])
+
+    def test_deferred_task_runs_at_once_by_default(self, pytester: pytest.Pytester):
+        _make_project(pytester)
+        pytester.makepyfile(
+            """
+            from datetime import timedelta
+
+            from django.tasks import TaskResultStatus
+            from django.utils import timezone
+            from tasks_app.tasks import add
+
+
+            def test_deferred(dbos_inline):
+                result = add.using(run_after=timezone.now() + timedelta(hours=1)).enqueue(1, 2)
+                assert result.status == TaskResultStatus.SUCCESSFUL
+                assert result.return_value == 3
+            """
+        )
+        result = pytester.runpytest_subprocess('--ds=settings', '-p', 'no:cacheprovider')
+        result.assert_outcomes(passed=1)
 
     def test_strict_mode_rejects_deferred_tasks(self, pytester: pytest.Pytester):
         _make_project(pytester)

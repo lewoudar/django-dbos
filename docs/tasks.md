@@ -47,6 +47,10 @@ connections around each execution the way a request would
 (`close_old_connections()` before and after): `CONN_MAX_AGE` is honoured and
 a connection dropped by the database is never reused by the next task.
 
+With the default `CONN_MAX_AGE = 0`, that means a new connection per task:
+see [Database connections](configuration.md#database-connections) for the
+settings to use in a worker.
+
 ## Deferred tasks
 
 Use `.using(run_after=...)` to run a task later (an aware `datetime`, as
