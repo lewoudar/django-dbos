@@ -338,7 +338,7 @@ fails.
 
 Add `CONN_HEALTH_CHECKS = True` when something may close idle connections
 behind Django's back — a proxy, a firewall, or a serverless database
-suspending its compute when idle (Neon, for example). Django then checks a
+suspending its compute when idle ([Neon](https://neon.com/docs/introduction/scale-to-zero), for example). Django then checks a
 persistent connection before reusing it, at a small cost per task.
 
 ### DBOS' connections to the system database
@@ -360,7 +360,8 @@ count towards the server's `max_connections`: plan for about 21 per worker,
 ### Connection poolers
 
 A pooler in **transaction mode** — PgBouncer and the poolers of managed
-providers, such as the `-pooler` connection strings of Neon — lends a server
+providers, such as the `-pooler` connection strings of
+[Neon](https://neon.com/docs/connect/connection-pooling) — lends a server
 connection to a client for one transaction only. `LISTEN` then runs without
 error, but the notifications reach a connection already handed back to the
 pool, and are lost.
@@ -371,14 +372,29 @@ in case a notification was dropped. Inside a worker, `recv`,
 wake up on that re-check only, up to a minute late instead of within
 milliseconds. Queues are not affected: they poll.
 
-- **Give the worker a direct connection to the system database**, without
-  a pooler. Its pool is long-lived and fixed in size, so a pooler would save
-  little anyway.
-- Web processes don't listen and would work through a pooler, but they share
-  the worker's URL unless each process sets its own
-  `DBOS_SYSTEM_DATABASE_URL`. The direct URL everywhere is the simple choice.
-- Your application database can stay behind the pooler. Django recommends
-  `DISABLE_SERVER_SIDE_CURSORS = True` in transaction mode.
+Every process talks to both databases, so the choice goes by database and
+by process:
+
+| | `dbos worker` | Web processes and commands |
+| --- | --- | --- |
+| **System database** (DBOS) | A direct connection, without a pooler: the worker listens for notifications. Its pool is long-lived and fixed in size, so a pooler would save little anyway. | No listener, so a pooler would work; but they share the worker's URL unless each process sets its own `DBOS_SYSTEM_DATABASE_URL`. The direct URL everywhere is the simple choice. |
+| **Application database** (Django) | A pooler is fine. | A pooler is fine. |
+
+Behind a pooler in transaction mode, set `DISABLE_SERVER_SIDE_CURSORS = True`
+on the application database, as
+[Django suggests](https://docs.djangoproject.com/en/stable/ref/databases/#transaction-pooling-and-server-side-cursors).
+
+A pooler doesn't make persistent connections on Django's side redundant: it
+saves the database server from opening a connection per client, but each
+client still connects to the pooler — a network round trip, often TLS and
+authentication, a few milliseconds again for a managed pooler. Keep the
+worker's connections to the pooler open with `CONN_MAX_AGE` (see [Django's
+connections in the worker](#djangos-connections-in-the-worker)): they cost
+the server next to nothing, as the pooler lends them a server connection for
+a transaction only. Django's connection pool is then mostly redundant,
+unless you need to cap the connections each process opens to the pooler:
+every process holds its own pool, so the total is the number of processes
+times `max_size`.
 
 !!! warning
     A derived system database URL copies the host of your default Django
