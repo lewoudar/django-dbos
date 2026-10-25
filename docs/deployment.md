@@ -30,6 +30,9 @@ settle, then shows the same setup on a few platforms.
    `SYSTEM_DATABASE_URL` explicitly. Sharing the Django database with DBOS'
    tables in their own `dbos` schema is fine and avoids creating a second
    database on platforms where that is awkward.
+   Behind a connection pooler in transaction mode, give the workers a direct
+   URL, and keep Django's connections open in the workers (`CONN_MAX_AGE` or
+   a pool): see [Database connections](configuration.md#database-connections).
 5. **Serialization.** Decide whether pickle (the default) is acceptable for
    your system database, or switch to a safe serializer such as
    `django_dbos.serializers.MsgspecJSONSerializer`. See

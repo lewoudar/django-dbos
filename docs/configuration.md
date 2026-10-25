@@ -294,6 +294,89 @@ database passwords are masked.
     frame — including URLs held by the SDK. Keep `DEBUG=False` in
     production, as always.
 
+## Database connections
+
+Each process holds two sets of connections, configured separately: Django's
+own, to your application databases, and DBOS', to the system database.
+
+### Django's connections in the worker
+
+The worker runs each task in a thread of DBOS' executor and recycles Django's
+connections around it, as a request would (see
+[Database connections](tasks.md#database-connections)). With Django's default
+`CONN_MAX_AGE = 0`, every task that touches the ORM therefore opens a new
+connection and closes it at the end: a few milliseconds per task, often more
+than a short task itself, and a steady churn of connections under load. Keep
+connections open instead, in one of two ways (Django refuses the
+combination):
+
+```python
+# Persistent connections: one per thread running a task, reused task after task.
+DATABASES['default']['CONN_MAX_AGE'] = 600
+
+# Or Django's connection pool (psycopg 3, `psycopg[pool]`), shared by the threads.
+DATABASES['default']['CONN_MAX_AGE'] = 0
+DATABASES['default']['OPTIONS'] = {'pool': {'min_size': 0, 'max_size': 16, 'timeout': 30}}
+```
+
+A worker needs one connection per task running at the same time, plus one
+for its heartbeat, so size a pool's `max_size` on the worker's concurrency
+(the `worker_concurrency` of its queues): a task finding the pool exhausted waits up to `timeout`, then
+fails.
+
+Add `CONN_HEALTH_CHECKS = True` when something may close idle connections
+behind Django's back — a proxy, a firewall, or a serverless database
+suspending its compute when idle (Neon, for example). Django then checks a
+persistent connection before reusing it, at a small cost per task.
+
+### DBOS' connections to the system database
+
+DBOS keeps its own SQLAlchemy pool to the system database, used for
+checkpoints, queues and events — never for your tasks' queries. With DBOS'
+defaults:
+
+| Process | Connections to the system database |
+| --- | --- |
+| `dbos worker` | A pool of 20, plus one dedicated connection listening for notifications (`LISTEN`). |
+| Web processes and commands (`DBOSClient`) | A pool of 5, opened on first use. No listener. |
+
+When the system database lives on the same server as your application
+database (the default, see [System database](#system-database)), both sets
+count towards the server's `max_connections`: plan for about 21 per worker,
+5 per web process, plus Django's own connections.
+
+### Connection poolers
+
+A pooler in **transaction mode** — PgBouncer and the poolers of managed
+providers, such as the `-pooler` connection strings of Neon — lends a server
+connection to a client for one transaction only. `LISTEN` then runs without
+error, but the notifications reach a connection already handed back to the
+pool, and are lost.
+
+DBOS doesn't fail over it: it re-checks the system database every 60 seconds
+in case a notification was dropped. Inside a worker, `recv`,
+`ctx.get_event` and `ctx.read_stream` (see [Workflows](workflows.md)) then
+wake up on that re-check only, up to a minute late instead of within
+milliseconds. Queues are not affected: they poll.
+
+- **Give the worker a direct connection to the system database**, without
+  a pooler. Its pool is long-lived and fixed in size, so a pooler would save
+  little anyway.
+- Web processes don't listen and would work through a pooler, but they share
+  the worker's URL unless each process sets its own
+  `DBOS_SYSTEM_DATABASE_URL`. The direct URL everywhere is the simple choice.
+- Your application database can stay behind the pooler. Django recommends
+  `DISABLE_SERVER_SIDE_CURSORS = True` in transaction mode.
+
+!!! warning
+    A derived system database URL copies the host of your default Django
+    database. If that one goes through a pooler, so does the system
+    database: set `SYSTEM_DATABASE_URL` to the direct host.
+
+A worker also polls its queues continuously: on a serverless database that
+suspends its compute when idle, the compute stays up as long as a worker
+runs.
+
 ## Launching workers
 
 Tasks are executed by the `dbos worker` management command:
