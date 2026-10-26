@@ -35,8 +35,8 @@ class Thresholds(TypedDict):
     """
 
     scale_up_backlog_age_seconds: float
-    scale_down_max_running: float
-    min_workers: float
+    scale_down_max_running: int
+    min_workers: int
 
 
 class QueueMetrics(TypedDict):
@@ -281,6 +281,6 @@ def default_advisor(queue_name: str, metrics: QueueMetrics, thresholds: Threshol
     return advise_queue(
         metrics,
         scale_up_backlog_age_seconds=thresholds['scale_up_backlog_age_seconds'],
-        scale_down_max_running=int(thresholds['scale_down_max_running']),
-        min_workers=int(thresholds['min_workers']),
+        scale_down_max_running=thresholds['scale_down_max_running'],
+        min_workers=thresholds['min_workers'],
     )

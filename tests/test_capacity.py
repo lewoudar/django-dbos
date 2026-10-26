@@ -135,6 +135,8 @@ class TestConfigurableThresholds:
             pytest.param({'SCALE_UP_BACKLOG_AGE_SECONDS': -1}, 'non-negative number', id='negative'),
             pytest.param({'SCALE_DOWN_MAX_RUNNING': True}, 'non-negative number', id='bool'),
             pytest.param({'MIN_WORKERS': -1}, 'non-negative number', id='negative-min-workers'),
+            pytest.param({'MIN_WORKERS': 1.5}, 'non-negative integer', id='fractional-min-workers'),
+            pytest.param({'SCALE_DOWN_MAX_RUNNING': 2.0}, 'non-negative integer', id='float-max-running'),
             pytest.param({'ADVISOR': 'nowhere.advise'}, 'ADVISOR', id='unknown-advisor-path'),
             pytest.param({'ADVISOR': 42}, 'callable', id='advisor-not-callable'),
             pytest.param([], 'must be a mapping', id='not-a-mapping'),

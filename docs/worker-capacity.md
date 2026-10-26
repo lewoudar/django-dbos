@@ -56,7 +56,9 @@ Each queue gets a simple heuristic:
 ### Thresholds
 
 Set them globally in `OPTIONS["CAPACITY"]`, and per queue under the
-queue's own `capacity` option (which is never sent to DBOS):
+queue's own `capacity` option (which is never sent to DBOS). Every
+threshold is a non-negative number; `SCALE_DOWN_MAX_RUNNING` and
+`MIN_WORKERS` count workflows and workers, so they must be integers:
 
 ```python
 TASKS = {

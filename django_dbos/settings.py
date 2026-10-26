@@ -150,6 +150,8 @@ CAPACITY_THRESHOLD_DEFAULTS: dict[str, float | int] = {
     # an idle worker is what fires the @cron schedules and picks up new tasks.
     'MIN_WORKERS': 1,
 }
+# Thresholds that count workflows or workers: whole numbers only.
+INTEGER_THRESHOLDS = frozenset({'SCALE_DOWN_MAX_RUNNING', 'MIN_WORKERS'})
 
 
 @dataclass(frozen=True)
@@ -340,6 +342,8 @@ def _validate_capacity_thresholds(mapping: Any, where: str) -> dict[str, float |
     for key, value in mapping.items():
         if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
             raise ImproperlyConfiguredDbos(f'{where}[{key!r}] must be a non-negative number, got {value!r}.')
+        if key in INTEGER_THRESHOLDS and not isinstance(value, int):
+            raise ImproperlyConfiguredDbos(f'{where}[{key!r}] must be a non-negative integer, got {value!r}.')
         thresholds[key] = value
     return thresholds
 
