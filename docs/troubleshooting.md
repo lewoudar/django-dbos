@@ -191,7 +191,9 @@ Django's system checks — `manage.py check`, also run by `runserver` and
 `migrate` — catch most of the problems above before anything runs. Errors
 make `check` fail and stop `runserver`; warnings are only displayed, unless
 you pass `--fail-level WARNING`. Silence a warning that does not apply to
-you with `SILENCED_SYSTEM_CHECKS`.
+you with Django's
+[`SILENCED_SYSTEM_CHECKS`](https://docs.djangoproject.com/en/stable/ref/settings/#silenced-system-checks)
+setting.
 
 - **`django_dbos.E001`** — the backend's configuration is invalid: an unknown queue option,
   queues declared both in `QUEUES` and in `OPTIONS["QUEUES"]`, a malformed `CAPACITY` threshold, a `SERIALIZER` that cannot be imported...

@@ -394,8 +394,9 @@ actually about durability.
 1. Two process kinds, scaled independently: web/commands (client only) vs.
    `dbos worker` (executes tasks).
 2. A release step running `migrate` (which also migrates the system
-   database) before the new version serves, with `RUN_MIGRATIONS=False` so
-   workers only verify the schema.
+   database) before the new version serves. Then set `RUN_MIGRATIONS=False`
+   on workers: they stop migrating on launch, only check the schema is up
+   to date, and refuse to start otherwise.
 3. A stable `EXECUTOR_ID` per worker instance (platform instance id/hostname
    — never a pid, which changes every restart).
 4. Decide the system database URL and serializer deliberately (see above).

@@ -359,12 +359,26 @@ count towards the server's `max_connections`: plan for about 21 per worker,
 
 ### Connection poolers
 
-A pooler in **transaction mode** — PgBouncer and the poolers of managed
-providers, such as the `-pooler` connection strings of
-[Neon](https://neon.com/docs/connect/connection-pooling) — lends a server
-connection to a client for one transaction only. `LISTEN` then runs without
-error, but the notifications reach a connection already handed back to the
-pool, and are lost.
+A pooler such as PgBouncer sits between your processes and PostgreSQL and
+shares a few server connections among many clients. How long a client keeps
+a server connection depends on its mode:
+
+- **Session mode** (PgBouncer's default): until the client disconnects. The
+  client keeps a real PostgreSQL session, so everything works, but clients
+  holding persistent connections each tie up a server connection, which
+  saves little.
+- **Transaction mode**: for one transaction only, so idle clients hold no
+  server connection. That is what makes a pooler worthwhile, and the mode
+  managed providers use for their pooled connection strings, such as the
+  `-pooler` ones of [Neon](https://neon.com/docs/connect/connection-pooling).
+  Two transactions of one client may run on different server connections,
+  so whatever lives in the session is lost between them: `LISTEN`,
+  `SET`, temporary tables, session advisory locks, cursors kept open
+  across transactions.
+
+The rest of this section is about transaction mode. `LISTEN` then runs
+without error, but the notifications reach a connection already handed
+back to the pool, and are lost.
 
 DBOS doesn't fail over it: it re-checks the system database every 60 seconds
 in case a notification was dropped. Inside a worker, `recv`,

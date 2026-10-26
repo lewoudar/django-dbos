@@ -16,8 +16,10 @@ settle, then shows the same setup on a few platforms.
    independently. See [Processes](configuration.md#processes).
 2. **A release step** that runs before the new version starts serving:
    `python manage.py migrate`, which applies Django's migrations then DBOS'
-   (the system database), with `OPTIONS["RUN_MIGRATIONS"] = False` so
-   workers verify the schema instead of altering it. See
+   (the system database). Since the release step now owns the schema, set
+   `OPTIONS["RUN_MIGRATIONS"] = False`: workers then stop migrating on
+   launch, only check that the schema is up to date, and refuse to start
+   otherwise. See
    [Migrating the system database](configuration.md#migrating-the-system-database).
 3. **A stable identity per worker instance**, through
    `OPTIONS["EXECUTOR_ID"]`: crash recovery and the capacity reports are
@@ -51,8 +53,10 @@ settle, then shows the same setup on a few platforms.
     django-dbos adds its own ([System checks](troubleshooting.md#system-checks)),
     among them `django_dbos.W003` (pickle) and `django_dbos.W004` (no
     executor ID) for points 3 and 5. Warnings do not fail `check` without
-    `--fail-level WARNING`. Silence a warning you accepted with
-    `SILENCED_SYSTEM_CHECKS`, for example `['django_dbos.W003']`.
+    `--fail-level WARNING`. Silence a warning you accepted with Django's
+    [`SILENCED_SYSTEM_CHECKS`](https://docs.djangoproject.com/en/stable/ref/settings/#silenced-system-checks)
+    setting, for example `['django_dbos.W003']`.
+
 8. **A retention policy** for the workflow history, which DBOS never
    deletes on its own. See [Purging old workflows](#purging-old-workflows).
 
@@ -171,8 +175,12 @@ TASKS = {
 
 Scale each group on its own: `fly scale count web=2 worker=3`. To drive the
 `worker` count from the queues, poll `python manage.py dbos status --json`
-(or `capacity.collect()`) from a small scheduled job — smoothing the
-readings over a few minutes before scaling down.
+(or `capacity.collect()`) from a small scheduled job and follow each
+queue's advice: add machines on `SCALE_UP`, remove some on `SCALE_DOWN`.
+Scale up as soon as the advice says so, since tasks are waiting; scale down
+only once the advice has held for a few minutes, so a short lull doesn't
+stop a machine you need again a minute later. See
+[Worker capacity](worker-capacity.md).
 
 ## Kubernetes
 
