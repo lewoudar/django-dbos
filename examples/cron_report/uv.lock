@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 
 [[package]]
@@ -81,6 +81,18 @@ wheels = [
 ]
 
 [[package]]
+name = "django-click"
+version = "2.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/fc/e9/80f860c3f2bb9bdcc58de6b9578bbc6b4a57bedefdc97211e736fb960380/django_click-2.5.0.tar.gz", hash = "sha256:60d346a04d0db991d0bb31754c0dcad282643aa26a4701ca5ff5df742a7473f8", size = 7251, upload-time = "2026-01-10T13:19:37.958Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/27/43/a8eedd594b0f1d5e736ad5afd48ff4431566d2760b79115af40d8b4e950a/django_click-2.5.0-py3-none-any.whl", hash = "sha256:6bcb71d0bac47f67b91d9ee1972d881d72b5bf20cd2a45a57265cdfac49b88aa", size = 7887, upload-time = "2026-01-10T13:19:37.13Z" },
+]
+
+[[package]]
 name = "django-dbos"
 version = "0.1.0"
 source = { editable = "../../" }
@@ -89,6 +101,7 @@ dependencies = [
     { name = "croniter" },
     { name = "dbos" },
     { name = "django" },
+    { name = "django-click" },
     { name = "sqlalchemy" },
     { name = "structlog" },
 ]
@@ -99,14 +112,18 @@ requires-dist = [
     { name = "croniter", specifier = ">=6.0" },
     { name = "dbos", specifier = ">=3.0,<4" },
     { name = "django", specifier = ">=6.0,<7" },
+    { name = "django-click", specifier = ">=2.5.0" },
+    { name = "msgspec", marker = "extra == 'msgspec'", specifier = ">=0.21" },
     { name = "psutil", marker = "extra == 'metrics'", specifier = ">=7.0" },
+    { name = "psycopg2-binary", marker = "extra == 'cockroachdb'", specifier = ">=2.9" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.4" },
     { name = "sentry-sdk", marker = "extra == 'sentry'", specifier = ">=2.19" },
     { name = "sqlalchemy", specifier = ">=2.0,<3" },
+    { name = "sqlalchemy-cockroachdb", marker = "extra == 'cockroachdb'", specifier = ">=2.0" },
     { name = "structlog", specifier = ">=25.1" },
     { name = "testcontainers", extras = ["postgres"], marker = "extra == 'test'", specifier = ">=4.13" },
 ]
-provides-extras = ["sentry", "metrics", "test"]
+provides-extras = ["sentry", "metrics", "test", "msgspec", "cockroachdb"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -119,14 +136,17 @@ dev = [
     { name = "ruff", specifier = ">=0.14" },
     { name = "zizmor", specifier = ">=1.14" },
 ]
-doc = [{ name = "zensical", specifier = ">=0.0.59" }]
+doc = [{ name = "zensical", specifier = ">=0.0.67" }]
 test = [
     { name = "model-bakery", specifier = ">=1.20" },
+    { name = "msgspec", specifier = ">=0.21" },
+    { name = "psycopg2-binary", specifier = ">=2.9" },
     { name = "pytest", specifier = ">=8.4" },
     { name = "pytest-cov", specifier = ">=7.0" },
     { name = "pytest-django", specifier = ">=4.11" },
     { name = "pytest-mock", specifier = ">=3.14" },
     { name = "sentry-sdk", specifier = ">=2.19" },
+    { name = "sqlalchemy-cockroachdb", specifier = ">=2.0" },
     { name = "testcontainers", extras = ["postgres"], specifier = ">=4.13" },
     { name = "time-machine", specifier = ">=2.16" },
 ]
