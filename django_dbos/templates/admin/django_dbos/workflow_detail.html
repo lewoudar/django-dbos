@@ -1,10 +1,10 @@
 {% extends "admin/base_site.html" %}
 {% block breadcrumbs %}
-<div class="breadcrumbs">
-  <a href="{% url 'admin:index' %}">Home</a>
-  &rsaquo; <a href="{% url 'admin:django_dbos_workflow_changelist' %}">DBOS workflows</a>
-  &rsaquo; {{ row.workflow_id|truncatechars:26 }}
-</div>
+<ol class="breadcrumbs">
+  <li><a href="{% url 'admin:index' %}">Home</a></li>
+  <li><a href="{% url 'admin:django_dbos_workflow_changelist' %}">DBOS workflows</a></li>
+  <li aria-current="page">{{ row.workflow_id|truncatechars:26 }}</li>
+</ol>
 {% endblock %}
 
 {% block content %}

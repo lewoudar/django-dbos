@@ -7,6 +7,7 @@ never launches DBOS itself, so it never executes workflows.
 
 from __future__ import annotations
 
+import functools
 import json
 from datetime import UTC, datetime
 from typing import Any
@@ -39,6 +40,24 @@ STATUS_BADGES = {
 WORKFLOW_STATUSES = list(STATUS_BADGES)
 
 
+def bind_site(view: Any, site: Any) -> Any:
+    """``view`` serving the admin ``site``: rendered with its context, URLs resolved in its namespace."""
+
+    @functools.wraps(view)
+    def inner(request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        request.current_app = site.name
+        request.django_dbos_admin_site = site  # type: ignore[attr-defined]
+        return view(request, *args, **kwargs)
+
+    return inner
+
+
+def _render(request: HttpRequest, template_name: str, context: dict[str, Any]) -> HttpResponse:
+    """Render with the admin site's context: header, user tools, navigation sidebar, theme toggle."""
+    site_context = request.django_dbos_admin_site.each_context(request)  # type: ignore[attr-defined]
+    return render(request, template_name, {**site_context, **context})
+
+
 def _dbos_view(view: Any) -> Any:
     """Wrap an admin view: require the superuser, render an error page when DBOS is unavailable.
 
@@ -57,7 +76,7 @@ def _dbos_view(view: Any) -> Any:
         except (ImproperlyConfiguredDbos, *system_database_errors()) as exc:
             message = describe_error(exc)
             logger.error('admin: DBOS system database unavailable', error=message, view=view.__name__)
-            return render(request, 'admin/django_dbos/error.html', {'title': 'django-dbos', 'error_message': message})
+            return _render(request, 'admin/django_dbos/error.html', {'title': 'django-dbos', 'error_message': message})
 
     wrapper.__name__ = view.__name__
     wrapper.__qualname__ = view.__qualname__
@@ -132,7 +151,7 @@ def workflow_list(request: HttpRequest) -> HttpResponse:
     has_next = len(workflows) > PAGE_SIZE
     rows = [_row(status) for status in workflows[:PAGE_SIZE]]
 
-    return render(
+    return _render(
         request,
         'admin/django_dbos/workflow_list.html',
         {
@@ -180,7 +199,7 @@ def workflow_detail(request: HttpRequest, workflow_id: str) -> HttpResponse:
             }
         )
 
-    return render(
+    return _render(
         request,
         'admin/django_dbos/workflow_detail.html',
         {
@@ -247,7 +266,7 @@ def workflow_delete(request: HttpRequest, workflow_id: str) -> HttpResponse:
         logger.info('admin: deleted workflow', workflow_id=workflow_id, user=request.user.pk)
         return HttpResponseRedirect(reverse('admin:django_dbos_workflow_changelist'))
 
-    return render(
+    return _render(
         request,
         'admin/django_dbos/delete_confirmation.html',
         {
@@ -280,7 +299,7 @@ def _schedule_row(schedule: dict[str, Any]) -> dict[str, Any]:
 @_dbos_view
 def schedule_list(request: HttpRequest) -> HttpResponse:
     rows = [_schedule_row(schedule) for schedule in get_client().list_schedules()]
-    return render(
+    return _render(
         request,
         'admin/django_dbos/schedule_list.html',
         {'title': 'DBOS schedules', 'rows': rows},
@@ -324,7 +343,7 @@ def schedule_delete(request: HttpRequest, schedule_name: str) -> HttpResponse:
         logger.info('admin: deleted schedule', schedule_name=schedule_name, user=request.user.pk)
         return _redirect_to_schedules()
 
-    return render(
+    return _render(
         request,
         'admin/django_dbos/delete_confirmation.html',
         {

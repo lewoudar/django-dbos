@@ -124,57 +124,60 @@ def register_admin(site: Any) -> None:
 
     original_get_urls = site.get_urls
 
+    def dbos_view(view: Any) -> Any:
+        return site.admin_view(admin_views.bind_site(view, site))
+
     def get_urls() -> list[URLPattern]:
         urls = original_get_urls()
         dbos_urls = [
             path(
                 f'{ADMIN_URL_PREFIX}workflows/',
-                site.admin_view(admin_views.workflow_list),
+                dbos_view(admin_views.workflow_list),
                 name='django_dbos_workflow_changelist',
             ),
             path(
                 f'{ADMIN_URL_PREFIX}workflows/<str:workflow_id>/',
-                site.admin_view(admin_views.workflow_detail),
+                dbos_view(admin_views.workflow_detail),
                 name='django_dbos_workflow_detail',
             ),
             path(
                 f'{ADMIN_URL_PREFIX}workflows/<str:workflow_id>/cancel/',
-                site.admin_view(admin_views.workflow_cancel),
+                dbos_view(admin_views.workflow_cancel),
                 name='django_dbos_workflow_cancel',
             ),
             path(
                 f'{ADMIN_URL_PREFIX}workflows/<str:workflow_id>/resume/',
-                site.admin_view(admin_views.workflow_resume),
+                dbos_view(admin_views.workflow_resume),
                 name='django_dbos_workflow_resume',
             ),
             path(
                 f'{ADMIN_URL_PREFIX}workflows/<str:workflow_id>/fork/',
-                site.admin_view(admin_views.workflow_fork),
+                dbos_view(admin_views.workflow_fork),
                 name='django_dbos_workflow_fork',
             ),
             path(
                 f'{ADMIN_URL_PREFIX}workflows/<str:workflow_id>/delete/',
-                site.admin_view(admin_views.workflow_delete),
+                dbos_view(admin_views.workflow_delete),
                 name='django_dbos_workflow_delete',
             ),
             path(
                 f'{ADMIN_URL_PREFIX}schedules/',
-                site.admin_view(admin_views.schedule_list),
+                dbos_view(admin_views.schedule_list),
                 name='django_dbos_schedule_changelist',
             ),
             path(
                 f'{ADMIN_URL_PREFIX}schedules/<str:schedule_name>/pause/',
-                site.admin_view(admin_views.schedule_pause),
+                dbos_view(admin_views.schedule_pause),
                 name='django_dbos_schedule_pause',
             ),
             path(
                 f'{ADMIN_URL_PREFIX}schedules/<str:schedule_name>/resume/',
-                site.admin_view(admin_views.schedule_resume),
+                dbos_view(admin_views.schedule_resume),
                 name='django_dbos_schedule_resume',
             ),
             path(
                 f'{ADMIN_URL_PREFIX}schedules/<str:schedule_name>/delete/',
-                site.admin_view(admin_views.schedule_delete),
+                dbos_view(admin_views.schedule_delete),
                 name='django_dbos_schedule_delete',
             ),
         ]

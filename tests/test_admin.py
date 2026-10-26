@@ -68,6 +68,15 @@ class TestWorkflowPages:
         ensure_launched.assert_not_called()
         ensure_initialized.assert_not_called()
 
+    @pytest.mark.parametrize('path', ['/admin/dbos/workflows/', '/admin/dbos/schedules/'])
+    def test_pages_render_with_the_admin_site_context(self, admin_client, dbos_environment, path):
+        response = admin_client.get(path)
+        # The site context brings the user tools (log out, theme toggle) and the sidebar.
+        assert response.context['has_permission'] is True
+        assert 'available_apps' in response.context
+        assert_text(response, 'id="user-tools"')
+        assert_text(response, '<ol class="breadcrumbs">')
+
     def test_workflow_list_shows_enqueued_task(self, admin_client, dbos_environment):
         result = _enqueue_sample_workflow()
         response = admin_client.get('/admin/dbos/workflows/')
