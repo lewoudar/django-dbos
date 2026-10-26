@@ -307,6 +307,26 @@ class TestAdminGating:
         register_admin(custom_site)
         assert 'django_dbos_workflow_changelist' in url_names
 
+    @pytest.mark.parametrize('page', ['/admin/', '/admin/django_dbos/'])
+    def test_superuser_app_list_links_the_dbos_pages(self, admin_client, page):
+        response = admin_client.get(page)
+        assert response.status_code == 200
+        assert_text(response, 'href="/admin/dbos/workflows/"')
+        assert_text(response, 'href="/admin/dbos/schedules/"')
+        (app,) = [app for app in response.context['app_list'] if app['app_label'] == 'django_dbos']
+        assert [entry['name'] for entry in app['models']] == ['Schedules', 'Worker heartbeats', 'Workflows']
+
+    def test_staff_without_superuser_sees_no_dbos_links(self, db):
+        staff = User.objects.create_user(username='editor', password='hunter2', is_staff=True)
+        client = Client()
+        client.force_login(staff)
+        try:
+            response = client.get('/admin/')
+            assert response.status_code == 200
+            assert '/admin/dbos/' not in response.content.decode()
+        finally:
+            User.objects.filter(pk=staff.pk).delete()
+
     def test_non_staff_redirected_to_login(self, client, dbos_environment):
         response = client.get('/admin/dbos/workflows/')
         assert response.status_code == 302

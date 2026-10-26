@@ -9,6 +9,10 @@ on DBOS workflows. The pages read the DBOS system database through a
 `DBOSClient`: the web process never launches DBOS, so it never executes a
 task. A read-only **Worker heartbeats** model lists the live workers.
 
+For a superuser, the **Django DBOS** section of the admin index (and of the
+navigation sidebar) links all three pages: **Schedules**, **Worker
+heartbeats** and **Workflows**.
+
 !!! note
     Access requires the Django admin (`django.contrib.admin` in
     `INSTALLED_APPS`); the pages are **superuser-only** — a plain staff
@@ -17,7 +21,7 @@ task. A read-only **Worker heartbeats** model lists the live workers.
 
 ## Workflows
 
-Open **Home › DBOS workflows** (`/admin/dbos/workflows/`):
+Open **Django DBOS › Workflows** (`/admin/dbos/workflows/`):
 
 - list with filters (status, queue, workflow name), ID prefix search and
   pagination, newest first;
@@ -35,7 +39,7 @@ Open **Home › DBOS workflows** (`/admin/dbos/workflows/`):
 
 ## Schedules
 
-**Home › DBOS schedules** (`/admin/dbos/schedules/`) lists every DBOS schedule
+**Django DBOS › Schedules** (`/admin/dbos/schedules/`) lists every DBOS schedule
 (registered by `@cron` tasks when a worker starts) with its crontab, timezone,
 queue and last fire time. Each schedule can be paused, resumed or deleted
 (deletion asks for confirmation first, like workflow deletion).

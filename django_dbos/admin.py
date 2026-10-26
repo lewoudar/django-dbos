@@ -19,7 +19,7 @@ from typing import Any
 
 from django.contrib import admin as django_admin
 from django.contrib.admin import AdminSite
-from django.urls import URLPattern, path
+from django.urls import URLPattern, path, reverse
 from django.utils.module_loading import import_string
 
 from . import admin_views
@@ -92,6 +92,28 @@ class WorkerHeartbeatAdmin(django_admin.ModelAdmin):
         return bool(request.user.is_superuser)
 
 
+def _dbos_page_entries(site: Any) -> list[dict[str, Any]]:
+    """App-list entries linking the workflow and schedule pages, shaped like the admin's model entries.
+
+    They sit next to the worker heartbeats in the "django_dbos" app, on the
+    admin index, the app page and the navigation sidebar. The app is present
+    for superusers since ``register_admin`` registers ``WorkerHeartbeat``.
+    """
+    pages = (('Workflows', 'DbosWorkflow', 'workflow'), ('Schedules', 'DbosSchedule', 'schedule'))
+    return [
+        {
+            'model': None,
+            'name': name,
+            'object_name': object_name,
+            'perms': {'add': False, 'change': False, 'delete': False, 'view': True},
+            'admin_url': reverse(f'admin:django_dbos_{page}_changelist', current_app=site.name),
+            'add_url': None,
+            'view_only': True,
+        }
+        for name, object_name, page in pages
+    ]
+
+
 def register_admin(site: Any) -> None:
     """Append django-dbos URLs to an AdminSite instance (idempotent)."""
     if getattr(site, '_django_dbos_registered', False):
@@ -160,7 +182,19 @@ def register_admin(site: Any) -> None:
         # would otherwise swallow paths like "dbos/workflows/".
         return dbos_urls + urls
 
+    original_get_app_list = site.get_app_list
+
+    def get_app_list(request: Any, app_label: str | None = None) -> list[dict[str, Any]]:
+        app_list = original_get_app_list(request, app_label)
+        if request.user.is_active and request.user.is_superuser:
+            for app in app_list:
+                if app['app_label'] == APP_LABEL:
+                    app['models'].extend(_dbos_page_entries(site))
+                    app['models'].sort(key=lambda entry: entry['name'])
+        return app_list
+
     site.get_urls = get_urls
+    site.get_app_list = get_app_list
     site._django_dbos_registered = True
     logger.debug('registered django-dbos admin views', admin_site=site.name)
 
