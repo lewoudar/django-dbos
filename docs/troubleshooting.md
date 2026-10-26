@@ -260,5 +260,15 @@ setting.
 Task 'report' scheduled with @cron must not require arguments (found required parameter 'day').
 ```
 
-A schedule fires the task without arguments. Give the parameter a default
-value, or drop `@cron` and enqueue the task yourself with its arguments.
+A schedule calls the task with no arguments, so every parameter of the
+decorated function needs a default value:
+
+```python
+@cron('0 6 * * *')
+@task
+def report(day=None):
+    day = day or date.today()
+    ...
+```
+
+Or drop `@cron` and enqueue the task yourself with its arguments.
