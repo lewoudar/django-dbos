@@ -36,6 +36,7 @@ class Thresholds(TypedDict):
 
     scale_up_backlog_age_seconds: float
     scale_down_max_running: float
+    min_workers: float
 
 
 class QueueMetrics(TypedDict):
@@ -55,6 +56,8 @@ class QueueMetrics(TypedDict):
     """The queue's declared per-worker concurrency."""
     global_concurrency: int | None
     """The queue's declared global concurrency."""
+    workers: int
+    """Live workers (fresh heartbeat) serving the queue."""
     thresholds: Thresholds
     """The thresholds applied to the queue."""
     advice: str
@@ -67,6 +70,7 @@ Advisor = Callable[[str, QueueMetrics, Thresholds], str]
 # Default thresholds of ``advise_queue`` (overridable through settings).
 DEFAULT_SCALE_UP_BACKLOG_AGE_SECONDS = CAPACITY_THRESHOLD_DEFAULTS['SCALE_UP_BACKLOG_AGE_SECONDS']
 DEFAULT_SCALE_DOWN_MAX_RUNNING = CAPACITY_THRESHOLD_DEFAULTS['SCALE_DOWN_MAX_RUNNING']
+DEFAULT_MIN_WORKERS = CAPACITY_THRESHOLD_DEFAULTS['MIN_WORKERS']
 
 # DBOS has no RUNNING status: ENQUEUED waits for a worker, PENDING is being
 # executed, DELAYED waits for its ``run_after`` time.
@@ -137,7 +141,9 @@ def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) 
             'max_queue_wait_ms': None,
             'worker_concurrency': None,
             'global_concurrency': None,
-            'thresholds': {'scale_up_backlog_age_seconds': 0.0, 'scale_down_max_running': 0},  # set per queue below
+            'workers': 0,
+            # set per queue below
+            'thresholds': {'scale_up_backlog_age_seconds': 0.0, 'scale_down_max_running': 0, 'min_workers': 0},
             'advice': 'OK',
         }
 
@@ -155,17 +161,21 @@ def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) 
             queues_metrics.setdefault(status.queue_name, _empty_queue_metrics()) if status.queue_name else None
         )
         _ingest_workflow(status, queue_metrics, executors, now)
+
+    # Stale heartbeats are reported too: a worker that died without cleaning
+    # up is exactly what an operator wants to see. Only live ones serve a queue.
+    workers = read_heartbeats(include_stale=True)
+    live_workers = [worker for worker in workers if worker['alive']]
+
     for queue_name, queue_metrics in queues_metrics.items():
         capacity = capacities.get(queue_name, {})
         queue_metrics['worker_concurrency'] = capacity.get('worker_concurrency')
         queue_metrics['global_concurrency'] = capacity.get('global_concurrency')
+        queue_metrics['workers'] = sum(queue_name in worker['queues'] for worker in live_workers)
         thresholds = cast(Thresholds, capacity_config.thresholds_for(declared.get(queue_name)))
         queue_metrics['thresholds'] = thresholds
         queue_metrics['advice'] = advise(queue_name, queue_metrics, thresholds)
 
-    # Stale heartbeats are reported too: a worker that died without cleaning
-    # up is exactly what an operator wants to see.
-    workers = read_heartbeats(include_stale=True)
     executor_ids = set(executors) | {worker['executor_id'] for worker in workers}
     executors_report = {
         executor_id: executors.get(executor_id, {'running': 0, 'enqueued': 0}) for executor_id in executor_ids
@@ -217,14 +227,17 @@ def advise_queue(
     *,
     scale_up_backlog_age_seconds: float | None = None,
     scale_down_max_running: int | None = None,
+    min_workers: int | None = None,
 ) -> str:
     """Simple heuristic per queue: SCALE_UP / SCALE_DOWN / OK.
 
-    - SCALE_UP: the oldest workflow waiting on this queue has been waiting
-      longer than ``scale_up_backlog_age_seconds`` — the queue is not drained
-      fast enough.
-    - SCALE_DOWN: nothing waiting and at most ``scale_down_max_running``
-      workflows running — an idle queue.
+    - SCALE_UP: fewer than ``min_workers`` live workers serve this queue,
+      or workflows wait on it and none does, or the oldest one has been
+      waiting longer than ``scale_up_backlog_age_seconds`` — the queue is
+      not drained fast enough.
+    - SCALE_DOWN: nothing waiting, at most ``scale_down_max_running``
+      workflows running and more than ``min_workers`` live workers — an
+      idle queue with workers to spare.
     - OK otherwise.
 
     Args:
@@ -232,23 +245,32 @@ def advise_queue(
         scale_up_backlog_age_seconds: Defaults to ``OPTIONS["CAPACITY"]``,
             then to ``CAPACITY_THRESHOLD_DEFAULTS``.
         scale_down_max_running: Defaults like ``scale_up_backlog_age_seconds``.
+        min_workers: Defaults like ``scale_up_backlog_age_seconds``.
 
     Returns:
         ``"SCALE_UP"``, ``"SCALE_DOWN"`` or ``"OK"``.
     """
-    if scale_up_backlog_age_seconds is None or scale_down_max_running is None:
+    if scale_up_backlog_age_seconds is None or scale_down_max_running is None or min_workers is None:
         configured = resolve_capacity().thresholds
         if scale_up_backlog_age_seconds is None:
             scale_up_backlog_age_seconds = configured['SCALE_UP_BACKLOG_AGE_SECONDS']
         if scale_down_max_running is None:
             scale_down_max_running = int(configured['SCALE_DOWN_MAX_RUNNING'])
+        if min_workers is None:
+            min_workers = int(configured['MIN_WORKERS'])
 
     backlog = queue_metrics['enqueued']
     backlog_age = queue_metrics['backlog_age_seconds']
     running = queue_metrics['running']
+    workers = queue_metrics['workers']
 
+    if workers < min_workers:
+        return 'SCALE_UP'
     if backlog == 0 and running <= scale_down_max_running:
-        return 'SCALE_DOWN'
+        return 'SCALE_DOWN' if workers > min_workers else 'OK'
+    if backlog > 0 and workers == 0:
+        # Nobody will drain it (MIN_WORKERS = 0): waiting for the backlog to age only delays the fix.
+        return 'SCALE_UP'
     if backlog > 0 and backlog_age is not None and backlog_age > scale_up_backlog_age_seconds:
         return 'SCALE_UP'
     return 'OK'
@@ -260,4 +282,5 @@ def default_advisor(queue_name: str, metrics: QueueMetrics, thresholds: Threshol
         metrics,
         scale_up_backlog_age_seconds=thresholds['scale_up_backlog_age_seconds'],
         scale_down_max_running=int(thresholds['scale_down_max_running']),
+        min_workers=int(thresholds['min_workers']),
     )

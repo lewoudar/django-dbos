@@ -182,6 +182,14 @@ only once the advice has held for a few minutes, so a short lull doesn't
 stop a machine you need again a minute later. See
 [Worker capacity](worker-capacity.md).
 
+`SCALE_DOWN` is never advised for a queue's last live worker: the
+`MIN_WORKERS` [threshold](worker-capacity.md#thresholds) of
+`OPTIONS["CAPACITY"]` (1 by default) is a floor, advising `SCALE_UP` below
+it, so new tasks are picked up right away and, for example, the `@cron`
+schedules keep firing.
+Read [Scaling to zero](worker-capacity.md#scaling-to-zero) before setting
+it to `0`.
+
 ## Kubernetes
 
 A Deployment for the web processes, a **StatefulSet** for the workers, a

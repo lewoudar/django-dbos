@@ -146,6 +146,9 @@ PARTITION_OPTIONS = ('partition_concurrency', 'partition_worker_concurrency', 'p
 CAPACITY_THRESHOLD_DEFAULTS: dict[str, float | int] = {
     'SCALE_UP_BACKLOG_AGE_SECONDS': 60.0,
     'SCALE_DOWN_MAX_RUNNING': 0,
+    # Floor of live workers per queue (SCALE_UP below it, no SCALE_DOWN at it):
+    # an idle worker is what fires the @cron schedules and picks up new tasks.
+    'MIN_WORKERS': 1,
 }
 
 

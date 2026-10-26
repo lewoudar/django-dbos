@@ -13,7 +13,7 @@ python manage.py dbos status
 
 ```
 Queue "default"  [OK]
-  Backlog: 2 (delayed: 0)   Running: 3
+  Backlog: 2 (delayed: 0)   Running: 3   Live workers: 1
   Oldest waiting workflow: 12s
   Declared concurrency: worker=4 global=None
 
@@ -35,6 +35,8 @@ running, i.e. the backlog itself — are listed and aggregated:
   `run_after` time has not come yet (`DELAYED`) are counted apart.
 - **Running** per queue: workflows being executed (DBOS status `PENDING`),
   plus the longest time one of them waited in the queue before starting.
+- **Live workers** per queue: workers with a fresh
+  [heartbeat](#workers-heartbeats) that serve the queue.
 - **Declared concurrency** (worker/global) as stored on the queue, so you can
   compare load with capacity at a glance.
 - **Per-executor load** (`executor_id` on workflow rows). Note that executors
@@ -47,8 +49,8 @@ Each queue gets a simple heuristic:
 
 | Advice | Meaning |
 | --- | --- |
-| `SCALE_UP` | The oldest waiting workflow has been waiting for more than `SCALE_UP_BACKLOG_AGE_SECONDS` (60 by default): the queue is not drained fast enough. |
-| `SCALE_DOWN` | Nothing waiting and at most `SCALE_DOWN_MAX_RUNNING` (0 by default) workflows running: an idle queue. |
+| `SCALE_UP` | Fewer than `MIN_WORKERS` (1 by default) live workers serve the queue, even an idle one; or workflows wait and no live worker serves the queue; or the oldest waiting workflow has been waiting for more than `SCALE_UP_BACKLOG_AGE_SECONDS` (60 by default): the queue is not drained fast enough. |
+| `SCALE_DOWN` | Nothing waiting, at most `SCALE_DOWN_MAX_RUNNING` (0 by default) workflows running and more than `MIN_WORKERS` live workers: an idle queue with workers to spare. |
 | `OK` | Everything looks healthy. |
 
 ### Thresholds
@@ -64,6 +66,7 @@ TASKS = {
             'CAPACITY': {
                 'SCALE_UP_BACKLOG_AGE_SECONDS': 30,
                 'SCALE_DOWN_MAX_RUNNING': 1,
+                'MIN_WORKERS': 2,
             },
             'QUEUES': {
                 'default': None,
@@ -76,6 +79,28 @@ TASKS = {
 
 The thresholds applied to each queue are part of the report (`thresholds`),
 so a dashboard can show *why* a queue got its advice.
+
+### Scaling to zero
+
+`MIN_WORKERS` is a floor: an idle queue with exactly that many live workers
+stays at `OK` rather than `SCALE_DOWN`, and one with fewer — after a crash,
+or a worker stopped by hand — gets `SCALE_UP`, so following the advice never
+stops the last worker and brings it back if it is gone. Set it to `0` to
+allow scaling a queue down to no worker at all, knowing that:
+
+- the `@cron` schedules only fire inside a running worker: with none left,
+  they stop, and since nothing gets enqueued, no `SCALE_UP` brings a worker
+  back;
+- a task enqueued meanwhile waits until your autoscaling script reads
+  `SCALE_UP` (advised as soon as a workflow waits with no live worker) and
+  a machine has booted;
+- PaaS auto-start features (Fly.io's `auto_start_machines`, for instance)
+  are triggered by incoming HTTP requests, which a worker never receives:
+  the script polling the advice must start the machine itself.
+
+Worker counts come from the heartbeats: if they cannot be read (the
+`django_dbos` migrations are not applied), every queue counts 0 live
+workers, hence `SCALE_UP` everywhere unless `MIN_WORKERS` is `0`.
 
 ### Your own heuristic
 
@@ -114,10 +139,11 @@ def advise(queue_name: str, metrics: QueueMetrics, thresholds: Thresholds) -> st
 | `max_queue_wait_ms` | `int` or `None` | The longest time a running workflow waited in the queue before starting. |
 | `worker_concurrency` | `int` or `None` | The queue's declared per-worker concurrency. |
 | `global_concurrency` | `int` or `None` | The queue's declared global concurrency. |
+| `workers` | `int` | Live workers (fresh heartbeat) serving the queue. |
 
 `thresholds` (`Thresholds`) holds the [thresholds](#thresholds) applied to
-the queue, with lowercase keys — `scale_up_backlog_age_seconds` and
-`scale_down_max_running` — so your advisor can honour the settings rather
+the queue, with lowercase keys — `scale_up_backlog_age_seconds`,
+`scale_down_max_running` and `min_workers` — so your advisor can honour the settings rather
 than hard-code its limits. `default_advisor` is the built-in heuristic,
 handy to keep its rules and only add your own.
 
@@ -197,5 +223,5 @@ and `advice` included), `executors` (executor ID → running and enqueued
 counts), `workers` (the heartbeats, stale ones included) and
 `max_recovery_attempts_exceeded`. `collect(advisor=...)` replaces the
 configured advisor for one call; `advise_queue(metrics,
-scale_up_backlog_age_seconds=..., scale_down_max_running=...)` is the
+scale_up_backlog_age_seconds=..., scale_down_max_running=..., min_workers=...)` is the
 built-in heuristic with explicit thresholds.

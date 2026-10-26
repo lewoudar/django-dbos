@@ -39,6 +39,7 @@ def _metrics(**overrides: object) -> dict[str, object]:
         'max_queue_wait_ms': None,
         'worker_concurrency': None,
         'global_concurrency': None,
+        'workers': 2,
         'advice': 'OK',
     }
     base.update(overrides)
@@ -50,6 +51,8 @@ class TestAdviseQueue:
         ('overrides', 'expected'),
         [
             pytest.param({}, 'SCALE_DOWN', id='idle'),
+            pytest.param({'workers': 1}, 'OK', id='idle-last-worker'),
+            pytest.param({'workers': 0}, 'SCALE_UP', id='idle-below-min-workers'),
             pytest.param({'running': 3, 'worker_concurrency': 4}, 'OK', id='running-activity'),
             pytest.param(
                 {'enqueued': 10, 'backlog_age_seconds': 3.0, 'running': 2, 'worker_concurrency': 4},
@@ -106,6 +109,13 @@ class TestConfigurableThresholds:
         assert advise_queue(metrics) == 'OK'
         assert advise_queue(metrics, scale_up_backlog_age_seconds=5) == 'SCALE_UP'
         assert advise_queue(_metrics(running=2), scale_down_max_running=2) == 'SCALE_DOWN'
+        assert advise_queue(_metrics(workers=1)) == 'OK'
+        assert advise_queue(_metrics(workers=1), min_workers=0) == 'SCALE_DOWN'
+        assert advise_queue(_metrics(workers=0), min_workers=0) == 'OK'  # nothing left to remove
+        assert advise_queue(_metrics(workers=1), min_workers=2) == 'SCALE_UP'  # below the floor
+        # No floor, but a fresh (or undated) backlog nobody will drain.
+        assert advise_queue(_metrics(enqueued=1, backlog_age_seconds=1.0, workers=0), min_workers=0) == 'SCALE_UP'
+        assert advise_queue(_metrics(enqueued=1, workers=0), min_workers=0) == 'SCALE_UP'
 
     def test_thresholds_come_from_settings(self, settings):
         set_dbos_options(
@@ -113,12 +123,18 @@ class TestConfigurableThresholds:
         )
         assert advise_queue(_metrics(enqueued=1, backlog_age_seconds=10.0, running=1)) == 'SCALE_UP'
 
+    def test_min_workers_comes_from_settings(self, settings):
+        set_dbos_options(settings, {**settings.TASKS['dbos']['OPTIONS'], 'CAPACITY': {'MIN_WORKERS': 2}})
+        assert advise_queue(_metrics(workers=2)) == 'OK'
+        assert advise_queue(_metrics(workers=3)) == 'SCALE_DOWN'
+
     @pytest.mark.parametrize(
         ('capacity', 'message'),
         [
             pytest.param({'SCALE_UP_BACKLOG_AGE_SECOND': 5}, 'unknown threshold', id='unknown-key'),
             pytest.param({'SCALE_UP_BACKLOG_AGE_SECONDS': -1}, 'non-negative number', id='negative'),
             pytest.param({'SCALE_DOWN_MAX_RUNNING': True}, 'non-negative number', id='bool'),
+            pytest.param({'MIN_WORKERS': -1}, 'non-negative number', id='negative-min-workers'),
             pytest.param({'ADVISOR': 'nowhere.advise'}, 'ADVISOR', id='unknown-advisor-path'),
             pytest.param({'ADVISOR': 42}, 'callable', id='advisor-not-callable'),
             pytest.param([], 'must be a mapping', id='not-a-mapping'),
@@ -150,6 +166,7 @@ class TestConfigurableThresholds:
         assert resolved.capacity.thresholds_for(default) == {
             'scale_up_backlog_age_seconds': 30,
             'scale_down_max_running': 0,
+            'min_workers': 1,
         }
         assert resolved.capacity.thresholds_for(emails)['scale_up_backlog_age_seconds'] == 300
 
@@ -252,6 +269,30 @@ class TestCollect:
         report = capacity.collect(queues=['emails'], advisor=lambda name, metrics, thresholds: 'MINE')
         assert report['queues']['emails']['advice'] == 'MINE'
 
+    def test_collect_counts_live_workers_per_queue(self, dbos_environment, mocker):
+        mocker.patch('django_dbos.capacity._active_workflows', return_value=[])
+        for queues in (('default', 'emails'), ('default',)):
+            write_heartbeat('live', heartbeat_id=uuid.uuid4(), queues=queues)
+        write_heartbeat('dead', heartbeat_id=uuid.uuid4(), queues=('default',))
+        WorkerHeartbeat.objects.filter(executor_id='dead').update(
+            last_seen_at=timezone.now() - timedelta(seconds=STALE_AFTER_SECONDS + 1)
+        )
+
+        queues = capacity.collect()['queues']
+
+        assert {name: metrics['workers'] for name, metrics in queues.items()} == {
+            'default': 2,
+            'emails': 1,
+            'per_user': 0,
+        }
+        # Idle everywhere: the queue with a worker to spare may lose one, the
+        # queue with none is below MIN_WORKERS.
+        assert {name: metrics['advice'] for name, metrics in queues.items()} == {
+            'default': 'SCALE_DOWN',
+            'emails': 'OK',
+            'per_user': 'SCALE_UP',
+        }
+
     def test_worker_heartbeat_visible_in_report(self, dbos_environment):
         write_heartbeat('some-worker', heartbeat_id=uuid.uuid4(), queues=('default',), has_metrics=False)
         report = capacity.collect()
@@ -275,6 +316,7 @@ class TestCollect:
     def test_command_human_output(self, dbos_environment: Any) -> None:
         output = status()
         assert 'Queue "default"' in output
+        assert 'Live workers: 0' in output
         assert 'Workers:' in output
 
     def test_human_output_reports_waits_and_exhausted_recoveries(self, dbos_environment: Any, mocker) -> None:

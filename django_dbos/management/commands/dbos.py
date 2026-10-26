@@ -101,7 +101,10 @@ def _print_human(report: dict[str, Any]) -> None:
         advice = metrics['advice']
         color = _ADVICE_COLORS.get(advice, 'green')
         click.echo(f'\nQueue "{queue_name}"  [{click.style(advice, fg=color)}]')
-        click.echo(f'  Backlog: {metrics["enqueued"]} (delayed: {metrics["delayed"]})   Running: {metrics["running"]}')
+        click.echo(
+            f'  Backlog: {metrics["enqueued"]} (delayed: {metrics["delayed"]})   Running: {metrics["running"]}'
+            f'   Live workers: {metrics["workers"]}'
+        )
         if metrics['backlog_age_seconds'] is not None:
             click.echo(f'  Oldest waiting workflow: {metrics["backlog_age_seconds"]:.0f}s')
         if metrics['max_queue_wait_ms'] is not None:
