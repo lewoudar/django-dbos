@@ -23,17 +23,27 @@ heartbeats** and **Workflows**.
 
 Open **Django DBOS › Workflows** (`/admin/dbos/workflows/`):
 
-- list with filters (status, queue, workflow name), ID prefix search and
-  pagination, newest first;
-- detail page with identity fields, pretty-printed input/output/error and the
-  full step list (`list_workflow_steps`): duration, output, error, and links
-  to child workflows;
-- operational actions on the detail page and their own POST endpoints:
+- list with filters (status, queue, task, schedule), ID prefix search and
+  pagination, newest first, with each workflow's run time. The task filter
+  takes the task's module path (`myapp.tasks.send_email`); workflows fired by
+  a `@cron` schedule are tagged `cron`. Child workflows are hidden unless
+  *Show child workflows* is checked (an ID prefix search finds them anyway):
+  each `@cron` firing is a schedule workflow running the task as its child,
+  so it would otherwise appear twice. The detail page links a parent to its
+  children and back;
+- detail page with the workflow's fields (links to its parent, the workflow
+  it was forked from and its schedule), its timing (created, dequeued,
+  completed, time waited in the queue, run time), pretty-printed
+  input/output, the error raised if any, and the full step list
+  (`list_workflow_steps`): status, duration, output or error (long ones
+  folded), and links to child workflows;
+- operational actions on the detail page, offered only where they apply to
+  the workflow's status, and their own POST endpoints:
 
 | Action | Effect |
 | --- | --- |
-| Cancel | Marks the workflow CANCELLED: a waiting task never runs, a running step still finishes but no further step starts (see [Cancelling a task](tasks.md#cancelling-a-task)). |
-| Resume | Resumes a cancelled workflow after its last completed step. |
+| Cancel | (Enqueued, delayed or running workflows.) Marks the workflow CANCELLED: a waiting task never runs, a running step still finishes but no further step starts (see [Cancelling a task](tasks.md#cancelling-a-task)). |
+| Resume | (Cancelled workflows, or ones that exhausted their recovery attempts.) Resumes the workflow after its last completed step. |
 | Fork | Runs a copy of the workflow from step 0 and redirects to it. |
 | Delete | Permanently removes the workflow and its history (with a confirmation page). |
 
@@ -41,7 +51,8 @@ Open **Django DBOS › Workflows** (`/admin/dbos/workflows/`):
 
 **Django DBOS › Schedules** (`/admin/dbos/schedules/`) lists every DBOS schedule
 (registered by `@cron` tasks when a worker starts) with its crontab, timezone,
-queue and last fire time. Each schedule can be paused, resumed or deleted
+queue and last fire time, which links to the workflows the schedule fired.
+Each schedule can be paused, resumed or deleted
 (deletion asks for confirmation first, like workflow deletion).
 
 ## Options

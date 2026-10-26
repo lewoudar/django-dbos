@@ -1,0 +1,134 @@
+/* django-dbos admin pages. Built on the admin's own CSS variables, so the
+   pages follow its light and dark themes. */
+
+.dbos-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1.5;
+  color: #fff;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.dbos-badge-success { background: #2e7d32; }
+.dbos-badge-error { background: #c62828; }
+.dbos-badge-info { background: #1565c0; }
+.dbos-badge-warning { background: #b45309; }
+.dbos-badge-neutral { background: #6b7280; }
+
+.dbos-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 0.6875rem;
+  color: var(--body-quiet-color);
+  vertical-align: middle;
+}
+
+.dbos-mono, .dbos-code, .dbos-inline-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+.dbos-quiet { color: var(--body-quiet-color); }
+.dbos-nowrap { white-space: nowrap; }
+
+/* Buttons: the admin's .button, plus a danger variant (its .deletelink is
+   styled for links with an icon, not for buttons). */
+.dbos-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.dbos-actions form { margin: 0; }
+.dbos-actions .button, .dbos-actions a.button {
+  display: inline-block;
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 0.8125rem;
+  line-height: 1.25;
+  text-decoration: none;
+}
+.button.dbos-danger, a.button.dbos-danger:link, a.button.dbos-danger:visited {
+  background: var(--delete-button-bg);
+  color: var(--button-fg);
+  text-decoration: none;
+}
+.button.dbos-danger:hover, .button.dbos-danger:focus,
+a.button.dbos-danger:hover, a.button.dbos-danger:focus {
+  background: var(--delete-button-hover-bg);
+}
+
+/* Workflow detail */
+.dbos-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 20px;
+}
+.dbos-header-id { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.dbos-header-id .dbos-mono { font-size: 0.875rem; color: var(--body-quiet-color); }
+
+.dbos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 20px;
+  margin-bottom: 20px;
+}
+.dbos-grid > .module { margin: 0; }
+.dbos-card { margin-bottom: 20px; }
+
+.dbos-fields {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  margin: 0;
+}
+.dbos-fields dt, .dbos-fields dd {
+  margin: 0;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--hairline-color);
+}
+.dbos-fields dt { color: var(--body-quiet-color); font-weight: 400; }
+.dbos-fields dd { overflow-wrap: anywhere; }
+.dbos-fields dt:last-of-type, .dbos-fields dd:last-of-type { border-bottom: 0; }
+
+.dbos-code {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 360px;
+  overflow: auto;
+  background: var(--darkened-bg);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.dbos-card-error h2 { background: var(--delete-button-bg); }
+.dbos-card-error .dbos-code { color: var(--error-fg); }
+.dbos-empty { margin: 0; padding: 10px 12px; color: var(--body-quiet-color); }
+
+.dbos-inline-code { font-size: 0.8125rem; overflow-wrap: anywhere; }
+.dbos-error-text { color: var(--error-fg); }
+details.dbos-more summary { cursor: pointer; }
+details.dbos-more .dbos-code { margin-top: 6px; }
+
+/* Lists */
+.dbos-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 16px;
+  padding: 10px;
+  background: var(--darkened-bg);
+  border-radius: 4px;
+}
+.dbos-filters input[type=text], .dbos-filters select { margin: 0; }
+.dbos-check { display: inline-flex; gap: 4px; align-items: center; cursor: pointer; }
+.dbos-hint { margin: -8px 0 16px; color: var(--body-quiet-color); font-size: 0.8125rem; }
+.dbos-table { width: 100%; }
+.dbos-table td, .dbos-table th { vertical-align: middle; }
+.dbos-table td.dbos-wide { max-width: 420px; }
+.dbos-subline { display: block; font-size: 0.75rem; color: var(--body-quiet-color); }
+.dbos-paginator { display: flex; gap: 12px; align-items: center; margin-top: 12px; }

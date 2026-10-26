@@ -25,6 +25,7 @@ from django_dbos.admin import (
     register_admin,
     register_admin_sites,
 )
+from django_dbos.admin_views import STEP_RESULT_INLINE_LENGTH
 from django_dbos.heartbeat import write_heartbeat
 from django_dbos.models import WorkerHeartbeat
 from django_dbos.scheduling import register_cron_schedules
@@ -51,6 +52,46 @@ def admin_client(client: Any, db: Any) -> Any:
 
 def _enqueue_sample_workflow() -> Any:
     return add.enqueue(2, 3)
+
+
+def _identity(response: Any) -> dict[str, Any]:
+    """The detail page's workflow fields, label -> value."""
+    return {field['label']: field['value'] for field in response.context['identity']}
+
+
+def _workflow_status(**overrides: Any) -> SimpleNamespace:
+    """A workflow status as returned by DBOSClient, every field empty unless overridden."""
+    values: dict[str, Any] = {
+        'workflow_id': 'wf-1',
+        'name': 'django_dbos.tasks.tests.tasks.add',
+        'status': 'SUCCESS',
+        'queue_name': 'default',
+        'queue_partition_key': None,
+        'priority': 0,
+        'created_at': None,
+        'updated_at': None,
+        'dequeued_at': None,
+        'completed_at': None,
+        'executor_id': None,
+        'app_version': None,
+        'schedule_name': None,
+        'deduplication_id': None,
+        'parent_workflow_id': None,
+        'forked_from': None,
+        'input': None,
+        'output': None,
+        'error': None,
+    }
+    return SimpleNamespace(**(values | overrides))
+
+
+def _mock_client(mocker: Any, status: SimpleNamespace | None = None, steps: list[dict[str, Any]] | None = None) -> Any:
+    client = mocker.MagicMock()
+    client.retrieve_workflow.return_value.get_status.return_value = status
+    client.list_workflow_steps.return_value = steps or []
+    client.list_workflows.return_value = []
+    mocker.patch('django_dbos.admin_views.get_client', return_value=client)
+    return client
 
 
 class TestWorkflowPages:
@@ -84,6 +125,54 @@ class TestWorkflowPages:
         assert_text(response, 'tests.tasks.add')
         assert_text(response, result.id)
 
+    def test_workflow_list_filters_by_task_path(self, admin_client, dbos_environment):
+        result = _enqueue_sample_workflow()
+        # The task's module path finds its workflow without django-dbos' prefix.
+        response = admin_client.get('/admin/dbos/workflows/', {'name': 'tests.tasks.add'})
+        assert result.id in [row['workflow_id'] for row in response.context['rows']]
+
+    def test_workflow_list_filters_by_schedule(self, admin_client, mocker):
+        client = _mock_client(mocker)
+        admin_client.get('/admin/dbos/workflows/', {'schedule': 'nightly', 'name': 'django_dbos.tasks.x'})
+        kwargs = client.list_workflows.call_args.kwargs
+        assert (kwargs['schedule_name'], kwargs['name']) == ('nightly', 'django_dbos.tasks.x')
+
+    @pytest.mark.parametrize(
+        ('query', 'has_parent'),
+        [
+            pytest.param({}, False, id='hidden-by-default'),
+            pytest.param({'children': '1'}, None, id='shown-on-demand'),
+            pytest.param({'q': 'sched-'}, None, id='id-search-finds-children'),
+        ],
+    )
+    def test_workflow_list_hides_child_workflows(self, admin_client, mocker, query, has_parent):
+        client = _mock_client(mocker)
+        client.list_workflows.return_value = [_workflow_status(parent_workflow_id='wf-parent')]
+        response = admin_client.get('/admin/dbos/workflows/', query)
+        assert client.list_workflows.call_args.kwargs['has_parent'] is has_parent
+        assert response.context['rows'][0]['is_child'] is True
+        assert_text(response, '>child</span>')
+
+    @pytest.mark.parametrize(
+        ('query', 'hinted'),
+        [
+            pytest.param({'children': '1', 'queue': 'default'}, True, id='children-and-queue'),
+            pytest.param({'children': '1'}, False, id='children-only'),
+            pytest.param({'queue': 'default'}, False, id='queue-only'),
+        ],
+    )
+    def test_workflow_list_warns_that_children_have_no_queue(self, admin_client, mocker, query, hinted):
+        _mock_client(mocker)
+        response = admin_client.get('/admin/dbos/workflows/', query)
+        assert ('the queue filter leaves them out' in response.content.decode()) is hinted
+
+    def test_workflow_list_pagination_keeps_the_filters(self, admin_client, mocker):
+        client = _mock_client(mocker)
+        client.list_workflows.return_value = [_workflow_status(workflow_id=f'wf-{n}') for n in range(51)]
+        response = admin_client.get('/admin/dbos/workflows/', {'status': 'SUCCESS', 'page': '2'})
+        assert_text(response, 'href="?status=SUCCESS&amp;page=1"')
+        assert_text(response, 'href="?status=SUCCESS&amp;page=3"')
+
     def test_pages_show_the_django_priority(self, admin_client, dbos_environment):
         # DBOS stores 101 - priority; the admin translates it back.
         result = add.using(priority=50).enqueue(2, 3)
@@ -93,7 +182,7 @@ class TestWorkflowPages:
         assert row['priority'] == 50
 
         response = admin_client.get(f'/admin/dbos/workflows/{result.id}/')
-        assert ('Priority', 50) in response.context['fields']
+        assert _identity(response)['Priority'] == 50
 
     def test_workflow_detail_shows_steps(self, admin_client, dbos_environment):
         result = wait_for_result(_enqueue_sample_workflow(), TaskResultStatus.SUCCESSFUL)
@@ -101,6 +190,8 @@ class TestWorkflowPages:
         assert response.status_code == 200
         assert_text(response, 'tests.tasks.add')
         assert_text(response, 'task_body')
+        # docs/workflows.md points to this column to find fork_workflow's start_step.
+        assert_text(response, 'Step ID')
 
     def test_workflow_detail_renders_unusual_values(self, admin_client, mocker):
         # A step that never completed has no duration; outputs that are not
@@ -108,40 +199,107 @@ class TestWorkflowPages:
         # carry ISO string timestamps.
         circular: list[Any] = []
         circular.append(circular)
-        status = SimpleNamespace(
+        status = _workflow_status(
             workflow_id='wf-odd',
             name='tests.tasks.add',
             status='PENDING',
-            queue_name='default',
             queue_partition_key='user-42',
-            priority=0,
             created_at='2026-01-01T00:00:00+00:00',
-            updated_at=None,
-            completed_at=None,
-            executor_id=None,
-            app_version=None,
-            schedule_name=None,
-            deduplication_id=None,
+            updated_at='not a timestamp',
             input=circular,
-            output=None,
-            error=None,
         )
-        client = mocker.MagicMock()
-        client.retrieve_workflow.return_value.get_status.return_value = status
-        client.list_workflow_steps.return_value = [
-            {'function_id': 1, 'function_name': 'task_body', 'started_at_epoch_ms': 1_000},
-        ]
-        mocker.patch('django_dbos.admin_views.get_client', return_value=client)
+        _mock_client(mocker, status, [{'function_id': 1, 'function_name': 'task_body', 'started_at_epoch_ms': 1_000}])
 
         response = admin_client.get('/admin/dbos/workflows/wf-odd/')
 
         assert response.status_code == 200
-        assert response.context['steps'][0]['duration_ms'] is None
+        (step,) = response.context['steps']
+        assert (step['outcome'], step['duration_ms'], step['result']) == ('RUNNING', None, None)
         assert response.context['input'] == '[[...]]'
-        assert_text(response, '2026-01-01T00:00:00+00:00')
+        assert_text(response, '2026-01-01 00:00:00')
+        assert_text(response, 'not a timestamp')  # unparsable: shown as it is
         assert_text(response, 'user-42')
-        # DBOS priority 0 (not enqueued through the backend) has no Django priority.
-        assert ('Priority', None) in response.context['fields']
+        assert_text(response, 'Not finished yet.')
+        # DBOS priority 0 (not enqueued through the backend) has no Django priority: no field.
+        assert 'Priority' not in _identity(response)
+
+    def test_workflow_detail_links_related_workflows_and_times_the_run(self, admin_client, mocker):
+        status = _workflow_status(
+            name='django_dbos.schedules.tests.tasks.cron_task',
+            schedule_name='django_dbos.schedules.tests.tasks.cron_task',
+            parent_workflow_id='wf-parent',
+            forked_from='wf-origin',
+            created_at=1_000,
+            dequeued_at=3_000,
+            completed_at=8_000,
+            output={'ok': True},
+        )
+        _mock_client(mocker, status)
+
+        response = admin_client.get('/admin/dbos/workflows/wf-1/')
+
+        assert response.context['title'] == 'tests.tasks.cron_task'
+        assert response.context['row']['fired_by_cron'] is True
+        assert_text(response, 'href="/admin/dbos/workflows/wf-parent/"')
+        assert_text(response, 'href="/admin/dbos/workflows/wf-origin/"')
+        assert_text(response, 'href="/admin/dbos/workflows/?schedule=django_dbos.schedules.tests.tasks.cron_task"')
+        timing = {field['label']: field['value'] for field in response.context['timing']}
+        assert (timing['Waited in queue'], timing['Run time']) == ('2.0 s', '5.0 s')
+
+    @pytest.mark.parametrize(
+        ('status', 'cancel', 'resume'),
+        [
+            pytest.param('SUCCESS', False, False, id='success'),
+            pytest.param('ERROR', False, False, id='error'),
+            pytest.param('PENDING', True, False, id='pending'),
+            pytest.param('ENQUEUED', True, False, id='enqueued'),
+            pytest.param('CANCELLED', False, True, id='cancelled'),
+            pytest.param('MAX_RECOVERY_ATTEMPTS_EXCEEDED', False, True, id='dead-letter'),
+        ],
+    )
+    def test_workflow_detail_offers_the_actions_of_its_status(self, admin_client, mocker, status, cancel, resume):
+        _mock_client(mocker, _workflow_status(status=status))
+
+        page = admin_client.get('/admin/dbos/workflows/wf-1/').content.decode()
+
+        assert ('/admin/dbos/workflows/wf-1/cancel/' in page) is cancel
+        assert ('/admin/dbos/workflows/wf-1/resume/' in page) is resume
+        assert '/admin/dbos/workflows/wf-1/fork/' in page
+        # Deleting goes through the confirmation page (a link, not a POST form).
+        assert 'href="/admin/dbos/workflows/wf-1/delete/"' in page
+
+    def test_workflow_detail_shows_the_error(self, admin_client, mocker):
+        _mock_client(
+            mocker,
+            _workflow_status(status='ERROR', error=ValueError('card declined')),
+            [
+                {
+                    'function_id': 1,
+                    'function_name': 'task_body',
+                    'started_at_epoch_ms': 1_000,
+                    'completed_at_epoch_ms': 1_250,
+                    'error': 'ValueError: boom',
+                },
+                {
+                    'function_id': 2,
+                    'function_name': 'report',
+                    'started_at_epoch_ms': 1_000,
+                    'completed_at_epoch_ms': 1_250,
+                    'output': 'x' * 100,
+                },
+            ],
+        )
+
+        response = admin_client.get('/admin/dbos/workflows/wf-1/')
+
+        failed, long_output = response.context['steps']
+        assert (failed['outcome'], failed['result'], failed['result_is_error']) == ('ERROR', 'ValueError: boom', True)
+        assert (long_output['outcome'], long_output['result_is_long']) == ('SUCCESS', True)
+        assert len(long_output['result_preview']) == STEP_RESULT_INLINE_LENGTH
+        assert long_output['result_preview'].endswith('…')
+        assert_text(response, 'ValueError: card declined')
+        assert_text(response, 'dbos-card-error')
+        assert 'Output</h2>' not in response.content.decode()
 
     @pytest.mark.parametrize('bad_page', ['abc', '-3'])
     def test_workflow_list_bad_page_inputs_render_page_1(self, admin_client, dbos_environment, bad_page):
@@ -220,6 +378,28 @@ class TestSchedulePages:
         response = admin_client.get('/admin/dbos/schedules/')
         assert response.status_code == 200
         assert_text(response, 'tests.tasks.cron_task')
+
+    def test_schedule_rows(self, admin_client, mocker):
+        client = _mock_client(mocker)
+        client.list_schedules.return_value = [
+            {
+                'schedule_name': 'django_dbos.schedules.tests.tasks.cron_task',
+                'workflow_name': 'django_dbos.schedules.tests.tasks.cron_task',
+                'schedule': '*/10 * * * *',
+                'status': 'ACTIVE',
+                'last_fired_at': '2026-10-26T19:31:30+00:00',
+            },
+            {'schedule_name': 'nightly', 'workflow_name': 'other.workflow', 'status': 'PAUSED'},
+        ]
+
+        response = admin_client.get('/admin/dbos/schedules/')
+
+        cron, nightly = response.context['rows']
+        assert (cron['short_name'], cron['workflow_name']) == ('tests.tasks.cron_task', None)
+        assert (nightly['short_name'], nightly['workflow_name']) == ('nightly', 'other.workflow')
+        assert_text(response, '2026-10-26 19:31:30')
+        assert_text(response, 'href="/admin/dbos/workflows/?schedule=django_dbos.schedules.tests.tasks.cron_task"')
+        assert_text(response, 'href="/admin/dbos/schedules/nightly/delete/"')
 
     def test_delete_schedule_with_confirmation(self, admin_client, dbos_environment):
         register_cron_schedules()

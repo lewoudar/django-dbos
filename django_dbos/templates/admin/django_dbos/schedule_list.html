@@ -1,50 +1,48 @@
-{% extends "admin/base_site.html" %}
-{% block breadcrumbs %}
-<ol class="breadcrumbs">
-  <li><a href="{% url 'admin:index' %}">Home</a></li>
-  <li aria-current="page">DBOS schedules</li>
-</ol>
-{% endblock %}
+{% extends "admin/django_dbos/base.html" %}
+{% load dbos_admin %}
+{% block dbos_breadcrumbs %}<li aria-current="page">Schedules</li>{% endblock %}
 
 {% block content %}
 <div class="results">
-<table id="result_list">
+<table id="result_list" class="dbos-table">
   <thead>
     <tr>
       <th scope="col">Schedule</th>
-      <th scope="col">Workflow</th>
       <th scope="col">Crontab</th>
       <th scope="col">Timezone</th>
       <th scope="col">Status</th>
       <th scope="col">Queue</th>
-      <th scope="col">Last fired at</th>
+      <th scope="col">Last fired</th>
       <th scope="col">Actions</th>
     </tr>
   </thead>
   <tbody>
     {% for row in rows %}
     <tr>
-      <td>{{ row.schedule_name }}</td>
-      <td>{{ row.workflow_name }}</td>
-      <td><code>{{ row.crontab }}</code></td>
-      <td>{{ row.cron_timezone|default_if_none:"-" }}</td>
-      <td><span class="badge {% if row.status == 'ACTIVE' %}badge-success{% else %}badge-neutral{% endif %}">{{ row.status }}</span></td>
-      <td>{{ row.queue_name|default_if_none:"-" }}</td>
-      <td>{{ row.last_fired_at|default_if_none:"never" }}</td>
+      <td class="dbos-wide">
+        <span class="dbos-mono" title="{{ row.schedule_name }}">{{ row.short_name }}</span>
+        {% if row.workflow_name %}<span class="dbos-subline">runs <span class="dbos-mono">{{ row.workflow_name }}</span></span>{% endif %}
+      </td>
+      <td class="dbos-nowrap"><code>{{ row.crontab }}</code></td>
+      <td>{{ row.cron_timezone|default_if_none:"" }}</td>
+      <td><span class="dbos-badge {% if row.status == 'ACTIVE' %}dbos-badge-success{% else %}dbos-badge-neutral{% endif %}">{{ row.status }}</span></td>
+      <td>{{ row.queue_name|default_if_none:"" }}</td>
+      <td class="dbos-nowrap">{% if row.last_fired_at %}<a href="{{ row.workflows_url }}" title="Workflows fired by this schedule">{{ row.last_fired_at|dbos_time }}</a>{% else %}<span class="dbos-quiet">never</span>{% endif %}</td>
       <td>
-        {% if row.status == 'ACTIVE' %}
-        <form method="post" action="{% url 'admin:django_dbos_schedule_pause' row.schedule_name %}" style="display:inline">{% csrf_token %}
-          <button type="submit" class="button">Pause</button></form>
-        {% else %}
-        <form method="post" action="{% url 'admin:django_dbos_schedule_resume' row.schedule_name %}" style="display:inline">{% csrf_token %}
-          <button type="submit" class="button">Resume</button></form>
-        {% endif %}
-        <form method="post" action="{% url 'admin:django_dbos_schedule_delete' row.schedule_name %}" style="display:inline">{% csrf_token %}
-          <button type="submit" class="button deletelink">Delete</button></form>
+        <div class="dbos-actions">
+          {% if row.status == 'ACTIVE' %}
+          <form method="post" action="{% url 'admin:django_dbos_schedule_pause' row.schedule_name %}">{% csrf_token %}
+            <button type="submit" class="button">Pause</button></form>
+          {% else %}
+          <form method="post" action="{% url 'admin:django_dbos_schedule_resume' row.schedule_name %}">{% csrf_token %}
+            <button type="submit" class="button">Resume</button></form>
+          {% endif %}
+          <a href="{% url 'admin:django_dbos_schedule_delete' row.schedule_name %}" class="button dbos-danger" role="button">Delete</a>
+        </div>
       </td>
     </tr>
     {% empty %}
-    <tr><td colspan="8">No schedules. Register cron tasks with @cron and start <code>dbos worker</code>.</td></tr>
+    <tr><td colspan="7">No schedules. Register cron tasks with <code>@cron</code> and start <code>dbos worker</code>.</td></tr>
     {% endfor %}
   </tbody>
 </table>

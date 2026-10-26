@@ -1,77 +1,118 @@
-{% extends "admin/base_site.html" %}
-{% block breadcrumbs %}
-<ol class="breadcrumbs">
-  <li><a href="{% url 'admin:index' %}">Home</a></li>
-  <li><a href="{% url 'admin:django_dbos_workflow_changelist' %}">DBOS workflows</a></li>
-  <li aria-current="page">{{ row.workflow_id|truncatechars:26 }}</li>
-</ol>
+{% extends "admin/django_dbos/base.html" %}
+{% load dbos_admin %}
+{% block dbos_breadcrumbs %}
+  <li><a href="{% url 'admin:django_dbos_workflow_changelist' %}">Workflows</a></li>
+  <li aria-current="page">{{ row.workflow_id|truncatechars:13 }}</li>
 {% endblock %}
 
 {% block content %}
-<h2><span class="badge badge-{{ row.badge }}">{{ row.status }}</span> {{ row.name }}</h2>
+<div class="dbos-header">
+  <div class="dbos-header-id">
+    <span class="dbos-badge dbos-badge-{{ row.badge }}">{{ row.status }}</span>
+    {% if row.fired_by_cron %}<span class="dbos-tag">cron</span>{% endif %}
+    {% if row.is_child %}<span class="dbos-tag">child</span>{% endif %}
+    <span class="dbos-mono">{{ row.workflow_id }}</span>
+  </div>
+  <div class="dbos-actions">
+    {% if can_cancel %}
+    <form method="post" action="{% url 'admin:django_dbos_workflow_cancel' row.workflow_id %}">{% csrf_token %}
+      <button type="submit" class="button" title="Stop the workflow: no further step starts">Cancel</button></form>
+    {% endif %}
+    {% if can_resume %}
+    <form method="post" action="{% url 'admin:django_dbos_workflow_resume' row.workflow_id %}">{% csrf_token %}
+      <button type="submit" class="button" title="Resume after the last completed step">Resume</button></form>
+    {% endif %}
+    <form method="post" action="{% url 'admin:django_dbos_workflow_fork' row.workflow_id %}">{% csrf_token %}
+      <button type="submit" class="button" title="Run a new copy of this workflow from the start">Fork</button></form>
+    <a href="{% url 'admin:django_dbos_workflow_delete' row.workflow_id %}" class="button dbos-danger" role="button">Delete</a>
+  </div>
+</div>
 
-<h3>Actions</h3>
-<form method="post" action="{% url 'admin:django_dbos_workflow_cancel' row.workflow_id %}" style="display:inline">{% csrf_token %}
-  <button type="submit" class="button">Cancel</button></form>
-<form method="post" action="{% url 'admin:django_dbos_workflow_resume' row.workflow_id %}" style="display:inline">{% csrf_token %}
-  <button type="submit" class="button">Resume</button></form>
-<form method="post" action="{% url 'admin:django_dbos_workflow_fork' row.workflow_id %}" style="display:inline">{% csrf_token %}
-  <button type="submit" class="button">Fork</button></form>
-<form method="post" action="{% url 'admin:django_dbos_workflow_delete' row.workflow_id %}" style="display:inline">{% csrf_token %}
-  <button type="submit" class="button deletelink">Delete</button></form>
+<div class="dbos-grid">
+  <div class="module">
+    <h2>Workflow</h2>
+    <dl class="dbos-fields">
+      {% for field in identity %}
+      <dt>{{ field.label }}</dt>
+      <dd{% if field.mono %} class="dbos-mono"{% endif %}>{% if field.url %}<a href="{{ field.url }}">{{ field.value }}</a>{% else %}{{ field.value }}{% endif %}</dd>
+      {% endfor %}
+    </dl>
+  </div>
+  <div class="module">
+    <h2>Timing</h2>
+    <dl class="dbos-fields">
+      {% for field in timing %}
+      <dt>{{ field.label }}</dt>
+      <dd>{{ field.value }}</dd>
+      {% empty %}
+      <dt>Created</dt><dd class="dbos-quiet">unknown</dd>
+      {% endfor %}
+    </dl>
+  </div>
+</div>
 
-<h3>Workflow</h3>
-<table>
-  <tbody>
-    {% for label, value in fields %}
-    <tr>
-      <th scope="row" style="text-align:left; padding-right: 20px;">{{ label }}</th>
-      <td>{{ value|default_if_none:"-" }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="dbos-grid">
+  <div class="module">
+    <h2>Input</h2>
+    {% if input %}<pre class="dbos-code">{{ input }}</pre>{% else %}<p class="dbos-empty">No input.</p>{% endif %}
+  </div>
+  {% if error %}
+  <div class="module dbos-card-error">
+    <h2>Error</h2>
+    <pre class="dbos-code">{{ error }}</pre>
+  </div>
+  {% else %}
+  <div class="module">
+    <h2>Output</h2>
+    {% if output %}<pre class="dbos-code">{{ output }}</pre>{% else %}<p class="dbos-empty">{% if row.badge == 'success' %}No output.{% else %}Not finished yet.{% endif %}</p>{% endif %}
+  </div>
+  {% endif %}
+</div>
 
-<h3>Input</h3>
-<pre>{{ input|default:"-" }}</pre>
-
-<h3>Output</h3>
-<pre>{{ output|default:"-" }}</pre>
-
-<h3>Error</h3>
-<pre>{{ error|default:"-" }}</pre>
-
-<h3>Steps ({{ steps|length }})</h3>
-<div class="results">
-<table id="steps">
-  <thead>
-    <tr>
-      <th scope="col">Step ID</th>
-      <th scope="col">Name</th>
-      <th scope="col">Duration</th>
-      <th scope="col">Output</th>
-      <th scope="col">Error</th>
-      <th scope="col">Child workflow</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for step in steps %}
-    <tr>
-      <td>{{ step.function_id }}</td>
-      <td>{{ step.name }}</td>
-      <td>{% if step.duration_ms is not None %}{{ step.duration_ms }} ms{% else %}-{% endif %}</td>
-      <td><code>{{ step.output|truncatechars:80|default:"-" }}</code></td>
-      <td><code>{{ step.error|truncatechars:80|default:"-" }}</code></td>
-      <td>
-        {% if step.child_workflow_id %}
-          <a href="{% url 'admin:django_dbos_workflow_detail' step.child_workflow_id %}">{{ step.child_workflow_id|truncatechars:20 }}</a>
-        {% else %}-{% endif %}
-      </td>
-    </tr>
-    {% empty %}
-    <tr><td colspan="6">No steps recorded.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="module dbos-card">
+  <h2>Steps ({{ steps|length }})</h2>
+  <div class="results">
+  <table id="steps" class="dbos-table">
+    <thead>
+      <tr>
+        <th scope="col" title="The start_step to pass to fork_workflow">Step ID</th>
+        <th scope="col">Name</th>
+        <th scope="col">Status</th>
+        <th scope="col">Duration</th>
+        <th scope="col">Result</th>
+        <th scope="col">Child workflow</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for step in steps %}
+      <tr>
+        <td>{{ step.function_id }}</td>
+        <td class="dbos-mono">{{ step.name }}</td>
+        <td><span class="dbos-badge dbos-badge-{{ step.badge }}">{{ step.outcome }}</span></td>
+        <td class="dbos-nowrap">{{ step.duration_ms|dbos_duration }}</td>
+        <td class="dbos-wide">
+          {% if step.result is not None %}
+            {% if step.result_is_long %}
+            <details class="dbos-more">
+              <summary class="dbos-inline-code{% if step.result_is_error %} dbos-error-text{% endif %}">{{ step.result_preview }}</summary>
+              <pre class="dbos-code{% if step.result_is_error %} dbos-error-text{% endif %}">{{ step.result }}</pre>
+            </details>
+            {% else %}
+            <code class="dbos-inline-code{% if step.result_is_error %} dbos-error-text{% endif %}">{{ step.result }}</code>
+            {% endif %}
+          {% endif %}
+        </td>
+        <td>
+          {% if step.child_workflow_id %}
+            <a class="dbos-mono" href="{% url 'admin:django_dbos_workflow_detail' step.child_workflow_id %}" title="{{ step.child_workflow_id }}">{{ step.child_workflow_id|truncatechars:13 }}</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="dbos-quiet">No steps recorded.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
 </div>
 {% endblock %}

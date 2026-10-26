@@ -1,18 +1,15 @@
-{% extends "admin/base_site.html" %}
-{% block breadcrumbs %}
-<ol class="breadcrumbs">
-  <li><a href="{% url 'admin:index' %}">Home</a></li>
+{% extends "admin/django_dbos/base.html" %}
+{% block dbos_breadcrumbs %}
   <li><a href="{{ back_list_url }}">{{ back_list_label }}</a></li>
   <li aria-current="page">Delete {{ object_id|truncatechars:26 }}</li>
-</ol>
 {% endblock %}
 
 {% block content %}
 <h2>Are you sure?</h2>
-<p>Deleting {{ object_kind }} <strong>{{ object_id }}</strong> {{ warning }} This cannot be undone.</p>
-<form method="post">
+<p>Deleting {{ object_kind }} <strong class="dbos-mono">{{ object_id }}</strong> {{ warning }} This cannot be undone.</p>
+<form method="post" class="dbos-actions">
   {% csrf_token %}
-  <button type="submit" class="button deletelink">Yes, delete</button>
-  <a href="{{ back_url|default:back_list_url }}" class="button">Cancel</a>
+  <button type="submit" class="button dbos-danger">Yes, delete</button>
+  <a href="{{ back_url|default:back_list_url }}" class="button" role="button">No, take me back</a>
 </form>
 {% endblock %}

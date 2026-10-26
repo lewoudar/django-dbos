@@ -11,6 +11,7 @@ import functools
 import json
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlencode
 
 from dbos import WorkflowStatusString
 from dbos import error as dbos_error
@@ -18,13 +19,23 @@ from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
+from django.utils.text import Truncator
 
 from .backends import _dbos_to_django_priority
 from .client import get_client
 from .exceptions import ImproperlyConfiguredDbos, describe_error, system_database_errors
 from .logging import logger
+from .scheduling import SCHEDULE_PREFIX
+from .templatetags.dbos_admin import dbos_duration, dbos_time
+from .workflow_names import REGISTRY_PREFIX
 
 PAGE_SIZE = 50
+
+# Step results up to this length, on one line, are shown inline; longer ones fold.
+STEP_RESULT_INLINE_LENGTH = 80
+
+# django-dbos' own workflow names: a task's module path behind one of these.
+NAME_PREFIXES = (REGISTRY_PREFIX, SCHEDULE_PREFIX)
 
 # Workflow status -> CSS class for the status badge in templates.
 STATUS_BADGES = {
@@ -38,6 +49,19 @@ STATUS_BADGES = {
 }
 
 WORKFLOW_STATUSES = list(STATUS_BADGES)
+
+# The statuses each action applies to; DBOS ignores the others (resuming a
+# SUCCESS or ERROR workflow does nothing), so the buttons are not offered.
+CANCELLABLE_STATUSES = frozenset(
+    {
+        WorkflowStatusString.ENQUEUED.value,
+        WorkflowStatusString.DELAYED.value,
+        WorkflowStatusString.PENDING.value,
+    }
+)
+RESUMABLE_STATUSES = frozenset(
+    {WorkflowStatusString.CANCELLED.value, WorkflowStatusString.MAX_RECOVERY_ATTEMPTS_EXCEEDED.value}
+)
 
 
 def bind_site(view: Any, site: Any) -> Any:
@@ -92,25 +116,67 @@ def _pretty(value: Any) -> str | None:
         return str(value)
 
 
+def _pretty_error(value: Any) -> str | None:
+    """A workflow or step error: DBOS hands back the raised exception, shown as ``Type: message``."""
+    if isinstance(value, BaseException):
+        return f'{type(value).__name__}: {value}'
+    if isinstance(value, str):
+        return value
+    return _pretty(value)
+
+
 def _epoch_ms(value: int | str | None) -> datetime | str | None:
     if value is None:
         return None
     if isinstance(value, str):  # schedules store timestamps as ISO strings
-        return value
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            return value
     return datetime.fromtimestamp(value / 1000, tz=UTC)
 
 
+def _elapsed_ms(start: Any, end: Any) -> int | None:
+    if not isinstance(start, int) or not isinstance(end, int):
+        return None
+    return end - start
+
+
+def short_name(name: str | None) -> str | None:
+    """A workflow name without django-dbos' prefix: the task's module path."""
+    for prefix in NAME_PREFIXES:
+        if name and name.startswith(prefix):
+            return name.removeprefix(prefix)
+    return name
+
+
+def _name_filter(name: str | None) -> str | list[str] | None:
+    """The workflow names matching a name filter, which may omit django-dbos' prefix."""
+    if not name or name.startswith(NAME_PREFIXES):
+        return name
+    return [name, *(prefix + name for prefix in NAME_PREFIXES)]
+
+
+def _status_value(status: Any) -> str:
+    return status.status.value if hasattr(status.status, 'value') else str(status.status)
+
+
 def _row(status: Any) -> dict[str, Any]:
-    django_status = status.status.value if hasattr(status.status, 'value') else str(status.status)
+    django_status = _status_value(status)
     return {
         'workflow_id': status.workflow_id,
         'name': status.name,
+        'short_name': short_name(status.name),
+        'fired_by_cron': bool(status.name and status.name.startswith(SCHEDULE_PREFIX)),
+        'is_child': status.parent_workflow_id is not None,
         'status': django_status,
         'badge': STATUS_BADGES.get(django_status, 'neutral'),
         'queue_name': status.queue_name,
         'priority': _dbos_to_django_priority(status.priority),
         'created_at': _epoch_ms(status.created_at),
         'updated_at': _epoch_ms(status.updated_at),
+        # Run time: from the dequeue (or the start, for an unqueued workflow) to completion.
+        'duration_ms': _elapsed_ms(status.dequeued_at or status.created_at, status.completed_at),
         'error': status.error,
     }
 
@@ -133,15 +199,22 @@ def workflow_list(request: HttpRequest) -> HttpResponse:
     status_filter = request.GET.get('status') or None
     queue_filter = request.GET.get('queue') or None
     name_filter = request.GET.get('name') or None
+    schedule_filter = request.GET.get('schedule') or None
     search = request.GET.get('q') or None
+    show_children = request.GET.get('children') == '1'
     page = _page_number(request.GET.get('page'))
     offset = (page - 1) * PAGE_SIZE
 
     workflows = get_client().list_workflows(
         status=status_filter,
         queue_name=queue_filter,
-        name=name_filter,
+        name=_name_filter(name_filter),
+        schedule_name=schedule_filter,
         workflow_id_prefix=search,
+        # Child workflows are hidden by default: each @cron firing is a schedule
+        # workflow running its task as a child, so it would show up twice. An
+        # ID search still finds a child.
+        has_parent=None if show_children or search else False,
         limit=PAGE_SIZE + 1,
         offset=offset,
         sort_desc=True,
@@ -162,7 +235,9 @@ def workflow_list(request: HttpRequest) -> HttpResponse:
                 'status': status_filter or '',
                 'queue': queue_filter or '',
                 'name': name_filter or '',
+                'schedule': schedule_filter or '',
                 'q': search or '',
+                'children': show_children,
             },
             'page': page,
             'has_previous': page > 1,
@@ -178,51 +253,90 @@ def _get_workflow_or_404(workflow_id: str) -> Any:
         raise Http404(f'No workflow found with id {workflow_id!r}') from None
 
 
+def _field(label: str, value: Any, *, url: str | None = None, mono: bool = False) -> dict[str, Any]:
+    return {'label': label, 'value': value, 'url': url, 'mono': mono}
+
+
+def _workflow_url(workflow_id: str | None) -> str | None:
+    return reverse('admin:django_dbos_workflow_detail', args=[workflow_id]) if workflow_id else None
+
+
+def _workflows_of_schedule_url(schedule_name: str) -> str:
+    return f'{reverse("admin:django_dbos_workflow_changelist")}?{urlencode({"schedule": schedule_name})}'
+
+
+def _step_row(step: dict[str, Any]) -> dict[str, Any]:
+    error = _pretty_error(step.get('error'))
+    if error is not None:
+        outcome, badge = 'ERROR', 'error'
+    elif step.get('completed_at_epoch_ms') is not None:
+        outcome, badge = 'SUCCESS', 'success'
+    else:
+        outcome, badge = 'RUNNING', 'info'
+    result = error if error is not None else _pretty(step.get('output'))
+    return {
+        'function_id': step.get('function_id'),
+        'name': step.get('function_name'),
+        'outcome': outcome,
+        'badge': badge,
+        'duration_ms': _elapsed_ms(step.get('started_at_epoch_ms'), step.get('completed_at_epoch_ms')),
+        # The error, or else the output; a long or multi-line one is folded in the page.
+        'result': result,
+        'result_is_error': error is not None,
+        'result_is_long': result is not None and (len(result) > STEP_RESULT_INLINE_LENGTH or '\n' in result),
+        # What a folded result shows before it is unfolded: as much as fits inline.
+        'result_preview': Truncator(result).chars(STEP_RESULT_INLINE_LENGTH) if result is not None else None,
+        'child_workflow_id': step.get('child_workflow_id'),
+    }
+
+
 @_dbos_view
 def workflow_detail(request: HttpRequest, workflow_id: str) -> HttpResponse:
     status = _get_workflow_or_404(workflow_id)
-    django_status = status.status.value if hasattr(status.status, 'value') else str(status.status)
+    row = _row(status)
+    steps = [_step_row(step) for step in get_client().list_workflow_steps(workflow_id, load_output=True)]
 
-    steps = []
-    for step in get_client().list_workflow_steps(workflow_id, load_output=True):
-        duration_ms = None
-        if step.get('started_at_epoch_ms') is not None and step.get('completed_at_epoch_ms') is not None:
-            duration_ms = step['completed_at_epoch_ms'] - step['started_at_epoch_ms']
-        steps.append(
-            {
-                'function_id': step.get('function_id'),
-                'name': step.get('function_name'),
-                'duration_ms': duration_ms,
-                'output': _pretty(step.get('output')),
-                'error': _pretty(step.get('error')),
-                'child_workflow_id': step.get('child_workflow_id'),
-            }
-        )
+    # Fields without a value are left out: most workflows have no partition
+    # key, deduplication ID, schedule or parent.
+    identity = [
+        _field('Workflow ID', status.workflow_id, mono=True),
+        _field('Workflow name', status.name, mono=True),
+        _field('Queue', status.queue_name),
+        _field('Partition key', status.queue_partition_key, mono=True),
+        _field('Priority', row['priority']),
+        _field('Deduplication ID', status.deduplication_id, mono=True),
+        _field(
+            'Schedule',
+            short_name(status.schedule_name),
+            url=_workflows_of_schedule_url(status.schedule_name) if status.schedule_name else None,
+        ),
+        _field('Parent workflow', status.parent_workflow_id, url=_workflow_url(status.parent_workflow_id), mono=True),
+        _field('Forked from', status.forked_from, url=_workflow_url(status.forked_from), mono=True),
+        _field('Executor', status.executor_id, mono=True),
+        _field('Application version', status.app_version, mono=True),
+    ]
+    timing = [
+        _field('Created', dbos_time(_epoch_ms(status.created_at)) or None),
+        _field('Dequeued', dbos_time(_epoch_ms(status.dequeued_at)) or None),
+        _field('Completed', dbos_time(_epoch_ms(status.completed_at)) or None),
+        _field('Last updated', dbos_time(_epoch_ms(status.updated_at)) or None),
+        _field('Waited in queue', dbos_duration(_elapsed_ms(status.created_at, status.dequeued_at)) or None),
+        _field('Run time', dbos_duration(row['duration_ms']) or None),
+    ]
 
     return _render(
         request,
         'admin/django_dbos/workflow_detail.html',
         {
-            'title': f'DBOS workflow {workflow_id}',
-            'row': _row(status),
-            'fields': [
-                ('Workflow ID', status.workflow_id),
-                ('Name', status.name),
-                ('Status', django_status),
-                ('Queue', status.queue_name),
-                ('Partition key', status.queue_partition_key),
-                ('Priority', _dbos_to_django_priority(status.priority)),
-                ('Created at', _epoch_ms(status.created_at)),
-                ('Updated at', _epoch_ms(status.updated_at)),
-                ('Completed at', _epoch_ms(status.completed_at)),
-                ('Executor', status.executor_id),
-                ('Application version', status.app_version),
-                ('Schedule', status.schedule_name),
-                ('Deduplication ID', status.deduplication_id),
-            ],
+            'title': row['short_name'] or workflow_id,
+            'row': row,
+            'identity': [field for field in identity if field['value'] is not None],
+            'timing': [field for field in timing if field['value'] is not None],
+            'can_cancel': row['status'] in CANCELLABLE_STATUSES,
+            'can_resume': row['status'] in RESUMABLE_STATUSES,
             'input': _pretty(status.input),
             'output': _pretty(status.output),
-            'error': _pretty(status.error),
+            'error': _pretty_error(status.error),
             'steps': steps,
         },
     )
@@ -272,7 +386,7 @@ def workflow_delete(request: HttpRequest, workflow_id: str) -> HttpResponse:
         {
             'title': f'Delete workflow {workflow_id}',
             'back_list_url': reverse('admin:django_dbos_workflow_changelist'),
-            'back_list_label': 'DBOS workflows',
+            'back_list_label': 'Workflows',
             'object_kind': 'workflow',
             'object_id': workflow_id,
             'warning': 'permanently removes its execution history and steps from the system database.',
@@ -285,9 +399,14 @@ def workflow_delete(request: HttpRequest, workflow_id: str) -> HttpResponse:
 
 
 def _schedule_row(schedule: dict[str, Any]) -> dict[str, Any]:
+    schedule_name = schedule.get('schedule_name') or ''
+    workflow_name = schedule.get('workflow_name')
     return {
-        'schedule_name': schedule.get('schedule_name'),
-        'workflow_name': schedule.get('workflow_name'),
+        'schedule_name': schedule_name,
+        'short_name': short_name(schedule_name),
+        # @cron schedules run a workflow of the same name: only show a different one.
+        'workflow_name': workflow_name if workflow_name != schedule_name else None,
+        'workflows_url': _workflows_of_schedule_url(schedule_name),
         'crontab': schedule.get('schedule'),
         'status': schedule.get('status'),
         'queue_name': schedule.get('queue_name'),
@@ -349,7 +468,7 @@ def schedule_delete(request: HttpRequest, schedule_name: str) -> HttpResponse:
         {
             'title': f'Delete schedule {schedule_name}',
             'back_list_url': reverse('admin:django_dbos_schedule_changelist'),
-            'back_list_label': 'DBOS schedules',
+            'back_list_label': 'Schedules',
             'object_kind': 'schedule',
             'object_id': schedule_name,
             'warning': 'stops its cron firings (it is re-created on the next `dbos worker` start if the task is still scheduled).',

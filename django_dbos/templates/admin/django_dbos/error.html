@@ -1,10 +1,5 @@
-{% extends "admin/base_site.html" %}
-{% block breadcrumbs %}
-<ol class="breadcrumbs">
-  <li><a href="{% url 'admin:index' %}">Home</a></li>
-  <li aria-current="page">django-dbos</li>
-</ol>
-{% endblock %}
+{% extends "admin/django_dbos/base.html" %}
+{% block dbos_breadcrumbs %}<li aria-current="page">Unavailable</li>{% endblock %}
 
 {% block content %}
 <h2>django-dbos is not available</h2>
