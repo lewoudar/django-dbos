@@ -123,7 +123,7 @@ one (`django_dbos.E003`, see [System checks](troubleshooting.md#system-checks)).
 | `QUEUES` | `{"default": None}` | Declared queues and their options (see below). |
 | `EXECUTOR_ID` | `DBOS__VMID` env, else `"local"` | Identity of a worker instance (see [Executor identity](#executor-identity)). |
 | `SERIALIZER` | DBOS default (pickle) | How task arguments, results and errors are stored (see [Serialization](#serialization)). |
-| `CAPACITY` | `{}` | Thresholds and advisor of the scaling advice (see [Worker capacity](status.md#thresholds)). |
+| `CAPACITY` | `{}` | Thresholds and advisor of the scaling advice (see [Worker capacity](worker-capacity.md#thresholds)). |
 | `RUN_MIGRATIONS` | `True` | Whether workers create/migrate the system database on launch (see [Migrating the system database](#migrating-the-system-database)). |
 | `MIGRATE_WITH_DJANGO` | `True` | Whether `manage.py migrate` also creates/migrates the system database (see [Migrating the system database](#migrating-the-system-database)). |
 | `SCHEDULER_POLLING_INTERVAL_SEC` | `30.0` | How often the scheduler thread looks for new schedules. |
@@ -222,7 +222,7 @@ options:
 | `partition_concurrency` | unlimited | Max executions of one partition running at once across all workers (see [Partitioned queues](#partitioned-queues)). |
 | `partition_worker_concurrency` | unlimited | Max executions of one partition running at once in one worker. |
 | `partition_limiter` | none | Rate limit applied to each partition separately, `{'limit': n, 'period': seconds}`. |
-| `capacity` | global thresholds | Per-queue thresholds of the scaling advice (django-dbos only, see [Worker capacity](status.md#thresholds)). |
+| `capacity` | global thresholds | Per-queue thresholds of the scaling advice (django-dbos only, see [Worker capacity](worker-capacity.md#thresholds)). |
 
 An unknown option is a configuration error, reported by `manage.py check`.
 
@@ -416,7 +416,7 @@ python manage.py dbos worker
 The worker loads tasks from every installed app's `tasks` (or `dbos_tasks`)
 module, registers them as DBOS workflows, launches DBOS' queue workers and the
 cron scheduler, and shuts down gracefully on `SIGTERM`/`SIGINT`. It also
-pushes a heartbeat to the Django database (see [Worker capacity](status.md)),
+pushes a heartbeat to the Django database (see [Worker capacity](worker-capacity.md)),
 which is why django-dbos ships a migration.
 
 Every worker also takes part in [cron scheduling](cron.md): run as many

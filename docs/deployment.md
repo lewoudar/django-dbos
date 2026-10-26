@@ -118,7 +118,7 @@ retrieved.
 !!! note
     Worker heartbeats need no such cleanup: each worker run updates a single
     row, deleted on clean shutdown, and the rows of crashed workers are
-    purged automatically after a day (see [Worker capacity](status.md)).
+    purged automatically after a day (see [Worker capacity](worker-capacity.md)).
 
 ## fly.io
 
