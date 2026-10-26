@@ -242,7 +242,8 @@ setting.
   `django_dbos.serializers.MsgspecJSONSerializer`; see
   [Serialization](configuration.md#serialization).
 - **`django_dbos.W004`** (`--deploy` only) — no `EXECUTOR_ID` (nor
-  `DBOS__VMID`) is set, so every worker is `"local"`. See
+  `DBOS__VMID`) is set, so every worker is `"local"`: with several workers,
+  one that starts re-runs the workflows still running on the others. See
   [Executor identity](configuration.md#executor-identity).
 - **`django_dbos.W005`** — `django_dbos` is in `INSTALLED_APPS` but no
   `TASKS` entry uses `django_dbos.backends.DBOSBackend`: tasks run on

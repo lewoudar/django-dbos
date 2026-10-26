@@ -500,11 +500,15 @@ See [Deployment](deployment.md).
 ### Executor identity
 
 DBOS records an `executor_id` on every workflow a worker runs, and a
-restarting worker recovers the interrupted workflows *of its own id*. By
-default every worker is `"local"`, which works but makes them
-indistinguishable in reports. Give each worker instance a **stable**
-identity — stable across restarts of the same instance, distinct between
-instances:
+restarting worker recovers the interrupted workflows *of its own id*. It
+cannot tell an interrupted workflow from one still running: it takes back
+every pending workflow of its id. By default every worker is `"local"`,
+which is fine for a single worker. With several, a worker that starts
+re-runs the workflows still running on the others, and the step in
+progress then executes twice. Give each worker instance a **stable**
+identity — stable across restarts of the same instance, so a restarted
+worker recovers its own workflows, and distinct between instances, so it
+recovers only those:
 
 ```python
 import os

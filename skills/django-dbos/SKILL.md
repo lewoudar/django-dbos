@@ -368,7 +368,12 @@ actually about durability.
 - **`EXECUTOR_ID`**: give each worker *instance* a stable identity (survives
   its own restarts, distinct from other instances) — crash recovery and
   capacity reports are keyed by it. Falls back to `DBOS__VMID` env, then
-  `"local"`.
+  `"local"`, which is only safe for a single worker: a starting worker
+  recovers *every* pending workflow of its id, including those still
+  running on other workers with the same id (the in-progress step runs
+  twice). On Kubernetes use a StatefulSet (stable Pod names), not a
+  Deployment (a replacement Pod's new name orphans the crashed Pod's
+  workflows).
 
 ## Admin & operability
 

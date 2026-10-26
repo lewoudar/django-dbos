@@ -184,14 +184,16 @@ stop a machine you need again a minute later. See
 
 ## Kubernetes
 
-One Deployment per process kind, a Job for the release step. The Pod name is
-the natural executor id; a StatefulSet makes it stable across restarts, a
-Deployment makes it unique (recovery of a crashed Pod's workflows then
-happens through DBOS' recovery attempts rather than by the same executor
-relaunching).
+A Deployment for the web processes, a **StatefulSet** for the workers, a
+Job for the release step. The worker's executor id must survive a restart,
+because a restarting worker only recovers the workflows of its own id. A
+StatefulSet names its Pods `worker-0`, `worker-1`… and a crashed Pod comes
+back under the same name, so its Pod name is a good executor id. A
+Deployment gives a replacement Pod a new random name: the workflows of the
+crashed Pod would stay pending, with no worker to recover them.
 
 ```yaml
-# worker deployment (excerpt)
+# worker statefulset (excerpt)
 containers:
   - name: worker
     image: myproject:latest
@@ -268,6 +270,7 @@ Any platform works as long as it can run `migrate` before a
 version goes live and `dbos worker` next to the web processes, inject the
 database URL, and expose
 something stable to name a worker instance (a hostname, a slot number, an
-instance id). If it exposes nothing, DBOS' default `"local"` still works:
-every worker recovers every interrupted workflow, and the capacity report
-tells them apart by host and pid.
+instance id). If it exposes nothing, DBOS' default `"local"` is fine for a
+single worker only: with several, a worker that starts re-runs the
+workflows still running on the others (see
+[Executor identity](configuration.md#executor-identity)).
