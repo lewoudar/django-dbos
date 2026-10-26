@@ -382,11 +382,15 @@ actually about durability.
   delete workflows). Disable with `OPTIONS['ADMIN_ENABLED'] = False` if
   superusers aren't fully trusted with that.
 - `python manage.py dbos status` (or `--json`) reports queue backlog,
-  running counts and a scale up/down/OK advice per queue, plus worker
-  heartbeats (who's alive, `[metrics]` extra adds CPU/RSS) and workflows that
-  exhausted their recovery attempts. Safe to run anywhere (it's a
-  `DBOSClient`, not a worker) — good for a cron health check or an
-  autoscaler.
+  running counts, live workers and a scale up/down/OK advice per queue, plus
+  worker heartbeats (who's alive, `[metrics]` extra adds CPU/RSS) and
+  workflows that exhausted their recovery attempts. Safe to run anywhere
+  (it's a `DBOSClient`, not a worker) — good for a cron health check or an
+  autoscaler. `OPTIONS['CAPACITY']['MIN_WORKERS']` (integer, default 1) is a
+  floor of live workers per queue: `SCALE_UP` below it, never `SCALE_DOWN`
+  to it. An autoscaler following the advice thus never stops the last
+  worker; only set it to 0 knowingly — with no worker, `@cron` schedules
+  stop firing and enqueued tasks wait for a machine to boot.
 - DBOS never deletes the workflow history: schedule
   `django_dbos.purge_workflows(older_than=timedelta(days=30))` from a
   `@cron` task. It deletes only finished workflows (`SUCCESS`, `ERROR`,
