@@ -191,7 +191,9 @@ Django's system checks — `manage.py check`, also run by `runserver` and
 `migrate` — catch most of the problems above before anything runs. Errors
 make `check` fail and stop `runserver`; warnings are only displayed, unless
 you pass `--fail-level WARNING`. Silence a warning that does not apply to
-you with `SILENCED_SYSTEM_CHECKS`.
+you with Django's
+[`SILENCED_SYSTEM_CHECKS`](https://docs.djangoproject.com/en/stable/ref/settings/#silenced-system-checks)
+setting.
 
 - **`django_dbos.E001`** — the backend's configuration is invalid: an unknown queue option,
   queues declared both in `QUEUES` and in `OPTIONS["QUEUES"]`, a malformed `CAPACITY` threshold, a `SERIALIZER` that cannot be imported...
@@ -240,7 +242,8 @@ you with `SILENCED_SYSTEM_CHECKS`.
   `django_dbos.serializers.MsgspecJSONSerializer`; see
   [Serialization](configuration.md#serialization).
 - **`django_dbos.W004`** (`--deploy` only) — no `EXECUTOR_ID` (nor
-  `DBOS__VMID`) is set, so every worker is `"local"`. See
+  `DBOS__VMID`) is set, so every worker is `"local"`: with several workers,
+  one that starts re-runs the workflows still running on the others. See
   [Executor identity](configuration.md#executor-identity).
 - **`django_dbos.W005`** — `django_dbos` is in `INSTALLED_APPS` but no
   `TASKS` entry uses `django_dbos.backends.DBOSBackend`: tasks run on
@@ -257,5 +260,15 @@ you with `SILENCED_SYSTEM_CHECKS`.
 Task 'report' scheduled with @cron must not require arguments (found required parameter 'day').
 ```
 
-A schedule fires the task without arguments. Give the parameter a default
-value, or drop `@cron` and enqueue the task yourself with its arguments.
+A schedule calls the task with no arguments, so every parameter of the
+decorated function needs a default value:
+
+```python
+@cron('0 6 * * *')
+@task
+def report(day=None):
+    day = day or date.today()
+    ...
+```
+
+Or drop `@cron` and enqueue the task yourself with its arguments.

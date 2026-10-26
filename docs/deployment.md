@@ -16,8 +16,10 @@ settle, then shows the same setup on a few platforms.
    independently. See [Processes](configuration.md#processes).
 2. **A release step** that runs before the new version starts serving:
    `python manage.py migrate`, which applies Django's migrations then DBOS'
-   (the system database), with `OPTIONS["RUN_MIGRATIONS"] = False` so
-   workers verify the schema instead of altering it. See
+   (the system database). Since the release step now owns the schema, set
+   `OPTIONS["RUN_MIGRATIONS"] = False`: workers then stop migrating on
+   launch, only check that the schema is up to date, and refuse to start
+   otherwise. See
    [Migrating the system database](configuration.md#migrating-the-system-database).
 3. **A stable identity per worker instance**, through
    `OPTIONS["EXECUTOR_ID"]`: crash recovery and the capacity reports are
@@ -51,8 +53,10 @@ settle, then shows the same setup on a few platforms.
     django-dbos adds its own ([System checks](troubleshooting.md#system-checks)),
     among them `django_dbos.W003` (pickle) and `django_dbos.W004` (no
     executor ID) for points 3 and 5. Warnings do not fail `check` without
-    `--fail-level WARNING`. Silence a warning you accepted with
-    `SILENCED_SYSTEM_CHECKS`, for example `['django_dbos.W003']`.
+    `--fail-level WARNING`. Silence a warning you accepted with Django's
+    [`SILENCED_SYSTEM_CHECKS`](https://docs.djangoproject.com/en/stable/ref/settings/#silenced-system-checks)
+    setting, for example `['django_dbos.W003']`.
+
 8. **A retention policy** for the workflow history, which DBOS never
    deletes on its own. See [Purging old workflows](#purging-old-workflows).
 
@@ -118,7 +122,7 @@ retrieved.
 !!! note
     Worker heartbeats need no such cleanup: each worker run updates a single
     row, deleted on clean shutdown, and the rows of crashed workers are
-    purged automatically after a day (see [Worker capacity](status.md)).
+    purged automatically after a day (see [Worker capacity](worker-capacity.md)).
 
 ## fly.io
 
@@ -171,19 +175,25 @@ TASKS = {
 
 Scale each group on its own: `fly scale count web=2 worker=3`. To drive the
 `worker` count from the queues, poll `python manage.py dbos status --json`
-(or `capacity.collect()`) from a small scheduled job — smoothing the
-readings over a few minutes before scaling down.
+(or `capacity.collect()`) from a small scheduled job and follow each
+queue's advice: add machines on `SCALE_UP`, remove some on `SCALE_DOWN`.
+Scale up as soon as the advice says so, since tasks are waiting; scale down
+only once the advice has held for a few minutes, so a short lull doesn't
+stop a machine you need again a minute later. See
+[Worker capacity](worker-capacity.md).
 
 ## Kubernetes
 
-One Deployment per process kind, a Job for the release step. The Pod name is
-the natural executor id; a StatefulSet makes it stable across restarts, a
-Deployment makes it unique (recovery of a crashed Pod's workflows then
-happens through DBOS' recovery attempts rather than by the same executor
-relaunching).
+A Deployment for the web processes, a **StatefulSet** for the workers, a
+Job for the release step. The worker's executor id must survive a restart,
+because a restarting worker only recovers the workflows of its own id. A
+StatefulSet names its Pods `worker-0`, `worker-1`… and a crashed Pod comes
+back under the same name, so its Pod name is a good executor id. A
+Deployment gives a replacement Pod a new random name: the workflows of the
+crashed Pod would stay pending, with no worker to recover them.
 
 ```yaml
-# worker deployment (excerpt)
+# worker statefulset (excerpt)
 containers:
   - name: worker
     image: myproject:latest
@@ -260,6 +270,7 @@ Any platform works as long as it can run `migrate` before a
 version goes live and `dbos worker` next to the web processes, inject the
 database URL, and expose
 something stable to name a worker instance (a hostname, a slot number, an
-instance id). If it exposes nothing, DBOS' default `"local"` still works:
-every worker recovers every interrupted workflow, and the capacity report
-tells them apart by host and pid.
+instance id). If it exposes nothing, DBOS' default `"local"` is fine for a
+single worker only: with several, a worker that starts re-runs the
+workflows still running on the others (see
+[Executor identity](configuration.md#executor-identity)).

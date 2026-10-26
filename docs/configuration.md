@@ -123,7 +123,7 @@ one (`django_dbos.E003`, see [System checks](troubleshooting.md#system-checks)).
 | `QUEUES` | `{"default": None}` | Declared queues and their options (see below). |
 | `EXECUTOR_ID` | `DBOS__VMID` env, else `"local"` | Identity of a worker instance (see [Executor identity](#executor-identity)). |
 | `SERIALIZER` | DBOS default (pickle) | How task arguments, results and errors are stored (see [Serialization](#serialization)). |
-| `CAPACITY` | `{}` | Thresholds and advisor of the scaling advice (see [Worker capacity](status.md#thresholds)). |
+| `CAPACITY` | `{}` | Thresholds and advisor of the scaling advice (see [Worker capacity](worker-capacity.md#thresholds)). |
 | `RUN_MIGRATIONS` | `True` | Whether workers create/migrate the system database on launch (see [Migrating the system database](#migrating-the-system-database)). |
 | `MIGRATE_WITH_DJANGO` | `True` | Whether `manage.py migrate` also creates/migrates the system database (see [Migrating the system database](#migrating-the-system-database)). |
 | `SCHEDULER_POLLING_INTERVAL_SEC` | `30.0` | How often the scheduler thread looks for new schedules. |
@@ -222,7 +222,7 @@ options:
 | `partition_concurrency` | unlimited | Max executions of one partition running at once across all workers (see [Partitioned queues](#partitioned-queues)). |
 | `partition_worker_concurrency` | unlimited | Max executions of one partition running at once in one worker. |
 | `partition_limiter` | none | Rate limit applied to each partition separately, `{'limit': n, 'period': seconds}`. |
-| `capacity` | global thresholds | Per-queue thresholds of the scaling advice (django-dbos only, see [Worker capacity](status.md#thresholds)). |
+| `capacity` | global thresholds | Per-queue thresholds of the scaling advice (django-dbos only, see [Worker capacity](worker-capacity.md#thresholds)). |
 
 An unknown option is a configuration error, reported by `manage.py check`.
 
@@ -338,7 +338,7 @@ fails.
 
 Add `CONN_HEALTH_CHECKS = True` when something may close idle connections
 behind Django's back — a proxy, a firewall, or a serverless database
-suspending its compute when idle (Neon, for example). Django then checks a
+suspending its compute when idle ([Neon](https://neon.com/docs/introduction/scale-to-zero), for example). Django then checks a
 persistent connection before reusing it, at a small cost per task.
 
 ### DBOS' connections to the system database
@@ -359,11 +359,26 @@ count towards the server's `max_connections`: plan for about 21 per worker,
 
 ### Connection poolers
 
-A pooler in **transaction mode** — PgBouncer and the poolers of managed
-providers, such as the `-pooler` connection strings of Neon — lends a server
-connection to a client for one transaction only. `LISTEN` then runs without
-error, but the notifications reach a connection already handed back to the
-pool, and are lost.
+A pooler such as PgBouncer sits between your processes and PostgreSQL and
+shares a few server connections among many clients. How long a client keeps
+a server connection depends on its mode:
+
+- **Session mode** (PgBouncer's default): until the client disconnects. The
+  client keeps a real PostgreSQL session, so everything works, but clients
+  holding persistent connections each tie up a server connection, which
+  saves little.
+- **Transaction mode**: for one transaction only, so idle clients hold no
+  server connection. That is what makes a pooler worthwhile, and the mode
+  managed providers use for their pooled connection strings, such as the
+  `-pooler` ones of [Neon](https://neon.com/docs/connect/connection-pooling).
+  Two transactions of one client may run on different server connections,
+  so whatever lives in the session is lost between them: `LISTEN`,
+  `SET`, temporary tables, session advisory locks, cursors kept open
+  across transactions.
+
+The rest of this section is about transaction mode. `LISTEN` then runs
+without error, but the notifications reach a connection already handed
+back to the pool, and are lost.
 
 DBOS doesn't fail over it: it re-checks the system database every 60 seconds
 in case a notification was dropped. Inside a worker, `recv`,
@@ -371,14 +386,29 @@ in case a notification was dropped. Inside a worker, `recv`,
 wake up on that re-check only, up to a minute late instead of within
 milliseconds. Queues are not affected: they poll.
 
-- **Give the worker a direct connection to the system database**, without
-  a pooler. Its pool is long-lived and fixed in size, so a pooler would save
-  little anyway.
-- Web processes don't listen and would work through a pooler, but they share
-  the worker's URL unless each process sets its own
-  `DBOS_SYSTEM_DATABASE_URL`. The direct URL everywhere is the simple choice.
-- Your application database can stay behind the pooler. Django recommends
-  `DISABLE_SERVER_SIDE_CURSORS = True` in transaction mode.
+Every process talks to both databases, so the choice goes by database and
+by process:
+
+| | `dbos worker` | Web processes and commands |
+| --- | --- | --- |
+| **System database** (DBOS) | A direct connection, without a pooler: the worker listens for notifications. Its pool is long-lived and fixed in size, so a pooler would save little anyway. | No listener, so a pooler would work; but they share the worker's URL unless each process sets its own `DBOS_SYSTEM_DATABASE_URL`. The direct URL everywhere is the simple choice. |
+| **Application database** (Django) | A pooler is fine. | A pooler is fine. |
+
+Behind a pooler in transaction mode, set `DISABLE_SERVER_SIDE_CURSORS = True`
+on the application database, as
+[Django suggests](https://docs.djangoproject.com/en/stable/ref/databases/#transaction-pooling-and-server-side-cursors).
+
+A pooler doesn't make persistent connections on Django's side redundant: it
+saves the database server from opening a connection per client, but each
+client still connects to the pooler — a network round trip, often TLS and
+authentication, a few milliseconds again for a managed pooler. Keep the
+worker's connections to the pooler open with `CONN_MAX_AGE` (see [Django's
+connections in the worker](#djangos-connections-in-the-worker)): they cost
+the server next to nothing, as the pooler lends them a server connection for
+a transaction only. Django's connection pool is then mostly redundant,
+unless you need to cap the connections each process opens to the pooler:
+every process holds its own pool, so the total is the number of processes
+times `max_size`.
 
 !!! warning
     A derived system database URL copies the host of your default Django
@@ -400,7 +430,7 @@ python manage.py dbos worker
 The worker loads tasks from every installed app's `tasks` (or `dbos_tasks`)
 module, registers them as DBOS workflows, launches DBOS' queue workers and the
 cron scheduler, and shuts down gracefully on `SIGTERM`/`SIGINT`. It also
-pushes a heartbeat to the Django database (see [Worker capacity](status.md)),
+pushes a heartbeat to the Django database (see [Worker capacity](worker-capacity.md)),
 which is why django-dbos ships a migration.
 
 Every worker also takes part in [cron scheduling](cron.md): run as many
@@ -470,11 +500,15 @@ See [Deployment](deployment.md).
 ### Executor identity
 
 DBOS records an `executor_id` on every workflow a worker runs, and a
-restarting worker recovers the interrupted workflows *of its own id*. By
-default every worker is `"local"`, which works but makes them
-indistinguishable in reports. Give each worker instance a **stable**
-identity — stable across restarts of the same instance, distinct between
-instances:
+restarting worker recovers the interrupted workflows *of its own id*. It
+cannot tell an interrupted workflow from one still running: it takes back
+every pending workflow of its id. By default every worker is `"local"`,
+which is fine for a single worker. With several, a worker that starts
+re-runs the workflows still running on the others, and the step in
+progress then executes twice. Give each worker instance a **stable**
+identity — stable across restarts of the same instance, so a restarted
+worker recovers its own workflows, and distinct between instances, so it
+recovers only those:
 
 ```python
 import os

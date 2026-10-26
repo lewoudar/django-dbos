@@ -79,21 +79,50 @@ so a dashboard can show *why* a queue got its advice.
 
 ### Your own heuristic
 
-Replace the advice function entirely with a callable
-`(queue_name, metrics, thresholds) -> str`, as a dotted path in the settings
-or directly as an argument of `collect()`:
+Replace the advice function entirely with a callable of your own, as a
+dotted path in the settings, or as the `advisor=` argument of
+[`collect()`](#from-python) when you build the report from Python:
 
 ```python
 # in the DBOS backend's OPTIONS
 'CAPACITY': {'ADVISOR': 'myproject.scaling.advise'},
 ```
 
+It is called once per queue, with the queue's name, its figures and the
+thresholds configured for it, and returns the advice shown in the report:
+
 ```python
-def advise(queue_name, metrics, thresholds):
-    if metrics['running'] >= (metrics['global_concurrency'] or 0) > 0:
+from django_dbos.capacity import QueueMetrics, Thresholds, default_advisor
+
+
+def advise(queue_name: str, metrics: QueueMetrics, thresholds: Thresholds) -> str:
+    """Also scale up a queue running at its global concurrency limit."""
+    limit = metrics['global_concurrency']
+    if limit and metrics['running'] >= limit:
         return 'SCALE_UP'
-    return 'OK'
+    return default_advisor(queue_name, metrics, thresholds)  # the built-in rules otherwise
 ```
+
+`metrics` holds the queue's figures (`QueueMetrics`):
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `enqueued` | `int` | Workflows waiting for a worker. |
+| `delayed` | `int` | Deferred workflows whose `run_after` time has not come yet. |
+| `running` | `int` | Workflows being executed. |
+| `backlog_age_seconds` | `float` or `None` | How long the oldest waiting workflow has been waiting; `None` when none waits. |
+| `max_queue_wait_ms` | `int` or `None` | The longest time a running workflow waited in the queue before starting. |
+| `worker_concurrency` | `int` or `None` | The queue's declared per-worker concurrency. |
+| `global_concurrency` | `int` or `None` | The queue's declared global concurrency. |
+
+`thresholds` (`Thresholds`) holds the [thresholds](#thresholds) applied to
+the queue, with lowercase keys — `scale_up_backlog_age_seconds` and
+`scale_down_max_running` — so your advisor can honour the settings rather
+than hard-code its limits. `default_advisor` is the built-in heuristic,
+handy to keep its rules and only add your own.
+
+The advice is any string: `SCALE_UP`, `SCALE_DOWN` and `OK` are the built-in
+ones, and the report shows a value of your own as it is.
 
 !!! warning
     `collect()` is a **snapshot**. A single `SCALE_DOWN` reading only means
@@ -107,7 +136,7 @@ The system database tells you who *worked* recently, not who is *alive*: an
 idle worker leaves no trace there, yet it is exactly the one you want to
 know about before scaling down. Running workers therefore push a heartbeat
 row into the Django database (the `WorkerHeartbeat` model, hence the
-`django_dbos` migration) — the same push model as DBOS Conductor, with your
+`django_dbos` migration) — the same push model as [DBOS Conductor](https://docs.dbos.dev/conductor/overview), with your
 database as the channel. Any process with the ORM can read it: this command,
 the admin, an autoscaling script.
 
@@ -150,9 +179,23 @@ python manage.py dbos status --queues=emails,reports
 
 ## From Python
 
-The command is a thin wrapper around `django_dbos.capacity.collect()`, which
-returns the same structure as `--json` (`queues`, `executors`, `workers`,
-`max_recovery_attempts_exceeded`) and accepts an `advisor=` callable. Call it
-from a Prometheus exporter, a health endpoint or your own autoscaling logic;
-`advise_queue(metrics, scale_up_backlog_age_seconds=..., scale_down_max_running=...)`
-is the built-in heuristic if you want to reuse it.
+`dbos status` is a thin wrapper around `django_dbos.capacity.collect()`,
+which returns the report as a dict, the same structure as `--json`. Call it
+from a Prometheus exporter, a health endpoint or your own autoscaling logic:
+
+```python
+from django_dbos.capacity import collect
+
+report = collect(queues=['emails'])  # all declared queues by default
+emails = report['queues']['emails']  # a QueueMetrics, plus its thresholds and advice
+if emails['advice'] == 'SCALE_UP':
+    ...
+```
+
+The report holds `queues` (queue name → its `QueueMetrics`, `thresholds`
+and `advice` included), `executors` (executor ID → running and enqueued
+counts), `workers` (the heartbeats, stale ones included) and
+`max_recovery_attempts_exceeded`. `collect(advisor=...)` replaces the
+configured advisor for one call; `advise_queue(metrics,
+scale_up_backlog_age_seconds=..., scale_down_max_running=...)` is the
+built-in heuristic with explicit thresholds.

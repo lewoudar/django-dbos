@@ -181,7 +181,7 @@ rather than from the top.
 - [Configuration](configuration.md): using PostgreSQL, declaring queues and
   their concurrency.
 - [Admin](admin.md): inspect and operate on workflows from the Django admin.
-- [Worker capacity](status.md): decide whether to scale your workers up or
+- [Worker capacity](worker-capacity.md): decide whether to scale your workers up or
   down.
 - [Deployment](deployment.md): what to settle before going to production.
 - [Troubleshooting](troubleshooting.md): a task stays `READY`, an error you

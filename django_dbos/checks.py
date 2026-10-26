@@ -236,8 +236,8 @@ def check_executor_id(app_configs: Any = None, **kwargs: Any) -> list[CheckMessa
         return []
     return [
         Warning(
-            'No executor ID is set: every worker is named "local", so workflow records, '
-            '`dbos status` and recovery on restart cannot tell the workers apart.',
+            'No executor ID is set: every worker is named "local", so a worker that starts '
+            're-runs the workflows still running on the others, and `dbos status` cannot tell them apart.',
             id='django_dbos.W004',
             hint=f'Give each worker a stable identity with {settings_module.options_path("EXECUTOR_ID")} '
             'or the DBOS__VMID environment variable (the machine or pod name).',

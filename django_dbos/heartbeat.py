@@ -82,16 +82,21 @@ def write_heartbeat(
         if metrics is not None:
             values |= metrics
     try:
-        WorkerHeartbeat.objects.update_or_create(
-            id=heartbeat_id,
-            defaults=values,
-            create_defaults={**values, 'started_at': started_at or now},
-        )
-        WorkerHeartbeat.objects.filter(last_seen_at__lt=now - timedelta(seconds=PURGE_AFTER_SECONDS)).delete()
+        try:
+            WorkerHeartbeat.objects.update_or_create(
+                id=heartbeat_id,
+                defaults=values,
+                create_defaults={**values, 'started_at': started_at or now},
+            )
+        except DatabaseError as exc:
+            logger.warning('could not write worker heartbeat', error=str(exc))
+            return False
+        # Autocommit: the heartbeat is written even if the purge fails.
+        try:
+            WorkerHeartbeat.objects.filter(last_seen_at__lt=now - timedelta(seconds=PURGE_AFTER_SECONDS)).delete()
+        except DatabaseError as exc:
+            logger.warning('could not purge stale worker heartbeats', error=str(exc))
         return True
-    except DatabaseError as exc:
-        logger.warning('could not write worker heartbeat', error=str(exc))
-        return False
     finally:
         close_old_connections()
 

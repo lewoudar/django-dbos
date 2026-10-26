@@ -368,7 +368,12 @@ actually about durability.
 - **`EXECUTOR_ID`**: give each worker *instance* a stable identity (survives
   its own restarts, distinct from other instances) — crash recovery and
   capacity reports are keyed by it. Falls back to `DBOS__VMID` env, then
-  `"local"`.
+  `"local"`, which is only safe for a single worker: a starting worker
+  recovers *every* pending workflow of its id, including those still
+  running on other workers with the same id (the in-progress step runs
+  twice). On Kubernetes use a StatefulSet (stable Pod names), not a
+  Deployment (a replacement Pod's new name orphans the crashed Pod's
+  workflows).
 
 ## Admin & operability
 
@@ -394,8 +399,9 @@ actually about durability.
 1. Two process kinds, scaled independently: web/commands (client only) vs.
    `dbos worker` (executes tasks).
 2. A release step running `migrate` (which also migrates the system
-   database) before the new version serves, with `RUN_MIGRATIONS=False` so
-   workers only verify the schema.
+   database) before the new version serves. Then set `RUN_MIGRATIONS=False`
+   on workers: they stop migrating on launch, only check the schema is up
+   to date, and refuse to start otherwise.
 3. A stable `EXECUTOR_ID` per worker instance (platform instance id/hostname
    — never a pid, which changes every restart).
 4. Decide the system database URL and serializer deliberately (see above).

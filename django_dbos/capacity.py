@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, TypedDict, cast
 
 from dbos import WorkflowStatusString
 
@@ -26,8 +26,43 @@ from .client import get_client
 from .heartbeat import read_heartbeats
 from .settings import CAPACITY_THRESHOLD_DEFAULTS, resolve_capacity, resolve_queues
 
+
+class Thresholds(TypedDict):
+    """The thresholds applied to one queue.
+
+    ``OPTIONS["CAPACITY"]`` overridden by the queue's own ``capacity``
+    option, with lowercase keys.
+    """
+
+    scale_up_backlog_age_seconds: float
+    scale_down_max_running: float
+
+
+class QueueMetrics(TypedDict):
+    """One queue's figures in the report of ``collect``."""
+
+    enqueued: int
+    """Workflows waiting for a worker."""
+    delayed: int
+    """Deferred workflows whose ``run_after`` time has not come yet."""
+    running: int
+    """Workflows being executed."""
+    backlog_age_seconds: float | None
+    """How long the oldest waiting workflow has been waiting; ``None`` when none waits."""
+    max_queue_wait_ms: int | None
+    """The longest time a running workflow waited in the queue before starting."""
+    worker_concurrency: int | None
+    """The queue's declared per-worker concurrency."""
+    global_concurrency: int | None
+    """The queue's declared global concurrency."""
+    thresholds: Thresholds
+    """The thresholds applied to the queue."""
+    advice: str
+    """The advisor's verdict; ``"OK"`` while the advisor runs."""
+
+
 # ``(queue_name, metrics, thresholds) -> advice`` — the signature of a custom advisor.
-Advisor = Callable[[str, dict[str, Any], dict[str, float | int]], str]
+Advisor = Callable[[str, QueueMetrics, Thresholds], str]
 
 # Default thresholds of ``advise_queue`` (overridable through settings).
 DEFAULT_SCALE_UP_BACKLOG_AGE_SECONDS = CAPACITY_THRESHOLD_DEFAULTS['SCALE_UP_BACKLOG_AGE_SECONDS']
@@ -93,7 +128,7 @@ def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) 
     if queues is not None:
         declared = {name: queue for name, queue in declared.items() if name in queues}
 
-    def _empty_queue_metrics() -> dict[str, Any]:
+    def _empty_queue_metrics() -> QueueMetrics:
         return {
             'enqueued': 0,
             'delayed': 0,
@@ -102,11 +137,11 @@ def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) 
             'max_queue_wait_ms': None,
             'worker_concurrency': None,
             'global_concurrency': None,
-            'thresholds': {},
+            'thresholds': {'scale_up_backlog_age_seconds': 0.0, 'scale_down_max_running': 0},  # set per queue below
             'advice': 'OK',
         }
 
-    queues_metrics: dict[str, dict[str, Any]] = {name: _empty_queue_metrics() for name in declared}
+    queues_metrics: dict[str, QueueMetrics] = {name: _empty_queue_metrics() for name in declared}
     capacities = _queue_capacities()
 
     executors: dict[str, dict[str, int]] = {}
@@ -121,9 +156,10 @@ def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) 
         )
         _ingest_workflow(status, queue_metrics, executors, now)
     for queue_name, queue_metrics in queues_metrics.items():
-        for key in ('worker_concurrency', 'global_concurrency'):
-            queue_metrics[key] = capacities.get(queue_name, {}).get(key)
-        thresholds = capacity_config.thresholds_for(declared.get(queue_name))
+        capacity = capacities.get(queue_name, {})
+        queue_metrics['worker_concurrency'] = capacity.get('worker_concurrency')
+        queue_metrics['global_concurrency'] = capacity.get('global_concurrency')
+        thresholds = cast(Thresholds, capacity_config.thresholds_for(declared.get(queue_name)))
         queue_metrics['thresholds'] = thresholds
         queue_metrics['advice'] = advise(queue_name, queue_metrics, thresholds)
 
@@ -144,7 +180,7 @@ def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) 
 
 def _ingest_workflow(
     status: Any,
-    queue_metrics: dict[str, Any] | None,
+    queue_metrics: QueueMetrics | None,
     executors: dict[str, dict[str, int]],
     now: datetime,
 ) -> None:
@@ -177,7 +213,7 @@ def _ingest_workflow(
 
 
 def advise_queue(
-    queue_metrics: dict[str, Any],
+    queue_metrics: QueueMetrics,
     *,
     scale_up_backlog_age_seconds: float | None = None,
     scale_down_max_running: int | None = None,
@@ -218,7 +254,7 @@ def advise_queue(
     return 'OK'
 
 
-def default_advisor(queue_name: str, metrics: dict[str, Any], thresholds: dict[str, float | int]) -> str:
+def default_advisor(queue_name: str, metrics: QueueMetrics, thresholds: Thresholds) -> str:
     """The built-in advisor: ``advise_queue`` with the queue's resolved thresholds."""
     return advise_queue(
         metrics,

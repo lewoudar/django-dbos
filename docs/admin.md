@@ -73,5 +73,5 @@ TASKS = {
 **Home › Django DBOS › Worker heartbeats** lists every worker process that
 reported recently: executor id, host, pid, served queues, CPU/RSS (with the
 `[metrics]` extra) and last-seen time. Rows are written by the workers
-themselves (see [Worker capacity](status.md)); the page is read-only and
+themselves (see [Worker capacity](worker-capacity.md)); the page is read-only and
 superuser-only, like the DBOS pages.
