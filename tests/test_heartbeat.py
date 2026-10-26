@@ -9,8 +9,10 @@ from datetime import timedelta
 import pytest
 from django.db import DatabaseError
 from django.utils import timezone
+from structlog.testing import capture_logs
 
 from django_dbos.heartbeat import (
+    PURGE_AFTER_SECONDS,
     STALE_AFTER_SECONDS,
     HeartbeatThread,
     delete_heartbeat,
@@ -105,6 +107,30 @@ class TestWriteAndReadHeartbeat:
     def test_database_failure_never_raises(self, mocker):
         mocker.patch.object(WorkerHeartbeat.objects, 'update_or_create', side_effect=DatabaseError('db down'))
         assert write_heartbeat(_unique_executor(), heartbeat_id=uuid.uuid4()) is False
+
+    def test_write_and_purges_heartbeats_older_than_a_day(self):
+        old, recent = uuid.uuid4(), uuid.uuid4()
+        write_heartbeat(_unique_executor(), heartbeat_id=old)
+        write_heartbeat(_unique_executor(), heartbeat_id=recent)
+        WorkerHeartbeat.objects.filter(id=old).update(
+            last_seen_at=timezone.now() - timedelta(seconds=PURGE_AFTER_SECONDS + 60)
+        )
+        WorkerHeartbeat.objects.filter(id=recent).update(last_seen_at=timezone.now() - timedelta(hours=1))
+
+        write_heartbeat(_unique_executor(), heartbeat_id=uuid.uuid4())
+
+        assert not WorkerHeartbeat.objects.filter(id=old).exists()
+        assert WorkerHeartbeat.objects.filter(id=recent).exists()  # stale, but kept for a day
+
+    def test_purge_failure_still_reports_the_heartbeat_written(self, mocker):
+        heartbeat_id = uuid.uuid4()
+        mocker.patch.object(WorkerHeartbeat.objects, 'filter', side_effect=DatabaseError('db down'))
+
+        with capture_logs() as logs:
+            assert write_heartbeat(_unique_executor(), heartbeat_id=heartbeat_id) is True
+
+        assert WorkerHeartbeat.objects.get(id=heartbeat_id)
+        assert [log['event'] for log in logs] == ['could not purge stale worker heartbeats']
 
     def test_delete_failure_never_raises(self, mocker):
         mocker.patch.object(WorkerHeartbeat.objects, 'filter', side_effect=DatabaseError('db down'))
