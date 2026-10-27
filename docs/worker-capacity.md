@@ -55,7 +55,16 @@ Each queue gets a simple heuristic:
 
 ### Thresholds
 
-Set them globally in `OPTIONS["CAPACITY"]`, and per queue under the
+`OPTIONS["CAPACITY"]` accepts these keys, all optional:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `SCALE_UP_BACKLOG_AGE_SECONDS` | `60` | Advise `SCALE_UP` once the oldest waiting workflow has waited longer than this. |
+| `SCALE_DOWN_MAX_RUNNING` | `0` | Running workflows an idle queue may still have to get `SCALE_DOWN`. |
+| `MIN_WORKERS` | `1` | Floor of live workers per queue (see [Scaling to zero](#scaling-to-zero)). |
+| `ADVISOR` | built-in heuristic | A callable, or its dotted path, replacing the advice function (see [Your own heuristic](#your-own-heuristic)). Global only. |
+
+Set the thresholds globally in `OPTIONS["CAPACITY"]`, and per queue under the
 queue's own `capacity` option (which is never sent to DBOS). Every
 threshold is a non-negative number; `SCALE_DOWN_MAX_RUNNING` and
 `MIN_WORKERS` count workflows and workers, so they must be integers:
@@ -106,8 +115,9 @@ workers, hence `SCALE_UP` everywhere unless `MIN_WORKERS` is `0`.
 
 ### Your own heuristic
 
-Replace the advice function entirely with a callable of your own, as a
-dotted path in the settings, or as the `advisor=` argument of
+Replace the advice function entirely with a callable of your own, set as
+`OPTIONS["CAPACITY"]["ADVISOR"]` (the callable itself or its dotted path;
+a queue's `capacity` option does not accept it), or as the `advisor=` argument of
 [`collect()`](#from-python) when you build the report from Python:
 
 ```python
