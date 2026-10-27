@@ -8,7 +8,7 @@ workflow list, a failed workflow and the schedules, in light and dark themes.
 Run it from the repository root after any change to the admin pages::
 
     uv run --with playwright playwright install chromium   # once
-    uv run --with playwright python scripts/admin_screenshots.py
+    uv run --with playwright scripts/admin_screenshots.py
 
 Playwright is not a dependency of the project: ``--with`` brings it for
 this run only.
