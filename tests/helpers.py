@@ -73,15 +73,17 @@ def run_worker(system_database_url: str, *, startup_timeout: float = 60) -> Iter
     )
     assert process.stdout is not None
     lines: list[str] = []
+    ready = False
     deadline = time.monotonic() + startup_timeout
     while time.monotonic() < deadline:
         line = process.stdout.readline()
-        if not line:
+        if not line:  # EOF: the worker died during startup
             break
         lines.append(line)
         if 'WORKER_READY' in line:
+            ready = True
             break
-    else:
+    if not ready:
         process.kill()
         raise AssertionError('worker did not start:\n' + ''.join(lines))
 
