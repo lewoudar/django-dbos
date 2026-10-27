@@ -191,7 +191,7 @@ class TestWorkflowPages:
         assert_text(response, 'tests.tasks.add')
         assert_text(response, 'task_body')
         # docs/workflows.md points to this column to find fork_workflow's start_step.
-        assert_text(response, 'Step ID')
+        assert_text(response, '>ID</th>')
 
     def test_workflow_detail_renders_unusual_values(self, admin_client, mocker):
         # A step that never completed has no duration; outputs that are not
