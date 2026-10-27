@@ -313,17 +313,20 @@ def resolve_serializer() -> Any:
     value = get_dbos_setting('SERIALIZER')
     if value is None:
         return None
+
     if isinstance(value, str):
         try:
             value = import_string(value)
         except ImportError as exc:
             raise ImproperlyConfiguredDbos(f'{options_path("SERIALIZER")}: {exc}') from exc
+
     if isinstance(value, type):
         value = value()
     if not isinstance(value, Serializer):
         raise ImproperlyConfiguredDbos(
             f'{options_path("SERIALIZER")} must be a dbos.Serializer instance, subclass or dotted path.'
         )
+
     return value
 
 
@@ -347,6 +350,7 @@ def _validate_capacity_thresholds(mapping: Any, where: str) -> dict[str, float |
         if key in INTEGER_THRESHOLDS and not isinstance(value, int):
             raise ImproperlyConfiguredDbos(f'{where}[{key!r}] must be a non-negative integer, got {value!r}.')
         thresholds[key] = value
+
     return thresholds
 
 
@@ -360,16 +364,20 @@ def resolve_capacity() -> CapacityConfig:
     setting = get_dbos_setting('CAPACITY')
     if setting is None:
         setting = {}
+
     if not isinstance(setting, dict):
         raise ImproperlyConfiguredDbos(f'{where} must be a mapping.')
+
     advisor = setting.get('ADVISOR')
     if isinstance(advisor, str):
         try:
             advisor = import_string(advisor)
         except ImportError as exc:
             raise ImproperlyConfiguredDbos(f"{where}['ADVISOR']: {exc}") from exc
+
     if advisor is not None and not callable(advisor):
         raise ImproperlyConfiguredDbos(f"{where}['ADVISOR'] must be a callable or its dotted path.")
+
     overrides = _validate_capacity_thresholds({k: v for k, v in setting.items() if k != 'ADVISOR'}, where)
     return CapacityConfig(thresholds={**CAPACITY_THRESHOLD_DEFAULTS, **overrides}, advisor=advisor)
 
@@ -377,15 +385,18 @@ def resolve_capacity() -> CapacityConfig:
 def _queue_config(name: str, options: Any, where: str) -> QueueConfig:
     if options is None:
         return QueueConfig(name=name)
+
     if not isinstance(options, dict):
         raise ImproperlyConfiguredDbos(
             f"{where}['{name}'] must be a mapping of options (or None), got {type(options).__name__}."
         )
+
     unknown = sorted(set(options) - set(_QUEUE_OPTIONS))
     if unknown:
         raise ImproperlyConfiguredDbos(
             f"{where}['{name}']: unknown option(s) {', '.join(unknown)}. Valid options: {', '.join(_QUEUE_OPTIONS)}."
         )
+
     if options.get('capacity') is not None:
         options = {
             **options,
@@ -398,6 +409,7 @@ def _declared_queues(alias: str | None) -> dict[Any, Any]:
     """Queue name -> options, from ``OPTIONS["QUEUES"]`` or the ``QUEUES`` list of the backend's entry."""
     params = _dbos_backend_params(alias)
     queue_options = get_dbos_options(alias).get('QUEUES')
+
     if queue_options is None:
         names = params.get('QUEUES', [DEFAULT_TASK_QUEUE_NAME])
         if isinstance(names, str) or not isinstance(names, list | tuple | set | frozenset):
