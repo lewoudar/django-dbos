@@ -10,6 +10,7 @@ permissions: {}
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
     steps:
@@ -24,6 +25,7 @@ jobs:
 
   tests:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     permissions:
       contents: read
     strategy:
@@ -45,6 +47,7 @@ jobs:
     # cron, capacity, dbos migrate and the two-process web/worker scenario.
     # Subprocesses are measured too; fails under the fail_under floor.
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
