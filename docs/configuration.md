@@ -582,3 +582,96 @@ TASKS = {
 ```
 
 The version of each execution is shown on its admin page.
+
+## Logging
+
+django-dbos logs through [structlog](https://www.structlog.org/) under the
+`django_dbos` logger: tasks enqueued, cron schedules created or deleted,
+actions taken from the admin, heartbeat failures... It configures nothing
+itself, so its records follow your structlog configuration. Without one,
+structlog prints every level, `DEBUG` included, to stdout in a readable,
+colored format. That is fine in development, but in production you usually
+want levels and output to be controlled from `LOGGING`.
+
+DBOS logs through the standard library logger `dbos`. When a worker launches,
+DBOS sets that logger's level to `INFO`. If the logger has no handler yet,
+DBOS also adds its own console handler and turns propagation off, so its
+records bypass your `LOGGING` handlers. To keep DBOS' records in your
+handlers, give the `dbos` logger a handler in `LOGGING`, as below. Web
+processes never launch DBOS and leave the logger alone.
+
+### Recommended setup
+
+Route structlog through the standard library: django-dbos, DBOS, Django and
+your own code then share the same handlers, levels and format, all declared
+in `LOGGING`. This setup renders logs for the console in development and as
+JSON lines in production:
+
+```python
+# settings.py
+import structlog
+
+shared_processors = [
+    structlog.contextvars.merge_contextvars,
+    structlog.stdlib.add_log_level,
+    structlog.stdlib.add_logger_name,
+    structlog.processors.TimeStamper(fmt='iso'),
+]
+
+structlog.configure(
+    processors=[
+        structlog.stdlib.filter_by_level,
+        *shared_processors,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.StackInfoRenderer(),
+        structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+    ],
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    wrapper_class=structlog.stdlib.BoundLogger,
+    cache_logger_on_first_use=True,
+)
+
+if DEBUG:
+    renderers = [structlog.dev.ConsoleRenderer()]
+else:
+    renderers = [structlog.processors.format_exc_info, structlog.processors.JSONRenderer()]
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'structlog': {
+            '()': structlog.stdlib.ProcessorFormatter,
+            'processors': [structlog.stdlib.ProcessorFormatter.remove_processors_meta, *renderers],
+            # Applied to the records of standard library loggers (Django, DBOS).
+            'foreign_pre_chain': shared_processors,
+        },
+    },
+    'handlers': {
+        'console': {'class': 'logging.StreamHandler', 'formatter': 'structlog'},
+    },
+    'root': {'handlers': ['console'], 'level': 'INFO'},
+    'loggers': {
+        # DEBUG also logs every enqueue and every task/cron registration.
+        'django_dbos': {'level': 'INFO'},
+        # A handler of its own keeps DBOS from installing its console handler.
+        'dbos': {'handlers': ['console'], 'propagate': False},
+    },
+}
+```
+
+The `django_dbos` level is then set in `LOGGING` like any other logger.
+The `dbos` level is not: DBOS resets it to `INFO` when a worker launches.
+
+`merge_contextvars` adds the variables bound with
+`structlog.contextvars.bind_contextvars` to every record. If a middleware
+binds a request ID that way, the `enqueued task` records of that request
+carry it.
+
+### django-structlog
+
+[django-structlog](https://django-structlog.readthedocs.io/) documents the
+same pattern (`structlog.configure` with `wrap_for_formatter`, a
+`ProcessorFormatter` in `LOGGING`). With it, the `django_dbos` records go
+through your django-structlog configuration and pick up the `request_id` its
+middleware binds. As above, add the `dbos` logger with a handler of its own.
