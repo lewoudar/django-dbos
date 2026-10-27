@@ -38,20 +38,22 @@ class TestNormalizeCrontab:
         assert normalize_crontab(crontab) == expected
 
     def test_invalid_field_count(self):
-        with pytest.raises(ImproperlyConfiguredDbos):
+        with pytest.raises(ImproperlyConfiguredDbos, match=r"^Invalid crontab '\* \* \*': expected 5 fields"):
             normalize_crontab('* * *')
 
 
 class TestCronDecorator:
     @pytest.mark.parametrize(
-        'crontab',
+        ('crontab', 'message'),
         [
-            pytest.param('not a crontab', id='wrong-field-count'),
-            pytest.param('99 * * * *', id='out-of-range-minute'),
+            pytest.param(
+                'not a crontab', r"^Invalid crontab 'not a crontab': expected 5 fields", id='wrong-field-count'
+            ),
+            pytest.param('99 * * * *', r"^Invalid crontab '99 \* \* \* \*'\.$", id='out-of-range-minute'),
         ],
     )
-    def test_invalid_crontab_rejected(self, crontab):
-        with pytest.raises(ImproperlyConfiguredDbos):
+    def test_invalid_crontab_rejected(self, crontab, message):
+        with pytest.raises(ImproperlyConfiguredDbos, match=message):
             cron_module.cron(crontab)
 
     def test_parameters_with_defaults_are_allowed(self):
@@ -60,7 +62,11 @@ class TestCronDecorator:
         cron_module._validate_cron_task(SimpleNamespace(func=func, takes_context=False, name='defaults'))
 
     def test_required_args_rejected_at_decoration(self):
-        with pytest.raises(ImproperlyConfiguredDbos):
+        with pytest.raises(
+            ImproperlyConfiguredDbos,
+            match=r"^Task 'cron_task_with_args' scheduled with @cron must not require arguments \(found required "
+            r"parameter 'user_id'\)\.$",
+        ):
             importlib.import_module('tests.tasks_invalid_cron')
 
     def test_valid_cron_task_registers(self):

@@ -193,7 +193,7 @@ class TestStreams:
 class TestGetDbosContext:
     def test_raises_outside_workflow(self, mocker):
         mocker.patch('django_dbos.context.DBOS.workflow_id', None)
-        with pytest.raises(NoActiveDbosContext):
+        with pytest.raises(NoActiveDbosContext, match='must be called from within a running task'):
             get_dbos_context()
 
     def test_raises_inside_a_step(self, mocker):
@@ -235,5 +235,5 @@ class TestAsCompleted:
 
     def test_requires_a_durable_task(self, mocker):
         mocker.patch('django_dbos.context.DBOS.workflow_id', None)
-        with pytest.raises(NoActiveDbosContext):
+        with pytest.raises(NoActiveDbosContext, match='must be called from within a running task'):
             next(as_completed(['h1']))

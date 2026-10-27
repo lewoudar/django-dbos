@@ -148,7 +148,7 @@ class TestCockroachDbEngine:
         )
         mocker.patch('django_dbos.client.DBOSClient', side_effect=ValueError('boom'))
 
-        with pytest.raises(ImproperlyConfiguredDbos):
+        with pytest.raises(ImproperlyConfiguredDbos, match=r'^ValueError: boom$'):
             client.get_client()
 
         engine.dispose.assert_called_once_with()

@@ -145,18 +145,22 @@ class TestDeclaredQueues:
             replace(add, queue_name='ghost')
 
     @pytest.mark.parametrize(
-        'params',
+        ('params', 'message'),
         [
-            pytest.param({'QUEUES': ['default'], 'OPTIONS': {'QUEUES': {'default': None}}}, id='both'),
-            pytest.param({'QUEUES': []}, id='any-queue'),
+            pytest.param(
+                {'QUEUES': ['default'], 'OPTIONS': {'QUEUES': {'default': None}}},
+                r'^Declare the queues either in ',
+                id='both',
+            ),
+            pytest.param({'QUEUES': []}, r"\['QUEUES'\] is empty, which lets tasks target any queue", id='any-queue'),
         ],
     )
-    def test_misconfigured_queues_raise_on_enqueue_only(self, settings, params):
+    def test_misconfigured_queues_raise_on_enqueue_only(self, settings, params, message):
         # building the backend (task import, Django's checks) must not fail
         settings.TASKS = {**settings.TASKS, 'dbos': {'BACKEND': 'django_dbos.backends.DBOSBackend', **params}}
-        with pytest.raises(ImproperlyConfiguredDbos):
+        with pytest.raises(ImproperlyConfiguredDbos, match=message):
             add.enqueue(1, 2)
-        with pytest.raises(ImproperlyConfiguredDbos):
+        with pytest.raises(ImproperlyConfiguredDbos, match=message):
             asyncio.run(add.aenqueue(1, 2))
 
     def test_options_change_resets_the_backend(self, settings):

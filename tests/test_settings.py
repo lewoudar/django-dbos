@@ -114,7 +114,9 @@ class TestSystemDatabaseUrlDerivation:
         assert url == 'postgresql+psycopg://:@localhost:5432/mydbos_myproject'
 
     def test_unsupported_engine_raises(self):
-        with pytest.raises(ImproperlyConfiguredDbos):
+        with pytest.raises(
+            ImproperlyConfiguredDbos, match=r"^Unsupported database engine 'django\.db\.backends\.oracle'"
+        ):
             dbos_settings.derive_system_database_url({'ENGINE': 'django.db.backends.oracle', 'NAME': 'orcl'})
 
 

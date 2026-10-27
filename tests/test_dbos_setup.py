@@ -245,8 +245,14 @@ class TestCockroachDbEngine:
         dispose.assert_called_once_with()
         assert dbos_setup._engine_options == {}
 
-    @pytest.mark.parametrize('error', [RuntimeError('boom'), ImproperlyConfiguredDbos('bad')])
-    def test_engine_is_disposed_when_initialization_fails(self, mocker, error):
+    @pytest.mark.parametrize(
+        ('error', 'message'),
+        [
+            pytest.param(RuntimeError('boom'), r'^RuntimeError: boom$', id='wrapped'),
+            pytest.param(ImproperlyConfiguredDbos('bad'), r'^bad$', id='passed-through'),
+        ],
+    )
+    def test_engine_is_disposed_when_initialization_fails(self, mocker, error, message):
         engine = mocker.Mock()
         mocker.patch.object(
             dbos_setup.system_engine,
@@ -255,7 +261,7 @@ class TestCockroachDbEngine:
         )
         mocker.patch.object(dbos_setup, 'DBOS', side_effect=error)
 
-        with pytest.raises(ImproperlyConfiguredDbos):
+        with pytest.raises(ImproperlyConfiguredDbos, match=message):
             dbos_setup.ensure_initialized()
 
         engine.dispose.assert_called_once_with()
