@@ -303,8 +303,10 @@ def resolve_serializer() -> Any:
     (instantiated without arguments) or the dotted path of either. ``None``
     keeps DBOS' default, which is **pickle**: anyone who can write to the
     system database can then run code in the workers and in every process
-    reading results. ``dbos.DBOSPortableJSONSerializer`` is the safe
-    alternative when task arguments and results are plain data.
+    reading results. The safe alternatives, when task arguments and results
+    are plain data, are ``django_dbos.serializers.MsgspecJSONSerializer`` or
+    ``MsgspecMsgpackSerializer`` (extra ``django-dbos[msgspec]``, the fastest)
+    and ``dbos.DBOSPortableJSONSerializer``.
 
     The worker and every client must use the same serializer.
     """
