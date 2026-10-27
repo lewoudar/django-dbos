@@ -394,7 +394,7 @@ by process:
 
 | | `dbos worker` | Web processes and commands |
 | --- | --- | --- |
-| **System database** (DBOS) | A direct connection, without a pooler: the worker listens for notifications. Its pool is long-lived and fixed in size, so a pooler would save little anyway. | No listener, so a pooler would work; but they share the worker's URL unless each process sets its own `DBOS_SYSTEM_DATABASE_URL`. The direct URL everywhere is the simple choice. |
+| **System database** (DBOS) | A direct connection, without a pooler: the worker listens for notifications. Its pool is long-lived and fixed in size, so a pooler would save little anyway. | No listener, so a pooler would work; but they share the worker's URL unless each process sets its own `DBOS_SYSTEM_DATABASE_URL` (with `SYSTEM_DATABASE_URL` left unset in `OPTIONS`, which wins over it). The direct URL everywhere is the simple choice. |
 | **Application database** (Django) | A pooler is fine. | A pooler is fine. |
 
 Behind a pooler in transaction mode, set `DISABLE_SERVER_SIDE_CURSORS = True`
