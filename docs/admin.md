@@ -23,6 +23,9 @@ heartbeats** and **Workflows**.
 
 Open **Django DBOS › Workflows** (`/admin/dbos/workflows/`):
 
+![The workflow list: tasks with their status, queue, creation time and run time, cron firings tagged](assets/admin/workflows-light.png#only-light)
+![The workflow list: tasks with their status, queue, creation time and run time, cron firings tagged](assets/admin/workflows-dark.png#only-dark)
+
 - list with filters (status, queue, task, schedule), ID prefix search and
   pagination, newest first, with each workflow's run time. The task filter
   takes the task's module path (`myapp.tasks.send_email`); workflows fired by
@@ -47,6 +50,9 @@ Open **Django DBOS › Workflows** (`/admin/dbos/workflows/`):
 | Fork | Runs a copy of the workflow from step 0 and redirects to it. |
 | Delete | Permanently removes the workflow and its history (with a confirmation page). |
 
+![A failed workflow: its fields, timing, input, the raised error and its steps](assets/admin/workflow-detail-light.png#only-light)
+![A failed workflow: its fields, timing, input, the raised error and its steps](assets/admin/workflow-detail-dark.png#only-dark)
+
 ## Schedules
 
 **Django DBOS › Schedules** (`/admin/dbos/schedules/`) lists every DBOS schedule
@@ -54,6 +60,9 @@ Open **Django DBOS › Workflows** (`/admin/dbos/workflows/`):
 queue and last fire time, which links to the workflows the schedule fired.
 Each schedule can be paused, resumed or deleted
 (deletion asks for confirmation first, like workflow deletion).
+
+![The schedule list: a cron task with its crontab, status and last fire time](assets/admin/schedules-light.png#only-light)
+![The schedule list: a cron task with its crontab, status and last fire time](assets/admin/schedules-dark.png#only-dark)
 
 ## Options
 

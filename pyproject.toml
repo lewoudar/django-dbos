@@ -116,6 +116,7 @@ convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S106"]
+"scripts/**" = ["S603"]  # maintenance scripts run fixed commands (sys.executable -m django ...)
 "**/migrations/*" = ["RUF012"]  # Django's generated class attributes (package and examples/)
 
 [tool.pytest.ini_options]
