@@ -35,6 +35,7 @@ uv run pyrefly check --project-excludes 'examples/**'   # type check (examples/ 
 uv run deptry django_dbos              # dependency hygiene (package only)
 uv run --group doc zensical build      # docs (runs from the repo root)
 uv run --with playwright python scripts/admin_screenshots.py   # regenerate docs/assets/admin/*.png after admin UI changes
+uv run benchmarks/serializers.py   # serializer timings quoted in docs/configuration.md
 uv run cz bump                         # release (commitizen)
 ```
 

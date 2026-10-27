@@ -150,9 +150,12 @@ As an order of magnitude, measured on a developer laptop: a round trip
 (serialization then deserialization) of a list of 1000 dicts, each with six
 fields (ints, strings, a float, a boolean, a short list), takes about 0.5 ms
 with msgspec JSON, 1 ms with msgspec msgpack, 1.5 ms with pickle and 7 ms with
-DBOS' portable JSON. Absolute times depend on your hardware and payload; the
-ratios carry over. Next to the system database round trip every checkpoint
-costs, they rarely matter: choose on safety and supported types first.
+DBOS' portable JSON
+([`benchmarks/serializers.py`](https://github.com/lewoudar/django-dbos/blob/main/benchmarks/serializers.py)
+measures them on your machine). Absolute times depend on your hardware and
+payload; the ratios carry over. Next to the system database round trip every
+checkpoint costs, they rarely matter: choose on safety and supported types
+first.
 
 The msgspec serializers need the `msgspec` extra:
 
