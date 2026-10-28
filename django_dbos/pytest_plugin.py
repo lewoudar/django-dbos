@@ -182,6 +182,39 @@ def dbos_inline(monkeypatch: Any, request: Any) -> Any:
 # --- Real DBOS system database -------------------------------------------
 
 
+def _override_system_database_url(url: str) -> Any:
+    """Point the DBOS backend's ``OPTIONS["SYSTEM_DATABASE_URL"]`` at ``url`` when the settings set it.
+
+    The option wins over the ``DBOS_SYSTEM_DATABASE_URL`` environment
+    variable: without this override, a project setting it (from
+    ``os.environ`` at settings import, typically) would run the session on
+    its configured system database instead of the fixture's. Without the
+    option, the environment variable is enough and stays the one tests may
+    change (``monkeypatch.setenv``).
+
+    Args:
+        url: The system database URL of the session.
+
+    Returns:
+        The enabled ``override_settings``, to disable at teardown; ``None``
+        when the settings leave the option unset.
+    """
+    from django.conf import settings
+    from django.test.utils import override_settings
+
+    from django_dbos.settings import dbos_backend_aliases, get_dbos_setting
+
+    if not get_dbos_setting('SYSTEM_DATABASE_URL'):
+        return None
+    alias = dbos_backend_aliases()[0]
+    params = settings.TASKS[alias]
+    override = override_settings(
+        TASKS={**settings.TASKS, alias: {**params, 'OPTIONS': {**params['OPTIONS'], 'SYSTEM_DATABASE_URL': url}}}
+    )
+    override.enable()
+    return override
+
+
 @pytest.fixture(scope='session')
 def dbos_system(request: Any, tmp_path_factory: Any) -> Any:
     """Launch DBOS on a system database for the whole test session.
@@ -221,6 +254,7 @@ def dbos_system(request: Any, tmp_path_factory: Any) -> Any:
         system_database_url = f'sqlite:///{tmp_path_factory.mktemp("dbos") / "systemdb.sqlite"}'
 
     os.environ['DBOS_SYSTEM_DATABASE_URL'] = system_database_url
+    override = _override_system_database_url(system_database_url)
 
     # The DBOSClient (enqueue/get_result) must target this session's system
     # database: drop any client built before the URL was set.
@@ -229,6 +263,8 @@ def dbos_system(request: Any, tmp_path_factory: Any) -> Any:
     yield system_database_url
     client.close_client()
     dbos_setup.shutdown()
+    if override is not None:
+        override.disable()
     if previous_url is None:
         del os.environ['DBOS_SYSTEM_DATABASE_URL']
     else:

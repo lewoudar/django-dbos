@@ -126,6 +126,10 @@ PostgreSQL container started through testcontainers when Docker is
 available, and a SQLite file otherwise. Force one with
 `--dbos-system-db=postgres` (the tests are skipped if Docker is unavailable)
 or `--dbos-system-db=sqlite`. The PostgreSQL modes need the `test` extra.
+Either way, the fixture's database replaces the one your settings point at:
+it sets `DBOS_SYSTEM_DATABASE_URL` for the session and, when your settings
+set `OPTIONS["SYSTEM_DATABASE_URL"]` (which wins over the variable),
+overrides that one too.
 
 ## structlog
 

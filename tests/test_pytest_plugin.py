@@ -392,6 +392,53 @@ class TestDbosSystem:
             ]
         )
 
+    def test_fixture_url_wins_over_the_configured_one(self, pytester: pytest.Pytester):
+        # OPTIONS["SYSTEM_DATABASE_URL"] wins over the environment variable:
+        # the fixture must override it, or the session runs on this database.
+        _make_project(pytester)
+        pytester.makepyfile(
+            settings=SETTINGS.replace(
+                '{"BACKEND": "django_dbos.backends.DBOSBackend"}',
+                '{"BACKEND": "django_dbos.backends.DBOSBackend",'
+                ' "OPTIONS": {"SYSTEM_DATABASE_URL": "sqlite:///configured.sqlite"}}',
+            )
+        )
+        pytester.makepyfile(
+            conftest="""
+            from django.conf import settings
+
+
+            def pytest_unconfigure(config):
+                print('URL after the session:', settings.TASKS['default']['OPTIONS']['SYSTEM_DATABASE_URL'])
+            """
+        )
+        pytester.makepyfile(
+            """
+            import time
+
+            from django.tasks import TaskResultStatus
+
+            from django_dbos import settings as dbos_settings
+            from tasks_app.tasks import add
+
+
+            def test_runs_on_the_fixture_database(dbos_system):
+                assert dbos_settings.resolve_system_database_url() == dbos_system
+                result = add.enqueue(1, 2)
+                deadline = time.monotonic() + 30
+                while result.status != TaskResultStatus.SUCCESSFUL and time.monotonic() < deadline:
+                    time.sleep(0.1)
+                    result.refresh()
+                assert result.return_value == 3
+            """
+        )
+        result = pytester.runpytest_subprocess(
+            '--ds=settings', '--dbos-system-db=sqlite', '-s', '-p', 'no:cacheprovider'
+        )
+        result.assert_outcomes(passed=1)
+        result.stdout.fnmatch_lines(['URL after the session: sqlite:///configured.sqlite'])
+        assert not (pytester.path / 'configured.sqlite').exists()
+
     def test_postgres_mode_skips_when_postgres_is_unavailable(self, pytester: pytest.Pytester):
         _make_project(pytester)
         pytester.makepyfile(conftest=UNAVAILABLE_POSTGRES_CONFTEST)
