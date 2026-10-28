@@ -194,7 +194,9 @@ def _django_database_settings() -> dict[str, Any]:
 
 def _sqlite_system_database_url(django_db: dict[str, Any]) -> str:
     name = django_db['NAME']
-    if name == ':memory:':
+    # Django's own rule (sqlite3's DatabaseCreation.is_in_memory_db): its test
+    # databases are 'file:memorydb_<alias>?mode=memory&cache=shared' URIs.
+    if isinstance(name, str) and (name == ':memory:' or 'mode=memory' in name):
         return 'sqlite:///:memory:'
     return f'sqlite:///{name}-dbos.sqlite'
 

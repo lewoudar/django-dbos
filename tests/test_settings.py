@@ -75,6 +75,12 @@ class TestSystemDatabaseUrlDerivation:
                 id='sqlite-memory',
             ),
             pytest.param(
+                # the name Django gives an in-memory test database
+                {'ENGINE': 'django.db.backends.sqlite3', 'NAME': 'file:memorydb_default?mode=memory&cache=shared'},
+                'sqlite:///:memory:',
+                id='sqlite-memory-uri',
+            ),
+            pytest.param(
                 {
                     'ENGINE': 'django.db.backends.postgresql',
                     'NAME': 'myproject',

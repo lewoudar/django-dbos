@@ -214,12 +214,16 @@ class TestCheckInMemorySystemDatabase:
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
 
     @pytest.mark.parametrize(
-        'dbos_settings',
-        [{'SYSTEM_DATABASE_URL': 'sqlite:///:memory:'}, {}],  # explicit, derived from an in-memory Django database
+        ('name', 'dbos_settings'),
+        [
+            pytest.param(':memory:', {'SYSTEM_DATABASE_URL': 'sqlite:///:memory:'}, id='explicit'),
+            pytest.param(':memory:', {}, id='derived'),
+            pytest.param('file:memorydb_default?mode=memory&cache=shared', {}, id='derived-from-a-test-database'),
+        ],
     )
-    def test_in_memory_database_reports_a_warning(self, settings, mocker, dbos_settings):
-        # pytest-django renames the test database once a test uses it: pin the default database.
-        in_memory = {'ENGINE': 'django.db.backends.sqlite3', 'NAME': ':memory:'}
+    def test_in_memory_database_reports_a_warning(self, settings, mocker, name, dbos_settings):
+        # Django renames the test database once a test uses it: pin the default database.
+        in_memory = {'ENGINE': 'django.db.backends.sqlite3', 'NAME': name}
         mocker.patch.object(settings_module, '_django_database_settings', return_value=in_memory)
         set_dbos_options(settings, dbos_settings)
 
