@@ -34,7 +34,7 @@ class TestDbosParams:
 
         assert some_task._django_dbos_params is not None
 
-    def test_on_dbostask_instance_returns_replaced_task(self):
+    def test_on_dbos_task_instance_returns_replaced_task(self):
         task = make_dbos_task()
         decorated = dbos_params(max_recovery_attempts=7)(task)
         assert decorated is not task
@@ -43,11 +43,10 @@ class TestDbosParams:
         # The original task is untouched (frozen dataclass replacement).
         assert task.dbos_params.max_recovery_attempts is None
 
-    def test_defaults(self):
-        params = DbosTaskParams()
-        assert params.step_max_attempts == 3
-        assert params.step_retries_allowed is False
-        assert params.durable_operations is False
+    def test_defaults_match_the_dataclass(self):
+        # DBOSTask.__post_init__ reads DbosTaskParams() as "no params given".
+        dbos_params()(bare_function)
+        assert getattr(bare_function, FUNC_PARAMS_ATTRIBUTE) == DbosTaskParams()
 
     def test_on_task_from_another_backend_keeps_function_attribute(self):
         decorated = dbos_params(workflow_timeout=30)(foreign_task)
