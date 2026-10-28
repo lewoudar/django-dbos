@@ -66,6 +66,10 @@ class TestDbosParams:
         with pytest.raises(ImproperlyConfiguredDbos, match=r'^deduplication_id must be a string or a callable'):
             dbos_params(deduplication_id=42)
 
+    def test_deduplication_id_must_not_be_empty(self):
+        with pytest.raises(ImproperlyConfiguredDbos, match=r'^deduplication_id must not be empty\.$'):
+            dbos_params(deduplication_id='')
+
     def test_partition_key_below_task_is_validated_with_the_task(self):
         # @dbos_params under @task: the params are picked up before the backend validates the task.
         dbos_params(partition_key='nope')(function_with_a_bad_partition_key)

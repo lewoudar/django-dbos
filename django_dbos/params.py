@@ -136,7 +136,8 @@ def dbos_params(
 
     Raises:
         ImproperlyConfiguredDbos: ``partition_key`` or ``deduplication_id``
-            is neither a string nor a callable.
+            is neither a string nor a callable, or ``deduplication_id`` is
+            an empty string.
 
     Example:
         ```python
@@ -151,6 +152,8 @@ def dbos_params(
         )
     if deduplication_id is not None and not (isinstance(deduplication_id, str) or callable(deduplication_id)):
         raise ImproperlyConfiguredDbos(f'deduplication_id must be a string or a callable, got {deduplication_id!r}.')
+    if deduplication_id == '':
+        raise ImproperlyConfiguredDbos('deduplication_id must not be empty.')
 
     params = DbosTaskParams(
         max_recovery_attempts=max_recovery_attempts,
