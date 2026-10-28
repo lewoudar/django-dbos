@@ -398,11 +398,11 @@ class TestSerializerResolution:
         'value',
         [
             pytest.param('dbos.DBOSPortableJSONSerializer', id='dotted-path-to-class'),
-            pytest.param('dbos.DBOSPortableJSONSerializer', id='class'),
+            pytest.param(DBOSPortableJSONSerializer, id='class'),
         ],
     )
     def test_class_or_path_is_instantiated(self, settings, value):
-        set_dbos_options(settings, {'SERIALIZER': DBOSPortableJSONSerializer if value == 'class' else value})
+        set_dbos_options(settings, {'SERIALIZER': value})
         assert isinstance(dbos_settings.resolve_serializer(), DBOSPortableJSONSerializer)
 
     @pytest.mark.parametrize('name', ['MsgspecJSONSerializer', 'MsgspecMsgpackSerializer'])
