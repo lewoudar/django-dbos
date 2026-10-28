@@ -1,6 +1,7 @@
 """Tests for the resolution of the DBOS backend's OPTIONS."""
 
 import re
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -12,6 +13,7 @@ from django_dbos.exceptions import ImproperlyConfiguredDbos, scrub_credentials
 from tests.helpers import set_dbos_options
 
 DBOS_BACKEND = 'django_dbos.backends.DBOSBackend'
+STARTPROJECT_SQLITE_NAME = Path(__file__).resolve().parent / 'db.sqlite3'
 
 
 class TestDbosBackendOptions:
@@ -60,6 +62,12 @@ class TestSystemDatabaseUrlDerivation:
                 {'ENGINE': 'django.db.backends.sqlite3', 'NAME': 'myproject.sqlite3'},
                 'sqlite:///myproject.sqlite3-dbos.sqlite',
                 id='sqlite-file',
+            ),
+            pytest.param(
+                # startproject's default: an absolute Path, not a str
+                {'ENGINE': 'django.db.backends.sqlite3', 'NAME': STARTPROJECT_SQLITE_NAME},
+                f'sqlite:///{STARTPROJECT_SQLITE_NAME}-dbos.sqlite',
+                id='sqlite-path',
             ),
             pytest.param(
                 {'ENGINE': 'django.db.backends.sqlite3', 'NAME': ':memory:'},
@@ -130,14 +138,14 @@ class TestSystemDatabaseUrlResolution:
         set_dbos_options(settings, {'SYSTEM_DATABASE_URL': 'postgresql://setting-url'})
         assert dbos_settings.resolve_system_database_url() == 'postgresql://setting-url'
 
-    def test_falls_back_to_derivation(self, settings, monkeypatch):
+    def test_falls_back_to_derivation(self, settings, monkeypatch, mocker):
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
         set_dbos_options(settings, {'SYSTEM_DATABASE_URL': None})
-        # The derived URL follows the configured Django database (pytest-django
-        # may rewrite the test database name, so assert on the derivation rule).
-        url = dbos_settings.resolve_system_database_url()
-        assert url.startswith('sqlite:///')
-        assert url.endswith('-dbos.sqlite') or url == 'sqlite:///:memory:'
+        # Django renames the default database once a test database is set up,
+        # so the real one depends on test order: patch the module-level seam.
+        default_db = {'ENGINE': 'django.db.backends.sqlite3', 'NAME': 'db.sqlite3'}
+        mocker.patch.object(dbos_settings, 'settings', SimpleNamespace(DATABASES={'default': default_db}))
+        assert dbos_settings.resolve_system_database_url() == 'sqlite:///db.sqlite3-dbos.sqlite'
 
     @pytest.mark.parametrize(
         'default_db',
@@ -259,15 +267,20 @@ class TestQueues:
         with pytest.raises(ImproperlyConfiguredDbos, match='must be a list of queue names'):
             dbos_settings.resolve_queues()
 
-    def test_explicit_alias_is_resolved_and_named_in_messages(self, settings):
+    def test_explicit_alias_is_resolved(self, settings):
         settings.TASKS = {
             'dbos': {'BACKEND': DBOS_BACKEND},
             'other': {'BACKEND': DBOS_BACKEND, 'OPTIONS': {'QUEUES': {'emails': {'worker_concurrency': 1}}}},
-            'broken': {'BACKEND': DBOS_BACKEND, 'OPTIONS': {'QUEUES': {'emails': {'nope': 1}}}},
         }
         assert dbos_settings.resolve_queues('other') == (
             dbos_settings.QueueConfig(name='emails', worker_concurrency=1),
         )
+
+    def test_explicit_alias_is_named_in_messages(self, settings):
+        settings.TASKS = {
+            'dbos': {'BACKEND': DBOS_BACKEND},
+            'broken': {'BACKEND': DBOS_BACKEND, 'OPTIONS': {'QUEUES': {'emails': {'nope': 1}}}},
+        }
         with pytest.raises(ImproperlyConfiguredDbos, match=r"^TASKS\['broken'\]\['OPTIONS'\]\['QUEUES'\]\['emails'\]"):
             dbos_settings.resolve_queues('broken')
 
@@ -346,6 +359,7 @@ class TestQueueOptionsValidation:
         set_dbos_options(settings, {'QUEUES': {'emails': {'worker_concurency': 2}}})
         with pytest.raises(ImproperlyConfiguredDbos) as excinfo:
             dbos_settings.resolve_queues()
+
         message = str(excinfo.value)
         assert "QUEUES']['emails']" in message
         assert 'worker_concurency' in message
