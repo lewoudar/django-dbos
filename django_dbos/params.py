@@ -1,8 +1,10 @@
 """Backend-specific task options for django-dbos.
 
 ``@dbos_params`` attaches DBOS-specific execution options to a Django task.
-Options are stored on the task function itself, so they survive pickling and
-``Task.using()``; on non-django-dbos backends they are simply inert.
+Options are stored on the task (``DBOSTask.dbos_params``), or on the bare
+function when the decorator sits under ``@task``, until the task picks them
+up. On non-django-dbos backends they are simply inert: such a task cannot be
+moved to the DBOS backend with ``Task.using()``, which keeps its class.
 """
 
 from __future__ import annotations
@@ -165,8 +167,8 @@ def dbos_params(
     def wrapper(task: Any) -> Any:
         if isinstance(task, DBOSTask):
             return replace(task, dbos_params=params)
-        # Bare function, or a Task from another backend: keep the params on
-        # the function; DBOSTask picks them up when the DBOS backend is used.
+        # Bare function: keep the params on it, DBOSTask picks them up when
+        # @task builds it. A Task from another backend: inert, nothing reads them.
         setattr(task.func if hasattr(task, 'func') else task, FUNC_PARAMS_ATTRIBUTE, params)
         return task
 

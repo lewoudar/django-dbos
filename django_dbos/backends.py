@@ -87,6 +87,13 @@ class DBOSBackend(BaseTaskBackend):
             self._partitioned_queues = {queue.name for queue in queues if queue.partitioned}
 
     def validate_task(self, task: DBOSTask) -> None:
+        # Task.using(backend=...) keeps the task's class: a task declared for
+        # another backend never becomes a DBOSTask, and carries no dbos_params.
+        if not isinstance(task, DBOSTask):
+            raise InvalidTask(
+                f"Task '{task.name}' was declared for another backend: declare it with "
+                f'@task(backend={self.alias!r}) instead of moving it with .using(backend=...).'
+            )
         super().validate_task(task)
         partition_key = task.dbos_params.partition_key
         if isinstance(partition_key, str) and partition_key not in enqueue_signature(task).parameters:

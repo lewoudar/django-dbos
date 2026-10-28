@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from dbos import error as dbos_error
-from django.tasks import TaskResultStatus, task_backends
+from django.tasks import TaskResultStatus, task, task_backends
 from django.tasks.exceptions import InvalidTask, TaskResultDoesNotExist
 
 from django_dbos.exceptions import ImproperlyConfiguredDbos
@@ -139,6 +139,11 @@ class TestDeclaredQueues:
             'second': {'BACKEND': 'django_dbos.backends.DBOSBackend', 'QUEUES': ['second']},
         }
         assert task_backends['second'].queues == {'second'}
+
+    def test_task_of_another_backend_cannot_be_moved_to_dbos(self):
+        other_backend_task = task(add.func)  # the default ImmediateBackend builds a plain Task
+        with pytest.raises(InvalidTask, match=r"^Task 'add' was declared for another backend: .*backend='dbos'"):
+            other_backend_task.using(backend='dbos')
 
     def test_undeclared_queue_is_rejected_at_task_construction(self):
         with pytest.raises(InvalidTask, match="Queue 'ghost' is not valid for backend"):
