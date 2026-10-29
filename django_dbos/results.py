@@ -52,7 +52,7 @@ def _cancellation_reason(status: WorkflowStatus) -> TaskCancelled:
         and status.updated_at is not None
         and status.updated_at >= deadline
     ):
-        return TaskTimedOut(f'The task exceeded its workflow_timeout of {timeout_ms / 1000:g}s.')
+        return TaskTimedOut(f'The task exceeded its workflow_timeout of {timeout_ms / 1000:.15g}s.')
     return TaskCancelled('The task was cancelled.')
 
 

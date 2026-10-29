@@ -43,6 +43,16 @@ class TestBuildTaskResult:
                 'The task exceeded its workflow_timeout of 0.5s.',
                 id='workflow-timeout',
             ),
+            pytest.param(
+                {
+                    'workflow_timeout_ms': 2_592_000_000,
+                    'workflow_deadline_epoch_ms': CREATED_AT_MS + 2_592_000_000,
+                    'updated_at': CREATED_AT_MS + 2_592_000_000,
+                },
+                TaskTimedOut,
+                'The task exceeded its workflow_timeout of 2592000s.',
+                id='long-workflow-timeout-not-in-scientific-notation',
+            ),
         ],
     )
     def test_cancelled_workflow_reports_why(self, fields, expected_class, message):
