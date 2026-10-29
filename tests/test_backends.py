@@ -164,14 +164,6 @@ class TestBackendBehavior:
         result = wait_for_result(context_task.enqueue(), TaskResultStatus.SUCCESSFUL)
         assert result.return_value is True
 
-    @pytest.mark.skip(
-        reason=(
-            'DBOS SDK limitation: after an async enqueue on a (now closed) event loop, '
-            'subsequent synchronous DBOS calls in the same process fail with '
-            "'cannot schedule new futures after shutdown'. Real usage keeps the loop "
-            'alive (async views), but the test harness opens and closes a loop per call.'
-        )
-    )
     def test_async_enqueue_roundtrip(self, dbos_environment):
         result = asyncio.run(async_add.aenqueue(5, 6))
         result = wait_for_result(result, TaskResultStatus.SUCCESSFUL)
