@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING
 
 from dbos import WorkflowStatusString
 from django.tasks import TaskResult, TaskResultStatus
@@ -12,6 +12,9 @@ from django.tasks.exceptions import TaskResultDoesNotExist
 
 from .exceptions import MaxRecoveryAttemptsExceeded, TaskCancelled, TaskFailure, TaskTimedOut
 from .workflow_names import task_from_workflow_name
+
+if TYPE_CHECKING:
+    from dbos import WorkflowStatus
 
 # Workflow statuses DBOS uses, mapped onto Django's TaskResultStatus. DBOS
 # has no RUNNING status: a dequeued workflow being executed is PENDING.
@@ -36,19 +39,24 @@ def _task_error(error: BaseException) -> TaskError:
     return TaskError(exception_class_path=_class_path(type(error)), traceback=repr(error))
 
 
-def _cancellation_reason(status: Any) -> TaskCancelled:
+def _cancellation_reason(status: WorkflowStatus) -> TaskCancelled:
     """Why a CANCELLED workflow stopped: DBOS stores no error for it.
 
     A workflow cancelled by its ``workflow_timeout`` was last updated at or
     after its deadline; any other cancellation came from outside.
     """
-    deadline = status.workflow_deadline_epoch_ms
-    if deadline is not None and status.updated_at is not None and status.updated_at >= deadline:
-        return TaskTimedOut(f'The task exceeded its workflow_timeout of {status.workflow_timeout_ms / 1000:g}s.')
+    deadline, timeout_ms = status.workflow_deadline_epoch_ms, status.workflow_timeout_ms
+    if (
+        deadline is not None
+        and timeout_ms is not None
+        and status.updated_at is not None
+        and status.updated_at >= deadline
+    ):
+        return TaskTimedOut(f'The task exceeded its workflow_timeout of {timeout_ms / 1000:g}s.')
     return TaskCancelled('The task was cancelled.')
 
 
-def _recovery_exhausted(status: Any) -> MaxRecoveryAttemptsExceeded:
+def _recovery_exhausted(status: WorkflowStatus) -> MaxRecoveryAttemptsExceeded:
     """Why DBOS gave up on a workflow after repeated crashes: it stores no error for it either."""
     return MaxRecoveryAttemptsExceeded(
         f'The task was interrupted too many times ({status.recovery_attempts} execution or recovery '
@@ -56,7 +64,7 @@ def _recovery_exhausted(status: Any) -> MaxRecoveryAttemptsExceeded:
     )
 
 
-def _started_at(status: Any) -> datetime | None:
+def _started_at(status: WorkflowStatus) -> datetime | None:
     """When the task started, or ``None`` if it never did.
 
     ``dequeued_at`` is when a worker took the workflow from its queue (its
@@ -73,12 +81,12 @@ def _started_at(status: Any) -> datetime | None:
     return None
 
 
-def _finished_at(status: Any) -> datetime | None:
+def _finished_at(status: WorkflowStatus) -> datetime | None:
     """When a finished task finished: DBOS sets no ``completed_at`` when it gives up recovering it."""
     return _epoch_to_datetime(status.completed_at if status.completed_at is not None else status.updated_at)
 
 
-def build_task_result(workflow_id: str, status: Any) -> TaskResult:
+def build_task_result(workflow_id: str, status: WorkflowStatus) -> TaskResult:
     dbos_status = status.status
     if dbos_status not in _STATUS_MAPPING:
         raise TaskResultDoesNotExist(workflow_id)

@@ -10,9 +10,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
+from dbos import WorkflowStatus
 from sentry_sdk.transport import Transport
 
 from django_dbos.tasks import DBOSTask
@@ -119,8 +119,10 @@ WORKFLOW_ID = 'wf-1'
 CREATED_AT_MS = 1_700_000_000_000
 
 
-def make_status(**overrides: Any) -> SimpleNamespace:
+def make_status(**overrides: Any) -> WorkflowStatus:
     """A DBOS workflow status of the ``add`` task, successful unless ``overrides`` say otherwise."""
+    unknown = set(overrides) - set(WorkflowStatus.__annotations__)
+    assert not unknown, f'WorkflowStatus has no field {unknown}'
     values = {
         'status': 'SUCCESS',
         'name': workflow_name_for_task(add),
@@ -136,7 +138,10 @@ def make_status(**overrides: Any) -> SimpleNamespace:
         'recovery_attempts': 1,
         'executor_id': 'worker-1',
     }
-    return SimpleNamespace(**(values | overrides))
+    status = WorkflowStatus()
+    for field, value in (values | overrides).items():
+        setattr(status, field, value)
+    return status
 
 
 def ms(value: datetime | None) -> int | None:
