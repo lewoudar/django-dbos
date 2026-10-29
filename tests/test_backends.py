@@ -149,7 +149,6 @@ class TestBackendBehavior:
             add.get_result('00000000-0000-0000-0000-000000000000')
 
     def test_get_result_database_errors_are_not_masked(self, dbos_environment, mocker):
-        mocker.patch('django_dbos.client.get_client', side_effect=RuntimeError('db unreachable'))
         mocker.patch('django_dbos.backends.get_client', side_effect=RuntimeError('db unreachable'))
         with pytest.raises(RuntimeError, match='db unreachable'):
             add.get_result('00000000-0000-0000-0000-000000000000')
