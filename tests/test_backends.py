@@ -44,6 +44,12 @@ class TestHelpers:
         assert _django_to_dbos_priority(django_priority) == expected
         assert _dbos_to_django_priority(expected) == django_priority
 
+    def test_whole_float_priority_maps_to_an_int(self):
+        dbos_priority = _django_to_dbos_priority(5.0)
+
+        assert dbos_priority == 96
+        assert type(dbos_priority) is int
+
     @pytest.mark.parametrize('dbos_priority', [None, 0, 202])
     def test_priority_outside_the_django_scale_maps_to_none(self, dbos_priority):
         assert _dbos_to_django_priority(dbos_priority) is None

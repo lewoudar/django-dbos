@@ -30,6 +30,7 @@ _PRIORITY_OFFSET = 101
 
 
 def _django_to_dbos_priority(django_priority: int) -> int:
+    # Django's validate_task accepts any whole number, such as 5.0; DBOS expects an int.
     return _PRIORITY_OFFSET - int(django_priority)
 
 
