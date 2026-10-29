@@ -21,20 +21,14 @@ pytestmark = pytest.mark.integration
 
 
 class TestHelpers:
-    @pytest.mark.parametrize(
-        ('run_after', 'expected'),
-        [
-            pytest.param(None, None, id='none'),
-            pytest.param(timedelta(seconds=90), 90.0, id='timedelta'),
-            pytest.param(timedelta(seconds=-5), 0.0, id='negative-timedelta-clamped'),
-        ],
-    )
-    def test_delay_seconds(self, run_after, expected):
-        assert _delay_seconds(run_after) == expected
+    def test_delay_seconds_without_run_after(self):
+        assert _delay_seconds(None) is None
 
     def test_delay_seconds_from_datetime(self):
-        run_after = datetime.now(tz=UTC) + timedelta(minutes=1)
-        assert 0 <= _delay_seconds(run_after) <= 60
+        assert 0 < _delay_seconds(datetime.now(tz=UTC) + timedelta(minutes=1)) <= 60
+
+    def test_a_past_run_after_is_clamped_to_zero(self):
+        assert _delay_seconds(datetime.now(tz=UTC) - timedelta(seconds=5)) == 0.0
 
     @pytest.mark.parametrize(
         ('django_priority', 'expected'),
@@ -68,6 +62,13 @@ class TestEnqueueOptions:
         assert 0 < options['delay_seconds'] <= 30
         assert options['deduplication_id'] == 'dedup'
         assert options['workflow_timeout'] == 90
+
+    def test_a_naive_run_after_is_delayed_without_use_tz(self, settings):
+        settings.USE_TZ = False
+        task = add.using(run_after=timezone.now() + timedelta(seconds=30))
+        options = add.get_backend()._enqueue_options(task, (1, 2), {})
+
+        assert 0 < options['delay_seconds'] <= 30
 
     def test_a_callable_deduplication_id_is_resolved_per_enqueue(self):
         task = dbos_params(deduplication_id=lambda a, b: f'add-{a}-{b}')(add)

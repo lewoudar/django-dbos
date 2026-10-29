@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from dbos import error as dbos_error
@@ -47,13 +47,13 @@ def _dbos_to_django_priority(dbos_priority: int | None) -> int | None:
     return None
 
 
-def _delay_seconds(run_after: datetime | timedelta | None) -> float | None:
+def _delay_seconds(run_after: datetime | None) -> float | None:
     if run_after is None:
         return None
-    if isinstance(run_after, timedelta):
-        return max(run_after.total_seconds(), 0.0)
-    now = datetime.now(tz=run_after.tzinfo or UTC)
-    return max((run_after - now).total_seconds(), 0.0)
+    # With USE_TZ = False, Django expects a naive datetime in local time, as timezone.now() returns it.
+    if run_after.tzinfo is None:
+        run_after = run_after.astimezone()
+    return max((run_after - datetime.now(tz=UTC)).total_seconds(), 0.0)
 
 
 class DBOSBackend(BaseTaskBackend):
