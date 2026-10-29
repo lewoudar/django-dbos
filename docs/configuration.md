@@ -143,7 +143,7 @@ serializer:
 | --- | --- | --- | --- | --- |
 | `None` (DBOS' pickle) | no | fast | base64 pickle | any Python object |
 | `'django_dbos.serializers.MsgspecJSONSerializer'` | yes | fastest | JSON | JSON types |
-| `'django_dbos.serializers.MsgspecMsgpackSerializer'` | yes | fast | base64 msgpack | JSON types, aware `datetime`, `bytes` |
+| `'django_dbos.serializers.MsgspecMsgpackSerializer'` | yes | fast | base64 msgpack | JSON types, aware `datetime` (normalized to UTC), `bytes` |
 | `'dbos.DBOSPortableJSONSerializer'` | yes | slow | JSON | JSON types |
 
 As an order of magnitude, measured on a developer laptop: a round trip
@@ -177,8 +177,10 @@ TASKS = {
 ```
 
 With any safe serializer, task arguments and results must be plain data.
-Tuples and sets come back as lists; `Decimal`, `UUID`, dates, times, enums
-and naive datetimes come back as strings; dataclasses as dicts. With the
+Tuples and sets come back as lists; `Decimal`, `UUID`, dates, times and naive
+datetimes come back as strings; enums as their value (a `StrEnum` as a string,
+an `IntEnum` as an int; DBOS' portable serializer rejects a plain `Enum`);
+dataclasses as dicts. With the
 msgspec serializers, a failed task's `TaskResult.errors` still reports the
 original exception class and its traceback; the class itself is never
 imported when the error is read back.

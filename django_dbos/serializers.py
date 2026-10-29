@@ -11,11 +11,12 @@ Safe alternatives to DBOS' default serializer (pickle), and much faster than
   readable in the system database and the admin.
 - ``MsgspecMsgpackSerializer`` stores base64-encoded msgpack (DBOS
   stores text): slower and bigger than JSON, but aware ``datetime`` and
-  ``bytes`` values come back as such instead of strings.
+  ``bytes`` values come back as such instead of strings (aware datetimes
+  normalized to UTC: the same instant, the original offset is lost).
 
 Both keep JSON-like data: tuples and sets come back as lists; ``Decimal``,
-``UUID``, dates, times, enums (and naive datetimes) as strings; dataclasses as
-dicts. A task's exception comes back as ``TaskFailure``,
+``UUID``, dates, times (and naive datetimes) as strings; enums as their value
+(``StrEnum`` as a string, ``IntEnum`` as an int); dataclasses as dicts. A task's exception comes back as ``TaskFailure``,
 carrying the original class path, message and traceback: the original class is
 never imported.
 

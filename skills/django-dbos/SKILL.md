@@ -353,7 +353,7 @@ actually about durability.
   When task args/results are plain data, prefer
   `'SERIALIZER': 'django_dbos.serializers.MsgspecJSONSerializer'` (extra
   `django-dbos[msgspec]`: safe and the fastest; `MsgspecMsgpackSerializer`
-  also keeps aware datetimes and bytes). Tuples/sets come back as lists,
+  also keeps aware datetimes, normalized to UTC, and bytes). Tuples/sets come back as lists,
   Decimal/UUID/dates as strings; failed tasks still report the original
   exception class and traceback. `dbos.DBOSPortableJSONSerializer` is the
   slower dependency-free option.
