@@ -3,8 +3,10 @@
 import base64
 import importlib
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time, timedelta, timezone
 from decimal import Decimal
+from enum import StrEnum
+from uuid import UUID
 
 import msgspec
 import pytest
@@ -15,6 +17,10 @@ from django_dbos.serializers import MsgspecJSONSerializer, MsgspecMsgpackSeriali
 from tests.helpers import set_dbos_options
 
 SERIALIZERS = [MsgspecJSONSerializer, MsgspecMsgpackSerializer]
+
+
+class Color(StrEnum):
+    RED = 'red'
 
 
 @pytest.fixture(params=SERIALIZERS, ids=['json', 'msgpack'])
@@ -45,8 +51,20 @@ class TestRoundTrip:
         inputs = {'args': (1, 'a'), 'kwargs': {'items': (2, 3)}}
         assert serializer.deserialize(serializer.serialize(inputs)) == {'args': [1, 'a'], 'kwargs': {'items': [2, 3]}}
 
-    def test_other_types_come_back_as_strings(self, serializer):
-        assert serializer.deserialize(serializer.serialize(Decimal('1.50'))) == '1.50'
+    @pytest.mark.parametrize(
+        ('value', 'expected'),
+        [
+            (Decimal('1.50'), '1.50'),
+            (UUID('12345678-1234-5678-1234-567812345678'), '12345678-1234-5678-1234-567812345678'),
+            (date(2026, 9, 30), '2026-09-30'),
+            (time(12, 30), '12:30:00'),
+            (datetime(2026, 9, 30, 12), '2026-09-30T12:00:00'),  # noqa: DTZ001 - naive on purpose
+            (Color.RED, 'red'),
+        ],
+        ids=['decimal', 'uuid', 'date', 'time', 'naive-datetime', 'str-enum'],
+    )
+    def test_other_types_come_back_as_strings(self, serializer, value, expected):
+        assert serializer.deserialize(serializer.serialize(value)) == expected
 
     def test_unsupported_type_names_it(self, serializer):
         with pytest.raises(TypeError, match='Objects of type object cannot be serialized'):
@@ -73,6 +91,7 @@ class TestExceptions:
         error = serializer.deserialize(serializer.serialize(KeyError('missing')))
 
         assert error.exception_class_path == 'builtins.KeyError'
+        assert error.message == "'missing'"  # str(KeyError) quotes the key
         assert error.traceback == "KeyError: 'missing'\n"
 
     def test_a_dict_that_merely_contains_the_marker_is_left_alone(self):
@@ -123,6 +142,13 @@ class TestMsgpackTypes:
         serializer = MsgspecMsgpackSerializer()
         value = {'at': datetime(2026, 9, 30, 12, tzinfo=UTC), 'raw': b'\x00\xff'}
         assert serializer.deserialize(serializer.serialize(value)) == value
+
+    def test_aware_datetimes_are_normalized_to_utc(self):
+        serializer = MsgspecMsgpackSerializer()
+        paris_noon = datetime(2026, 9, 30, 12, tzinfo=timezone(timedelta(hours=2)))
+        at = serializer.deserialize(serializer.serialize(paris_noon))
+        # == alone would pass: aware datetimes compare by instant.
+        assert (at, at.tzinfo) == (datetime(2026, 9, 30, 10, tzinfo=UTC), UTC)
 
     def test_unknown_extension_types_are_returned_as_is(self):
         serializer = MsgspecMsgpackSerializer()
