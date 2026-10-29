@@ -53,8 +53,8 @@ settings to use in a worker.
 
 ## Deferred tasks
 
-Use `.using(run_after=...)` to run a task later (an aware `datetime`, as
-required by Django):
+Use `.using(run_after=...)` to run a task later (a `datetime`, aware as
+required by Django when `USE_TZ` is enabled, naive in local time otherwise):
 
 ```python
 from datetime import timedelta
