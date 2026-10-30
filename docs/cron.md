@@ -80,13 +80,22 @@ Scheduled tasks are then monitored automatically: the monitor is upserted by
 Sentry on each check-in, so there is nothing to create in the UI. Its slug is
 derived from the task's module path (`myapp.tasks.cleanup` →
 `myapp-tasks-cleanup`; long paths are cut from the left to Sentry's 50
-characters, keeping the function name).
+characters, keeping the function name). Two tasks whose paths end with the
+same 50 characters therefore share a monitor, and a path made only of
+non-ASCII characters yields no usable slug: rename the task, or pass
+`sentry_monitor_config=None` to leave it unmonitored.
 
 Check-ins are sent by the worker around each *scheduled* firing, and whether
 Sentry is active is looked up at that moment — initializing the SDK after
 the task modules are imported, or only in the worker, is fine. An ad-hoc
 `cleanup.enqueue()` of the same task is not a cron execution and sends no
 check-in.
+
+If a worker dies during a scheduled execution, its in-progress check-in is
+never closed and Sentry reports it as timed out once the monitor's
+`max_runtime` (30 minutes by default) has elapsed. DBOS then recovers the
+workflow on a worker, which sends a new check-in for the resumed execution:
+expect a timeout alert followed by a successful (or failed) check-in.
 
 Options of `@cron`:
 
@@ -100,8 +109,8 @@ Options of `@cron`:
     sentry_monitor_config={
         "schedule": {"type": "crontab", "value": "0 0 * * *"},
         "timezone": "Europe/Paris",
-        "checkin_margin": 2,  # hours of tolerance
-        "max_runtime": 2 * 60 * 60,  # alert if it runs longer
+        "checkin_margin": 2 * 60,  # minutes of tolerance (2 hours)
+        "max_runtime": 2 * 60,  # minutes: alert if it runs longer than 2 hours
     },
 )
 ```
