@@ -9,8 +9,8 @@ from django_dbos.workflow_names import task_from_workflow_name
 from . import tasks as tasks_module
 
 MALICIOUS_WORKFLOW_NAMES = [
-    # Attribute traversal towards arbitrary modules.
-    pytest.param('django_dbos.tasks.logging.sys.modules', id='attribute-traversal'),
+    # Importable, but an arbitrary interpreter object rather than a task.
+    pytest.param('django_dbos.tasks.sys.modules', id='arbitrary-object'),
     pytest.param('django_dbos.tasks.tests.tasks.__init__', id='dunder-segment'),
     pytest.param('django_dbos.tasks..tests.tasks.add', id='empty-segment'),
     pytest.param('django_dbos.tasks.', id='trailing-empty-segment'),
