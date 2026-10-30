@@ -38,7 +38,12 @@ class TestCrontabToMonitorConfig:
         [
             pytest.param('*/5 * * * *', '*/5 * * * *', id='five-fields'),
             pytest.param('0 0 5 * * *', '0 5 * * *', id='six-fields-with-zero-seconds'),
-            pytest.param('*/30 * * * * *', None, id='sub-minute'),
+            pytest.param('30 0 3 * * *', '0 3 * * *', id='six-fields-with-single-second'),
+            pytest.param('00 */5 * * * *', '*/5 * * * *', id='six-fields-with-padded-zero-seconds'),
+            pytest.param('*/30 * * * * *', None, id='sub-minute-step'),
+            pytest.param('* * * * * *', None, id='sub-minute-wildcard'),
+            pytest.param('0,30 * * * * *', None, id='sub-minute-list'),
+            pytest.param('0-10 * * * * *', None, id='sub-minute-range'),
             pytest.param('* * *', None, id='invalid-field-count'),
         ],
     )

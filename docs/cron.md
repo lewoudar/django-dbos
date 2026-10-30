@@ -107,8 +107,11 @@ Options of `@cron`:
 ```
 
 By default (no `sentry_monitor_config`), the monitor configuration is derived
-from the crontab. Sub-minute schedules cannot be represented as Sentry monitors
-and are simply not monitored.
+from the crontab. Sentry crontabs have no seconds field: a single leading
+second (`30 0 3 * * *`) is dropped, the check-in arriving within Sentry's
+check-in margin. Sub-minute schedules (several firings per minute, such as
+`*/10 * * * * *`) cannot be represented as Sentry monitors and are simply not
+monitored.
 
 Without `sentry-sdk` installed, everything is a no-op.
 

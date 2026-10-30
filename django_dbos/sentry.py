@@ -63,13 +63,15 @@ def monitor_slug(task_path: str) -> str:
 def crontab_to_monitor_config(crontab: str) -> SentryMonitorConfig | None:
     """Build a Sentry monitor config for a crontab expression.
 
-    Returns None when the schedule cannot be represented as a Sentry monitor,
-    e.g. sub-minute schedules (DBOS supports a leading seconds field, Sentry
-    does not).
+    DBOS supports a leading seconds field, Sentry does not: a single second
+    (``30 0 3 * * *``, daily at 03:00:30) is dropped, the check-in arriving
+    within Sentry's check-in margin. Returns None when the schedule cannot be
+    represented as a Sentry monitor, i.e. sub-minute schedules (several
+    firings per minute, such as ``*/10 * * * * *``).
     """
     fields = crontab.split()
     if len(fields) == 6:
-        if fields[0] != '0':
+        if not fields[0].isdigit():
             return None  # sub-minute schedule
         fields = fields[1:]
     elif len(fields) != 5:
