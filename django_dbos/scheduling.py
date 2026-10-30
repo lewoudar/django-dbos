@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from croniter import croniter
@@ -204,14 +205,14 @@ def _register_scheduled_workflow(task: DBOSTask, monitor_config: SentryMonitorCo
     if inspect.iscoroutinefunction(task.func):
 
         @DBOS.workflow(name=name)
-        async def scheduled_workflow(scheduled_time: Any, context: Any) -> Any:
+        async def scheduled_workflow(scheduled_time: datetime, context: Any) -> Any:
             with monitor_cron_execution(task, monitor_config), SetWorkflowTimeout(timeout):
                 return await child()
 
     else:
 
         @DBOS.workflow(name=name)
-        def scheduled_workflow(scheduled_time: Any, context: Any) -> Any:
+        def scheduled_workflow(scheduled_time: datetime, context: Any) -> Any:
             with monitor_cron_execution(task, monitor_config), SetWorkflowTimeout(timeout):
                 return child()
 
