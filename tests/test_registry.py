@@ -4,7 +4,7 @@ import pytest
 
 from django_dbos.tasks import known_tasks
 from django_dbos.tasks_registry import register_all_task_workflows
-from django_dbos.workflow_names import task_from_workflow_name, workflow_name_for_task
+from django_dbos.workflow_names import task_from_workflow_name
 
 from . import tasks as tasks_module
 
@@ -62,7 +62,4 @@ class TestRegisterAllTaskWorkflows:
 
         register_all_task_workflows()
 
-        assert {workflow_name_for_task(task) for task in seen} >= {
-            'django_dbos.tasks.tests.tasks.add',
-            'django_dbos.tasks.tests.tasks.async_add',
-        }
+        assert seen == list(known_tasks())
