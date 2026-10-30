@@ -8,7 +8,6 @@ from types import SimpleNamespace
 
 import pytest
 from dbos import DBOS
-from django.utils import timezone as dj_timezone
 
 import django_dbos.scheduling as cron_module
 from django_dbos.exceptions import ImproperlyConfiguredDbos
@@ -85,16 +84,6 @@ class TestCronDecorator:
         cron_module.cron('*/5 * * * *')(durable_context_task)
 
         assert durable_context_task.module_path in cron_module._registry
-
-
-class TestDjangoTimezone:
-    def test_uses_default_timezone_when_use_tz(self, settings):
-        settings.USE_TZ = True
-        assert cron_module._django_timezone() == dj_timezone.get_default_timezone()
-
-    def test_falls_back_to_utc_without_use_tz(self, settings):
-        settings.USE_TZ = False
-        assert cron_module._django_timezone() == 'UTC'
 
 
 def test_register_cron_workflows_registers_every_cron_task(mocker):

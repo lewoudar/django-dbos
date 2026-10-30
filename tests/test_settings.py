@@ -343,6 +343,18 @@ class TestAppName:
         assert [q.name for q in resolved.queues] == ['default']
 
 
+class TestCronTimezone:
+    def test_uses_default_timezone_when_use_tz(self, settings):
+        settings.USE_TZ = True
+        settings.TIME_ZONE = 'Europe/Paris'
+        assert dbos_settings.resolve_cron_timezone() == 'Europe/Paris'
+
+    def test_falls_back_to_utc_without_use_tz(self, settings):
+        settings.USE_TZ = False
+        settings.TIME_ZONE = 'Europe/Paris'
+        assert dbos_settings.resolve_cron_timezone() == 'UTC'
+
+
 class TestCredentialScrubbing:
     def test_postgres_dsn_password_masked(self):
         message = 'connection to server failed: postgresql+psycopg://app_user:s3cret-pw@db.internal:5432/dbos_mydb'

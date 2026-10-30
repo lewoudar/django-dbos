@@ -24,12 +24,11 @@ from typing import Any
 
 from croniter import croniter
 from dbos import DBOS, SetWorkflowTimeout
-from django.conf import settings
-from django.utils import timezone as dj_timezone
 
 from .exceptions import ImproperlyConfiguredDbos
 from .logging import logger
 from .sentry import UNSET, SentryMonitorConfig, monitor_cron_execution, resolve_monitor_config
+from .settings import resolve_cron_timezone
 from .tasks import DBOSTask
 from .tasks_registry import registered_workflow, remember_workflow, task_workflow
 
@@ -143,7 +142,7 @@ def register_cron_schedules() -> None:
     longer carries ``@cron`` (an orphan would keep firing a workflow no worker
     registers). Re-creating a schedule also resets a pause made in the admin.
     """
-    cron_timezone = str(_django_timezone())
+    cron_timezone = resolve_cron_timezone()
     for registration in _registry.values():
         name = schedule_name_for_task(registration.task)
         scheduled_workflow = _register_scheduled_workflow(registration.task, registration.monitor_config)
@@ -175,12 +174,6 @@ def _delete_orphan_schedules() -> None:
             continue
         DBOS.delete_schedule(name)
         logger.info('deleted orphan cron schedule', schedule_name=name, crontab=schedule.get('schedule'))
-
-
-def _django_timezone() -> Any:
-    if getattr(settings, 'USE_TZ', True):
-        return dj_timezone.get_default_timezone()
-    return 'UTC'
 
 
 def _register_scheduled_workflow(task: DBOSTask, monitor_config: SentryMonitorConfig | None = None) -> Any:

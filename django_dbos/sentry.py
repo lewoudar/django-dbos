@@ -20,10 +20,8 @@ import string
 from collections.abc import Iterator
 from typing import Any
 
-from django.conf import settings
-from django.utils import timezone
-
 from .logging import logger
+from .settings import resolve_cron_timezone
 from .tasks import DBOSTask
 
 # Sentry monitor config: {"schedule": {"type": ..., "value": ...}, "timezone": ...}
@@ -79,7 +77,7 @@ def crontab_to_monitor_config(crontab: str) -> SentryMonitorConfig | None:
 
     return {
         'schedule': {'type': 'crontab', 'value': ' '.join(fields)},
-        'timezone': str(timezone.get_default_timezone()) if getattr(settings, 'USE_TZ', True) else 'UTC',
+        'timezone': resolve_cron_timezone(),
     }
 
 

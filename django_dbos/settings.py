@@ -24,6 +24,7 @@ from urllib.parse import quote
 from dbos import Serializer
 from django.conf import settings
 from django.tasks.base import DEFAULT_TASK_QUEUE_NAME
+from django.utils import timezone
 from django.utils.module_loading import import_string
 
 from .exceptions import ImproperlyConfiguredDbos
@@ -283,6 +284,21 @@ def get_bool_option(key: str) -> bool:
 def resolve_app_name() -> str:
     """Application name for DBOS, defaulting to the Django project name."""
     return str(get_dbos_setting('NAME') or os.environ.get('DBOS_APPLICATION_NAME') or 'django')
+
+
+def resolve_cron_timezone() -> str:
+    """The timezone ``@cron`` crontabs are evaluated in.
+
+    Shared by the DBOS schedules and the Sentry monitors derived from them,
+    so check-ins are expected when the schedules actually fire.
+
+    Returns:
+        Django's default timezone (``TIME_ZONE``) when ``USE_TZ`` is enabled,
+        ``"UTC"`` otherwise.
+    """
+    if getattr(settings, 'USE_TZ', True):
+        return str(timezone.get_default_timezone())
+    return 'UTC'
 
 
 def resolve_executor_id() -> str | None:
