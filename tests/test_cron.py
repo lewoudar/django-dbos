@@ -12,6 +12,7 @@ from dbos import DBOS
 import django_dbos.scheduling as cron_module
 from django_dbos.exceptions import ImproperlyConfiguredDbos
 from django_dbos.scheduling import _register_scheduled_workflow, normalize_crontab, schedule_name_for_task
+from django_dbos.workflow_names import workflow_name_for_task
 from tests.tasks import async_cron_body, cron_task, durable_context_task
 
 
@@ -164,9 +165,13 @@ class TestRegisterCronSchedules:
 
 
 @pytest.mark.integration
-def test_async_scheduled_workflow_runs_the_task(dbos_environment):
-    scheduled_workflow = _register_scheduled_workflow(async_cron_body)
+def test_async_parent_workflow_runs_the_task_as_a_child(dbos_environment):
+    # Not a real firing: the parent is started by hand, with the arguments
+    # DBOS' scheduler passes it.
+    parent = _register_scheduled_workflow(async_cron_body)
 
-    handle = DBOS.start_workflow(scheduled_workflow, datetime.now(tz=UTC), None)
+    handle = DBOS.start_workflow(parent, datetime.now(tz=UTC), None)
 
     assert handle.get_result() == 'async cron ran'
+    children = DBOS.list_workflows(parent_workflow_id=handle.workflow_id, load_input=False, load_output=False)
+    assert [child.name for child in children] == [workflow_name_for_task(async_cron_body)]
