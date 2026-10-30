@@ -68,6 +68,11 @@ class TestResolveMonitorConfig:
     def test_unrepresentable_crontab_is_not_monitored(self):
         assert sentry.resolve_monitor_config(make_dbos_task(), '*/30 * * * * *') is None  # sub-minute
 
+    def test_empty_config_is_passed_through(self):
+        # {} sends check-ins without configuration, for a monitor managed in the Sentry UI.
+        empty = {}
+        assert sentry.resolve_monitor_config(make_dbos_task(), '*/5 * * * *', sentry_monitor_config=empty) is empty
+
     def test_explicit_config_is_used_as_is(self):
         custom = {'schedule': {'type': 'interval', 'value': 1, 'unit': 'hour'}, 'timezone': 'Europe/Paris'}
         assert sentry.resolve_monitor_config(make_dbos_task(), '0 * * * *', sentry_monitor_config=custom) is custom

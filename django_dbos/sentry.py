@@ -34,7 +34,12 @@ _MAX_SLUG_LENGTH = 50
 
 
 def is_sentry_enabled() -> bool:
-    """Whether sentry-sdk is installed and a client is currently active."""
+    """Whether sentry-sdk is installed and a client is currently active.
+
+    Returns:
+        ``True`` when check-ins can be sent; ``False`` without ``sentry-sdk``,
+        without an initialized client, or when the SDK fails to answer.
+    """
     try:
         import sentry_sdk
     except ImportError:
@@ -51,6 +56,12 @@ def monitor_slug(task_path: str) -> str:
     ``myapp.tasks.cleanup`` becomes ``myapp-tasks-cleanup``. Slugs are capped
     at 50 characters; a long path is cut from the left so the function name
     (its most distinctive part) survives.
+
+    Args:
+        task_path: The task's dotted module path.
+
+    Returns:
+        The slug: lowercase letters, digits, ``-`` and ``_`` only.
     """
     slug = task_path.lower().replace('.', '-')
     slug = ''.join(char if char in _SLUG_ALLOWED else '-' for char in slug)
@@ -63,9 +74,16 @@ def crontab_to_monitor_config(crontab: str) -> SentryMonitorConfig | None:
 
     DBOS supports a leading seconds field, Sentry does not: a single second
     (``30 0 3 * * *``, daily at 03:00:30) is dropped, the check-in arriving
-    within Sentry's check-in margin. Returns None when the schedule cannot be
-    represented as a Sentry monitor, i.e. sub-minute schedules (several
-    firings per minute, such as ``*/10 * * * * *``).
+    within Sentry's check-in margin. The monitor uses the timezone the DBOS
+    schedules are evaluated in.
+
+    Args:
+        crontab: A 5-field crontab, or a 6-field one with leading seconds.
+
+    Returns:
+        The monitor config, or ``None`` when the schedule cannot be
+        represented as a Sentry monitor, i.e. sub-minute schedules (several
+        firings per minute, such as ``*/10 * * * * *``).
     """
     fields = crontab.split()
     if len(fields) == 6:
@@ -84,26 +102,35 @@ def crontab_to_monitor_config(crontab: str) -> SentryMonitorConfig | None:
 def resolve_monitor_config(
     task: DBOSTask,
     crontab: str,
-    sentry_monitor_config: SentryMonitorConfig | Any | None = UNSET,
+    sentry_monitor_config: SentryMonitorConfig | None = UNSET,
 ) -> SentryMonitorConfig | None:
     """The monitor configuration to use for a cron task, or None to not monitor it.
 
-    ``None`` is returned when the caller explicitly passed
-    ``sentry_monitor_config=None``, or when the schedule has no monitor
-    representation (sub-minute crontabs).
+    Args:
+        task: The cron task, named in the debug log of an unmonitored crontab.
+        crontab: The task's crontab, from which the default config is derived.
+        sentry_monitor_config: The ``sentry_monitor_config`` given to
+            ``@cron``. Left unset, the config is derived from ``crontab``;
+            ``None`` disables monitoring; any dict is used as is (``{}``
+            sends check-ins without configuration, for a monitor managed in
+            the Sentry UI).
+
+    Returns:
+        The monitor config, or ``None`` when the caller explicitly passed
+        ``sentry_monitor_config=None`` or when the schedule has no monitor
+        representation (sub-minute crontabs).
     """
-    if sentry_monitor_config is None:
-        return None
-    if sentry_monitor_config is UNSET or sentry_monitor_config == {}:
-        monitor_config = crontab_to_monitor_config(crontab)
-        if monitor_config is None:
-            logger.debug(
-                'crontab cannot be represented as a Sentry monitor, skipping',
-                task_name=task.name,
-                crontab=crontab,
-            )
-        return monitor_config
-    return sentry_monitor_config
+    if sentry_monitor_config is not UNSET:
+        return sentry_monitor_config
+
+    monitor_config = crontab_to_monitor_config(crontab)
+    if monitor_config is None:
+        logger.debug(
+            'crontab cannot be represented as a Sentry monitor, skipping',
+            task_name=task.name,
+            crontab=crontab,
+        )
+    return monitor_config
 
 
 @contextlib.contextmanager
@@ -115,6 +142,16 @@ def monitor_cron_execution(task: DBOSTask, monitor_config: SentryMonitorConfig |
     initialized. A no-op without a monitor config or without an active
     Sentry client. Only scheduled firings go through here — an ad-hoc
     ``task.enqueue()`` of the same task is not a cron execution.
+
+    Args:
+        task: The task whose scheduled execution is reported; its module
+            path gives the monitor slug.
+        monitor_config: The resolved monitor config (see
+            ``resolve_monitor_config``); ``None`` sends nothing.
+
+    Yields:
+        Nothing: the execution runs in the ``with`` block, an exception
+        raised there being reported as a failed check-in.
     """
     if monitor_config is None or not is_sentry_enabled():
         yield

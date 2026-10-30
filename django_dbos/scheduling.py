@@ -68,8 +68,10 @@ def cron(
             leading seconds is also accepted).
         sentry_monitor_config: Sentry cron monitor configuration. By default
             it is derived from the crontab; pass ``None`` to disable
-            monitoring for this task, or a dict to configure the monitor
-            manually (see ``sentry_sdk.crons.monitor``).
+            monitoring for this task, a dict to configure the monitor
+            manually (see ``sentry_sdk.crons.monitor``), or ``{}`` to send
+            check-ins without any configuration, for a monitor managed in
+            the Sentry UI.
 
     Returns:
         A decorator registering the task, to stack on top of ``@task``.

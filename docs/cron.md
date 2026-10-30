@@ -113,6 +113,11 @@ check-in margin. Sub-minute schedules (several firings per minute, such as
 `*/10 * * * * *`) cannot be represented as Sentry monitors and are simply not
 monitored.
 
+To manage the monitor yourself in the Sentry UI, pass
+`sentry_monitor_config={}`: check-ins are then sent without any
+configuration, so Sentry neither creates the monitor nor overwrites its
+schedule — the check-ins attach to the monitor of the same slug.
+
 Without `sentry-sdk` installed, everything is a no-op.
 
 See [`examples/cron_report`](https://github.com/lewoudar/django-dbos/tree/main/examples/cron_report)
