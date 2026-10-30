@@ -43,10 +43,10 @@ class TestKnownTasks:
         assert {'tests.tasks.add', 'tests.tasks.send_email', 'tests.tasks.durable_onboarding'} <= module_paths
 
     def test_last_declaration_wins(self):
-        # @dbos_params above @task replaces the instance: the registry follows.
-        (registered,) = [task for task in known_tasks() if task.module_path == 'tests.tasks.flaky_with_retries']
-        assert registered is tasks_module.flaky_with_retries
-        assert registered.dbos_params.step_retries_allowed is True
+        # @dbos_params above @task copies the instance built by @task: the copy replaces it in the registry.
+        (registered,) = [task for task in known_tasks() if task.module_path == 'tests.tasks.slow_task']
+        assert registered is tasks_module.slow_task
+        assert registered.dbos_params.workflow_timeout == 1
 
     def test_using_does_not_shadow_the_declared_task(self):
         tasks_module.add.using(priority=10)  # transient copy, same function and params
