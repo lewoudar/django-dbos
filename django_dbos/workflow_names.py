@@ -33,7 +33,7 @@ def task_from_workflow_name(workflow_name: str) -> Any:
 
     try:
         task = import_string(module_path)
-    except (ImportError, AttributeError):
+    except ImportError:  # import_string also reports a missing attribute as ImportError
         return None
     # Only actual tasks are usable as results; the name comes from the system
     # database, so anything else (arbitrary module attributes, ...) is rejected.
