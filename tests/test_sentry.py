@@ -104,9 +104,18 @@ class TestMonitorCronExecution:
             with sentry.monitor_cron_execution(make_dbos_task(), self.CONFIG):
                 pass
             sentry_sdk.get_client().flush()
-            assert transport.envelopes or transport.events, 'expected Sentry check-ins'
         finally:
             sentry_sdk.get_client().close()
+            # A closed client still reports itself active: restore a non-recording one.
+            sentry_sdk.get_global_scope().set_client(None)
+
+        check_ins = [item.payload.json for envelope in transport.envelopes for item in envelope.items]
+        assert [(check_in['monitor_slug'], check_in['status']) for check_in in check_ins] == [
+            ('tests-helpers-noop', 'in_progress'),
+            ('tests-helpers-noop', 'ok'),
+        ]
+        assert all(check_in['monitor_config'] == self.CONFIG for check_in in check_ins)
+        assert not sentry.is_sentry_enabled()
 
     def test_decided_at_execution_time_not_at_import(self, mocker):
         # Sentry initialized after the task module was imported still monitors.

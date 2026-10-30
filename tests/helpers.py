@@ -102,14 +102,11 @@ def make_dbos_task(**overrides: Any) -> DBOSTask:
 
 
 class MemoryTransport(Transport):
-    """In-memory Sentry transport collecting events and envelopes."""
+    """In-memory Sentry transport collecting envelopes (sentry-sdk 2.x sends everything as envelopes)."""
 
     def __init__(self) -> None:
-        self.events: list[dict[str, Any]] = []
+        super().__init__()
         self.envelopes: list[Any] = []
-
-    def capture_event(self, event: dict[str, Any]) -> None:
-        self.events.append(event)
 
     def capture_envelope(self, envelope: Any) -> None:
         self.envelopes.append(envelope)
