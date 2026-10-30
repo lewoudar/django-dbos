@@ -179,15 +179,19 @@ def _delete_orphan_schedules() -> None:
 
 
 def _register_scheduled_workflow(task: DBOSTask, monitor_config: SentryMonitorConfig | None = None) -> Any:
-    """Register the workflow fired by the schedule.
+    """Register the parent workflow fired by the task's schedule (idempotent).
 
-    It is a thin parent: each firing runs the task's regular workflow (the one
-    enqueues use, ``django_dbos.tasks.<module path>``) as a child, so cron and
-    enqueued executions share a workflow name — and the task's DBOS options
-    (``workflow_timeout``, ``max_recovery_attempts``, step retries) apply to
-    both. ``SetWorkflowTimeout`` is how DBOS scopes a timeout to a child
-    started from a workflow; schedules themselves carry none. The parent is
-    also where a firing is reported to Sentry, so ad-hoc enqueues are not.
+    DBOS calls a scheduled workflow with ``(scheduled_time, context)``, while
+    a cron task takes no arguments: the parent drops them and runs the task's
+    regular workflow (the one ``.enqueue()`` uses) as a child. Both kinds of
+    execution thus share a workflow name, which ``get_result`` and the admin
+    resolve back to the task, and the task's ``@dbos_params`` apply to both.
+
+    The parent only adds what belongs to a cron firing:
+
+    - the ``workflow_timeout``: schedules carry none, ``SetWorkflowTimeout``
+      scopes it to the child;
+    - the Sentry check-in, so ad-hoc enqueues are not reported to the monitor.
     """
     name = schedule_name_for_task(task)
     existing = registered_workflow(name)
