@@ -135,6 +135,10 @@ secrets, before each deploy.
 ```toml
 # fly.toml
 app = "myproject"
+# Fly sends SIGINT, then SIGKILL after kill_timeout (5 seconds by default):
+# leave the worker its --shutdown-timeout (10 seconds by default) to finish.
+# App-wide (not per process group): the web processes get it too.
+kill_timeout = 15
 
 [build]
 
