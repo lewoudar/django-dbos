@@ -358,11 +358,18 @@ class TestQueues:
 
 
 class TestAppName:
-    def test_defaults_to_django(self, settings):
+    def test_defaults_to_django(self, settings, monkeypatch):
+        monkeypatch.delenv('DBOS_APPLICATION_NAME', raising=False)
         set_dbos_options(settings, {})
         assert dbos_settings.resolve_app_name() == 'django'
 
-    def test_from_setting(self, settings):
+    def test_falls_back_to_dbos_env(self, settings, monkeypatch):
+        monkeypatch.setenv('DBOS_APPLICATION_NAME', 'env-app')
+        set_dbos_options(settings, {})
+        assert dbos_settings.resolve_app_name() == 'env-app'
+
+    def test_setting_wins(self, settings, monkeypatch):
+        monkeypatch.setenv('DBOS_APPLICATION_NAME', 'env-app')
         set_dbos_options(settings, {'NAME': 'myproject'})
         assert dbos_settings.resolve_app_name() == 'myproject'
 
@@ -390,6 +397,23 @@ class TestAppName:
         resolved = dbos_settings.resolve_settings()
         assert resolved.run_migrations is False
         assert resolved.scheduler_polling_interval_sec == 2.0
+
+
+class TestExecutorId:
+    def test_unset_keeps_dbos_default(self, settings, monkeypatch):
+        monkeypatch.delenv('DBOS__VMID', raising=False)
+        set_dbos_options(settings, {})
+        assert dbos_settings.resolve_executor_id() is None
+
+    def test_falls_back_to_dbos_env(self, settings, monkeypatch):
+        monkeypatch.setenv('DBOS__VMID', 'vm-7')
+        set_dbos_options(settings, {})
+        assert dbos_settings.resolve_executor_id() == 'vm-7'
+
+    def test_setting_wins(self, settings, monkeypatch):
+        monkeypatch.setenv('DBOS__VMID', 'vm-7')
+        set_dbos_options(settings, {'EXECUTOR_ID': 'machine-42'})
+        assert dbos_settings.resolve_executor_id() == 'machine-42'
 
 
 class TestCronTimezone:

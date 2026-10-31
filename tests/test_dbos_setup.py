@@ -11,6 +11,7 @@ class TestBuildDbosConfig:
     def test_minimal_config(self, settings, monkeypatch):
         monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
         monkeypatch.delenv('DBOS__VMID', raising=False)
+        monkeypatch.delenv('DBOS_APPLICATION_NAME', raising=False)
         set_dbos_options(settings, {'SYSTEM_DATABASE_URL': 'postgresql://db'})
         config = dbos_setup._build_dbos_config()
         assert config['name'] == 'django'
@@ -39,18 +40,13 @@ class TestBuildDbosConfig:
         )
         config = dbos_setup._build_dbos_config()
         assert config['name'] == 'myproject'
+        assert config['system_database_url'] == 'postgresql://db'
         assert config['application_version'] == '1.2.3'
         assert config['dbos_system_schema'] == 'custom_schema'
         assert config['executor_id'] == 'machine-42'
         assert type(config['serializer']).__name__ == 'DBOSPortableJSONSerializer'
         assert config['run_migrations'] is False
         assert config['scheduler_polling_interval_sec'] == 2.0
-
-    def test_executor_id_falls_back_to_dbos_env(self, settings, monkeypatch):
-        monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
-        monkeypatch.setenv('DBOS__VMID', 'vm-7')
-        set_dbos_options(settings, {'SYSTEM_DATABASE_URL': 'postgresql://db'})
-        assert dbos_setup._build_dbos_config()['executor_id'] == 'vm-7'
 
 
 class TestRegisterQueues:
