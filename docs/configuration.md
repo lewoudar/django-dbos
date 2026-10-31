@@ -126,7 +126,7 @@ one (`django_dbos.E003`, see [System checks](troubleshooting.md#system-checks)).
 | `CAPACITY` | `{}` | Thresholds and advisor of the scaling advice (see [Worker capacity](worker-capacity.md#thresholds)). |
 | `RUN_MIGRATIONS` | `True` | Whether workers create/migrate the system database on launch (see [Migrating the system database](#migrating-the-system-database)). |
 | `MIGRATE_WITH_DJANGO` | `True` | Whether `manage.py migrate` also creates/migrates the system database (see [Migrating the system database](#migrating-the-system-database)). |
-| `SCHEDULER_POLLING_INTERVAL_SEC` | `30.0` | How often the scheduler thread looks for new schedules. |
+| `SCHEDULER_POLLING_INTERVAL_SEC` | `30.0` | How often the scheduler thread looks for new schedules, in seconds (a positive number). |
 | `ADMIN_ENABLED` | `True` | Register the DBOS pages in the Django admin (see [Admin](admin.md#options)). |
 | `ADMIN_SITE` | `["django.contrib.admin.site"]` | Admin sites (dotted paths) to register the pages on. |
 

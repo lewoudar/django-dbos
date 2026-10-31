@@ -221,6 +221,46 @@ class TestBooleanOptions:
         assert f"['{key}'] must be True or False" in errors[0].msg
 
 
+class TestSchedulerPollingInterval:
+    def test_unset_keeps_dbos_default(self, settings):
+        set_dbos_options(settings, {})
+        assert dbos_settings.resolve_scheduler_polling_interval() is None
+
+    @pytest.mark.parametrize('value', [2, 0.5])
+    def test_a_positive_number_is_read_as_seconds(self, settings, value):
+        set_dbos_options(settings, {'SCHEDULER_POLLING_INTERVAL_SEC': value})
+        interval = dbos_settings.resolve_scheduler_polling_interval()
+        assert interval == value
+        assert type(interval) is float
+
+    @pytest.mark.parametrize(
+        'value',
+        [
+            pytest.param('2', id='string'),
+            pytest.param(True, id='bool'),
+            pytest.param(0, id='zero'),
+            pytest.param(-1, id='negative'),
+            pytest.param(float('inf'), id='inf'),
+            pytest.param(float('nan'), id='nan'),
+        ],
+    )
+    def test_anything_else_raises(self, settings, value):
+        set_dbos_options(settings, {'SCHEDULER_POLLING_INTERVAL_SEC': value})
+        with pytest.raises(ImproperlyConfiguredDbos) as excinfo:
+            dbos_settings.resolve_scheduler_polling_interval()
+        assert str(excinfo.value) == (
+            "TASKS['dbos']['OPTIONS']['SCHEDULER_POLLING_INTERVAL_SEC'] must be a positive number of seconds, "
+            f'got {value!r}.'
+        )
+
+    def test_an_invalid_value_is_reported_by_e001(self, settings, monkeypatch):
+        monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
+        set_dbos_options(settings, {'SCHEDULER_POLLING_INTERVAL_SEC': 'abc'})
+        errors = check_dbos_settings()
+        assert [error.id for error in errors] == ['django_dbos.E001']
+        assert "['SCHEDULER_POLLING_INTERVAL_SEC'] must be a positive number" in errors[0].msg
+
+
 class TestQueues:
     def test_default_queue(self, settings):
         set_dbos_options(settings, {})
@@ -341,6 +381,15 @@ class TestAppName:
         assert resolved.application_version == '1.2.3'
         assert resolved.dbos_system_schema == 'dbos_custom'
         assert [q.name for q in resolved.queues] == ['default']
+        assert resolved.run_migrations is True
+        assert resolved.scheduler_polling_interval_sec is None
+
+    def test_resolve_settings_worker_options(self, settings, monkeypatch):
+        monkeypatch.delenv('DBOS_SYSTEM_DATABASE_URL', raising=False)
+        set_dbos_options(settings, {'RUN_MIGRATIONS': False, 'SCHEDULER_POLLING_INTERVAL_SEC': 2})
+        resolved = dbos_settings.resolve_settings()
+        assert resolved.run_migrations is False
+        assert resolved.scheduler_polling_interval_sec == 2.0
 
 
 class TestCronTimezone:

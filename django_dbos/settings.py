@@ -16,6 +16,7 @@ system database URL is derived from the default Django database connection:
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass, field
 from typing import Any
@@ -180,6 +181,9 @@ class DbosSettings:
     serializer: Any = None
     queues: tuple[QueueConfig, ...] = field(default_factory=tuple)
     capacity: CapacityConfig = field(default_factory=CapacityConfig)
+    # Worker only (DBOS(config=...)): the client and `migrate` ignore them.
+    run_migrations: bool = True
+    scheduler_polling_interval_sec: float | None = None
 
 
 def _django_database_settings() -> dict[str, Any]:
@@ -348,6 +352,27 @@ def resolve_serializer() -> Any:
     return value
 
 
+def resolve_scheduler_polling_interval() -> float | None:
+    """How often the DBOS scheduler thread looks for new schedules.
+
+    Returns:
+        ``OPTIONS["SCHEDULER_POLLING_INTERVAL_SEC"]`` in seconds, ``None`` when
+        unset (DBOS' default, 30 seconds).
+
+    Raises:
+        ImproperlyConfiguredDbos: The value is not a positive, finite number.
+    """
+    value = get_dbos_setting('SCHEDULER_POLLING_INTERVAL_SEC')
+    if value is None:
+        return None
+    # bool is an int: float(True) would silently poll every second.
+    if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value) or value <= 0:
+        raise ImproperlyConfiguredDbos(
+            f'{options_path("SCHEDULER_POLLING_INTERVAL_SEC")} must be a positive number of seconds, got {value!r}.'
+        )
+    return float(value)
+
+
 _QUEUE_OPTIONS = tuple(name for name in QueueConfig.__dataclass_fields__ if name != 'name')
 
 
@@ -486,4 +511,6 @@ def resolve_settings() -> DbosSettings:
         serializer=resolve_serializer(),
         queues=queues,
         capacity=resolve_capacity(),
+        run_migrations=get_bool_option('RUN_MIGRATIONS'),
+        scheduler_polling_interval_sec=resolve_scheduler_polling_interval(),
     )

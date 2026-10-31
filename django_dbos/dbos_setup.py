@@ -53,10 +53,9 @@ def _build_dbos_config() -> dict[str, Any]:
         config['serializer'] = resolved.serializer
     # False: launch verifies the schema instead of creating/migrating it
     # (migrate out of band with `manage.py dbos migrate`).
-    config['run_migrations'] = settings_module.get_bool_option('RUN_MIGRATIONS')
-    scheduler_polling_interval = settings_module.get_dbos_setting('SCHEDULER_POLLING_INTERVAL_SEC')
-    if scheduler_polling_interval is not None:
-        config['scheduler_polling_interval_sec'] = float(scheduler_polling_interval)
+    config['run_migrations'] = resolved.run_migrations
+    if resolved.scheduler_polling_interval_sec is not None:
+        config['scheduler_polling_interval_sec'] = resolved.scheduler_polling_interval_sec
     return config
 
 
