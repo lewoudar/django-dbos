@@ -3,6 +3,7 @@
 import signal
 
 import pytest
+from click.exceptions import BadParameter
 from django.core.management import call_command
 
 
@@ -46,9 +47,23 @@ def test_worker_default_run(dbos_environment, worker_mocks):
     heartbeat.start.assert_called_once_with()
     heartbeat.stop.assert_called_once_with()
 
-    worker_mocks['shutdown'].assert_called_once_with()
+    worker_mocks['shutdown'].assert_called_once_with(workflow_completion_timeout_sec=10)
     assert 'DBOS worker started' in output
     assert 'Shutting down' in output
+
+
+@pytest.mark.parametrize('timeout', [0, 25])
+def test_worker_shutdown_timeout_is_forwarded(dbos_environment, worker_mocks, timeout):
+    run_worker('--shutdown-timeout', str(timeout))
+
+    worker_mocks['shutdown'].assert_called_once_with(workflow_completion_timeout_sec=timeout)
+
+
+def test_worker_rejects_a_negative_shutdown_timeout(dbos_environment, worker_mocks):
+    with pytest.raises(BadParameter, match=r'-1 is not in the range x>=0'):
+        run_worker('--shutdown-timeout', '-1')
+
+    worker_mocks['ensure_launched'].assert_not_called()
 
 
 def test_worker_stops_on_sigterm_or_sigint(dbos_environment, worker_mocks, mocker):
@@ -67,4 +82,4 @@ def test_worker_stops_on_sigterm_or_sigint(dbos_environment, worker_mocks, mocke
     assert set(handlers) == {signal.SIGTERM, signal.SIGINT}
     stop_event_set.assert_called_once_with()
     worker_mocks['heartbeat_cls'].return_value.stop.assert_called_once_with()
-    worker_mocks['shutdown'].assert_called_once_with()
+    worker_mocks['shutdown'].assert_called_once_with(workflow_completion_timeout_sec=10)

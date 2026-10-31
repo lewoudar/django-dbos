@@ -44,7 +44,15 @@ def migrate(app_role: str | None) -> None:
 
 
 @main.command()
-def worker() -> None:
+@click.option(
+    '--shutdown-timeout',
+    type=click.IntRange(min=0),
+    default=10,
+    show_default=True,
+    help='Seconds to wait for running tasks to finish on SIGTERM/SIGINT before disconnecting; keep it below '
+    "your platform's grace period before SIGKILL. 0 does not wait: the tasks still running are recovered later.",
+)
+def worker(shutdown_timeout: int) -> None:
     """Run the DBOS worker: execute Django tasks durably and process cron schedules."""
     discovery.autodiscover_tasks()
     dbos_setup.ensure_launched()
@@ -71,7 +79,7 @@ def worker() -> None:
     finally:
         click.echo('Shutting down DBOS worker...')
         heartbeat_thread.stop()
-        dbos_setup.shutdown()
+        dbos_setup.shutdown(workflow_completion_timeout_sec=shutdown_timeout)
 
 
 # Capacity advice -> click color for the status badge in the human-readable report.

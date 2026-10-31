@@ -408,10 +408,15 @@ actually about durability.
    to date, and refuse to start otherwise.
 3. A stable `EXECUTOR_ID` per worker instance (platform instance id/hostname
    — never a pid, which changes every restart).
-4. Decide the system database URL and serializer deliberately (see above).
-5. `DEBUG=False` — error pages otherwise print local variables, which can
+4. A platform grace period above `dbos worker --shutdown-timeout` (10 seconds
+   by default): on `SIGTERM`/`SIGINT` the worker waits that long for running
+   tasks, and a `SIGKILL` before the end cuts it short. fly.io's
+   `kill_timeout` defaults to 5 seconds — raise it; Kubernetes'
+   `terminationGracePeriodSeconds` (30) is fine.
+5. Decide the system database URL and serializer deliberately (see above).
+6. `DEBUG=False` — error pages otherwise print local variables, which can
    include the system database URL held by the SDK.
-6. A retention policy: a `@cron` task calling `purge_workflows`.
+7. A retention policy: a `@cron` task calling `purge_workflows`.
 
 ## Common pitfalls
 

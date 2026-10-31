@@ -438,6 +438,16 @@ cron scheduler, and shuts down gracefully on `SIGTERM`/`SIGINT`. It also
 pushes a heartbeat to the Django database (see [Worker capacity](worker-capacity.md)),
 which is why django-dbos ships a migration.
 
+On shutdown, the worker waits up to `--shutdown-timeout` seconds (10 by
+default) for the tasks it is running to finish, then disconnects; a task still
+running is recovered later from its last checkpoint, like after a crash. Keep
+it below your platform's grace period before `SIGKILL` (see
+[Deployment](deployment.md)):
+
+```bash
+python manage.py dbos worker --shutdown-timeout 25
+```
+
 Every worker also takes part in [cron scheduling](cron.md): run as many
 workers as you like, each scheduled firing still executes once.
 

@@ -227,12 +227,13 @@ containers:
 ```
 
 Stop workers with `SIGTERM` (the default): `dbos worker` removes its
-heartbeat row, then waits **up to 10 seconds** for the tasks it is running to
-finish before disconnecting. A task still running after that is interrupted
-and recovered later from its last checkpoint — from the start for a task
-without `durable_operations` — like after a crash. Keep
-`terminationGracePeriodSeconds` above those 10 seconds (Kubernetes' default
-of 30 is fine) so the shutdown is not cut short by a `SIGKILL`.
+heartbeat row, then waits **up to `--shutdown-timeout` seconds** (10 by
+default) for the tasks it is running to finish before disconnecting. A task
+still running after that is interrupted and recovered later from its last
+checkpoint — from the start for a task without `durable_operations` — like
+after a crash. Keep `terminationGracePeriodSeconds` above that timeout
+(Kubernetes' default of 30 is fine with the default 10) so the shutdown is
+not cut short by a `SIGKILL`.
 
 ## Docker Compose
 
