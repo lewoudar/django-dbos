@@ -181,6 +181,26 @@ class TestHeartbeatThread:
 
         assert write.call_count >= 3
 
+    def test_stop_warns_when_the_thread_does_not_finish_in_time(self, mocker):
+        mocker.patch('django_dbos.heartbeat.STOP_TIMEOUT_SECONDS', 0.05)
+        mocker.patch('django_dbos.heartbeat.write_heartbeat')
+        release = threading.Event()
+        mocker.patch('django_dbos.heartbeat.delete_heartbeat', side_effect=lambda _: release.wait(timeout=5))
+
+        thread = HeartbeatThread(executor_id=_unique_executor())
+        thread.start()
+        try:
+            with capture_logs() as logs:
+                thread.stop()
+            assert thread.is_alive()
+        finally:
+            release.set()
+            thread.join(timeout=5)
+
+        assert [log['event'] for log in logs] == [
+            'worker heartbeat thread did not stop in time, its heartbeat may linger'
+        ]
+
     def test_stop_is_idempotent_before_start(self):
         thread = HeartbeatThread(executor_id=_unique_executor())
         thread.stop()  # must not raise although the thread never started

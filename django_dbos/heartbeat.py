@@ -33,6 +33,8 @@ HEARTBEAT_INTERVAL_SECONDS = 10.0
 STALE_AFTER_SECONDS = 30.0
 # Stale rows older than this are purged by the next heartbeat write.
 PURGE_AFTER_SECONDS = 24 * 3600.0
+# How long stop() waits for the thread to delete its row before giving up.
+STOP_TIMEOUT_SECONDS = 5.0
 
 
 def worker_id(executor_id: str) -> str:
@@ -184,4 +186,11 @@ class HeartbeatThread(threading.Thread):
     def stop(self) -> None:
         self._stop_event.set()
         if self.is_alive():
-            self.join(timeout=5.0)
+            self.join(timeout=STOP_TIMEOUT_SECONDS)
+            if self.is_alive():
+                # Daemon thread: the process still exits, the row goes stale.
+                logger.warning(
+                    'worker heartbeat thread did not stop in time, its heartbeat may linger',
+                    executor_id=self._executor_id,
+                    timeout=STOP_TIMEOUT_SECONDS,
+                )
