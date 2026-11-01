@@ -35,12 +35,12 @@ def _opt_out_hint() -> str:
     )
 
 
-# Seconds before a connection attempt to a PostgreSQL system database gives up.
+# Seconds before a connection attempt to a PostgreSQL or CockroachDB system database gives up.
 CONNECT_TIMEOUT_SEC = 10
 
 
 def _with_connect_timeout(url: str) -> str:
-    """Add libpq's ``connect_timeout`` to a PostgreSQL URL that sets none.
+    """Add libpq's ``connect_timeout`` to a PostgreSQL or CockroachDB URL that sets none.
 
     The SDK connects without one: an unreachable server would block the
     migration (hence ``manage.py migrate``) indefinitely instead of failing.
@@ -89,7 +89,8 @@ def _create_cockroachdb_database(url: str, *, echo: Callable[[str], object], app
     echo(f'Creating the DBOS system database {scrub_credentials(url)} if needed (CockroachDB)')
 
     try:
-        # Any existing database will do to run CREATE DATABASE; defaultdb always exists.
+        # The system database may not exist yet, so connect to defaultdb (created with
+        # every CockroachDB cluster) to run CREATE DATABASE, which is cluster-wide.
         engine = system_engine.create_engine(parsed.set(database='defaultdb').render_as_string(hide_password=False))
     except ImproperlyConfiguredDbos as exc:
         raise CommandError(str(exc)) from None
