@@ -15,10 +15,16 @@ python manage.py dbos status
 Queue "default"  [OK]
   Backlog: 2 (delayed: 0)   Running: 3   Live workers: 1
   Oldest waiting workflow: 12s
-  Declared concurrency: worker=4 global=None
+  Concurrency: worker=4 global=unlimited
+
+Queue "per_user"  [OK]
+  Backlog: 0 (delayed: 0)   Running: 3   Live workers: 1
+  Concurrency: worker=unlimited global=unlimited
+  Partition concurrency: worker=unlimited global=1
+  Partition rate limit: 5 per 60s
 
 Workers:
-  3f2a...: worker-1 pid 4212, queues default,emails, CPU 12.0%, RSS 184.5 MB
+  3f2a...: worker-1 pid 4212, queues default,per_user, CPU 12.0%, RSS 184.5 MB
 
 No workflow exhausted its recovery attempts.
 ```
@@ -37,8 +43,10 @@ running, i.e. the backlog itself — are listed and aggregated:
   plus the longest time one of them waited in the queue before starting.
 - **Live workers** per queue: workers with a fresh
   [heartbeat](#workers-heartbeats) that serve the queue.
-- **Declared concurrency** (worker/global) as stored on the queue, so you can
-  compare load with capacity at a glance.
+- **Declared limits** as stored on the queue, so you can compare load with
+  capacity at a glance: worker/global concurrency (`unlimited` when not
+  declared), and for the queues that declare them the partition
+  concurrency and the rate limits.
 - **Per-executor load** (`executor_id` on workflow rows). Note that executors
   which did not set a specific ID all show up as `"local"`.
 - Workflows that **exhausted their recovery attempts** (stuck tasks).
@@ -151,6 +159,10 @@ def advise(queue_name: str, metrics: QueueMetrics, thresholds: Thresholds) -> st
 | `max_queue_wait_ms` | `int` or `None` | The longest time a running workflow waited in the queue before starting. |
 | `worker_concurrency` | `int` or `None` | The queue's declared per-worker concurrency. |
 | `global_concurrency` | `int` or `None` | The queue's declared global concurrency. |
+| `partition_concurrency` | `int` or `None` | The queue's declared global concurrency per partition. |
+| `partition_worker_concurrency` | `int` or `None` | The queue's declared per-worker concurrency per partition. |
+| `limiter` | `dict` or `None` | The queue's declared rate limit, `{"limit": int, "period": float}`. |
+| `partition_limiter` | `dict` or `None` | The queue's declared rate limit per partition, same shape. |
 | `workers` | `int` | Live workers (fresh heartbeat) serving the queue. |
 
 `thresholds` (`Thresholds`) holds the [thresholds](#thresholds) applied to

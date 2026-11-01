@@ -117,9 +117,7 @@ def _print_human(report: dict[str, Any]) -> None:
             click.echo(f'  Oldest waiting workflow: {metrics["backlog_age_seconds"]:.0f}s')
         if metrics['max_queue_wait_ms'] is not None:
             click.echo(f'  Max queue wait (running): {metrics["max_queue_wait_ms"]} ms')
-        click.echo(
-            f'  Declared concurrency: worker={metrics["worker_concurrency"]} global={metrics["global_concurrency"]}'
-        )
+        _print_limits(metrics)
 
     _print_workers(report)
 
@@ -131,15 +129,46 @@ def _print_human(report: dict[str, Any]) -> None:
         click.echo('No workflow exhausted its recovery attempts.')
 
 
+def _concurrency(value: int | None) -> str:
+    return 'unlimited' if value is None else str(value)
+
+
+def _rate(limiter: dict[str, Any]) -> str:
+    return f'{limiter["limit"]} per {limiter["period"]:g}s'
+
+
+def _print_limits(metrics: dict[str, Any]) -> None:
+    """The queue's declared limits; partition and rate limits only when the queue declares them."""
+    click.echo(
+        f'  Concurrency: worker={_concurrency(metrics["worker_concurrency"])}'
+        f' global={_concurrency(metrics["global_concurrency"])}'
+    )
+    partition_worker = metrics.get('partition_worker_concurrency')
+    partition_global = metrics.get('partition_concurrency')
+    if partition_worker is not None or partition_global is not None:
+        click.echo(
+            f'  Partition concurrency: worker={_concurrency(partition_worker)} global={_concurrency(partition_global)}'
+        )
+    rates = []
+    if metrics.get('limiter'):
+        rates.append(f'Rate limit: {_rate(metrics["limiter"])}')
+    if metrics.get('partition_limiter'):
+        rates.append(f'Partition rate limit: {_rate(metrics["partition_limiter"])}')
+    if rates:
+        click.echo(f'  {"   ".join(rates)}')
+
+
 def _print_workers(report: dict[str, Any]) -> None:
     workers_by_executor: dict[str, list[dict[str, Any]]] = {}
     for worker_row in report.get('workers') or []:
         workers_by_executor.setdefault(worker_row['executor_id'], []).append(worker_row)
     executor_ids = set(report.get('executors') or {}) | set(workers_by_executor)
+
     click.echo('\nWorkers:')
     if not executor_ids:
         click.echo('  (none)')
         return
+
     for executor_id in sorted(executor_ids):
         workers = workers_by_executor.get(executor_id)
         if not workers:

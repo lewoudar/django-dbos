@@ -56,6 +56,14 @@ class QueueMetrics(TypedDict):
     """The queue's declared per-worker concurrency."""
     global_concurrency: int | None
     """The queue's declared global concurrency."""
+    partition_concurrency: int | None
+    """The queue's declared global concurrency per partition."""
+    partition_worker_concurrency: int | None
+    """The queue's declared per-worker concurrency per partition."""
+    limiter: dict[str, Any] | None
+    """The queue's declared rate limit (``{"limit": int, "period": float}``)."""
+    partition_limiter: dict[str, Any] | None
+    """The queue's declared rate limit per partition, same shape as ``limiter``."""
     workers: int
     """Live workers (fresh heartbeat) serving the queue."""
     thresholds: Thresholds
@@ -101,11 +109,31 @@ def _recovery_exceeded_count() -> int:
 def _queue_capacities() -> dict[str, dict[str, Any]]:
     capacities: dict[str, dict[str, Any]] = {}
     for queue in get_client().list_queues():
+        # Each property reads the queue row again: a few small queries per queue.
         capacities[queue.name] = {
             'worker_concurrency': queue.worker_concurrency,
-            'global_concurrency': queue.concurrency,
+            'global_concurrency': queue.global_concurrency,
+            'partition_concurrency': queue.partition_concurrency,
+            'partition_worker_concurrency': queue.partition_worker_concurrency,
+            'limiter': _rate_limit(queue.limiter),
+            'partition_limiter': _rate_limit(queue.partition_limiter),
         }
     return capacities
+
+
+def _rate_limit(limiter: Any) -> dict[str, Any] | None:
+    return {'limit': limiter['limit'], 'period': limiter['period']} if limiter else None
+
+
+# The declared limits copied from ``_queue_capacities`` into each queue's metrics.
+_LIMIT_KEYS = (
+    'worker_concurrency',
+    'global_concurrency',
+    'partition_concurrency',
+    'partition_worker_concurrency',
+    'limiter',
+    'partition_limiter',
+)
 
 
 def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) -> dict[str, Any]:
@@ -141,6 +169,10 @@ def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) 
             'max_queue_wait_ms': None,
             'worker_concurrency': None,
             'global_concurrency': None,
+            'partition_concurrency': None,
+            'partition_worker_concurrency': None,
+            'limiter': None,
+            'partition_limiter': None,
             'workers': 0,
             # set per queue below
             'thresholds': {'scale_up_backlog_age_seconds': 0.0, 'scale_down_max_running': 0, 'min_workers': 0},
@@ -169,8 +201,8 @@ def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) 
 
     for queue_name, queue_metrics in queues_metrics.items():
         capacity = capacities.get(queue_name, {})
-        queue_metrics['worker_concurrency'] = capacity.get('worker_concurrency')
-        queue_metrics['global_concurrency'] = capacity.get('global_concurrency')
+        for key in _LIMIT_KEYS:
+            queue_metrics[key] = capacity.get(key)
         queue_metrics['workers'] = sum(queue_name in worker['queues'] for worker in live_workers)
         thresholds = cast(Thresholds, capacity_config.thresholds_for(declared.get(queue_name)))
         queue_metrics['thresholds'] = thresholds

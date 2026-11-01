@@ -21,6 +21,7 @@ from sqlalchemy.exc import OperationalError
 
 from django_dbos import capacity
 from django_dbos.capacity import DEFAULT_SCALE_UP_BACKLOG_AGE_SECONDS, advise_queue
+from django_dbos.client import get_client
 from django_dbos.exceptions import ImproperlyConfiguredDbos
 from django_dbos.heartbeat import STALE_AFTER_SECONDS, write_heartbeat
 from django_dbos.models import WorkerHeartbeat
@@ -39,6 +40,10 @@ def _metrics(**overrides: object) -> dict[str, object]:
         'max_queue_wait_ms': None,
         'worker_concurrency': None,
         'global_concurrency': None,
+        'partition_concurrency': None,
+        'partition_worker_concurrency': None,
+        'limiter': None,
+        'partition_limiter': None,
         'workers': 2,
         'advice': 'OK',
     }
@@ -239,6 +244,32 @@ class TestCollect:
         assert 119 < metrics['backlog_age_seconds'] < 180
         assert metrics['max_queue_wait_ms'] == 500
 
+    def test_collect_reports_declared_limits(self, dbos_environment):
+        client = get_client()
+        client.register_queue(
+            'per_user',
+            worker_concurrency=4,
+            global_concurrency=8,
+            partition_concurrency=2,
+            partition_worker_concurrency=1,
+            limiter={'limit': 50, 'period': 60},
+            partition_limiter={'limit': 5, 'period': 1.5},
+        )
+        try:
+            queues = capacity.collect()['queues']
+        finally:
+            client.register_queue('per_user', partition_concurrency=1)  # back to tests.settings
+
+        assert {key: queues['per_user'][key] for key in capacity._LIMIT_KEYS} == {
+            'worker_concurrency': 4,
+            'global_concurrency': 8,
+            'partition_concurrency': 2,
+            'partition_worker_concurrency': 1,
+            'limiter': {'limit': 50, 'period': 60},
+            'partition_limiter': {'limit': 5, 'period': 1.5},
+        }
+        assert {key: queues['default'][key] for key in capacity._LIMIT_KEYS} == dict.fromkeys(capacity._LIMIT_KEYS)
+
     def test_collect_filters_queues(self, dbos_environment):
         report = capacity.collect(queues=['emails'])
         assert list(report['queues']) == ['emails']
@@ -335,6 +366,40 @@ class TestCollect:
         assert 'Oldest waiting workflow: 42s' in output
         assert 'Max queue wait (running): 1500 ms' in output
         assert '2 workflow(s) exhausted their recovery attempts.' in output
+
+    def test_human_output_reports_undeclared_limits_as_unlimited(self, dbos_environment: Any) -> None:
+        output = status('--queues', 'default')
+        assert '  Concurrency: worker=unlimited global=unlimited\n' in output
+        assert 'Partition concurrency' not in output
+        assert 'Rate limit' not in output
+
+    def test_human_output_reports_partition_and_rate_limits(self, dbos_environment: Any, mocker) -> None:
+        collect = capacity.collect
+
+        def limited_report(**kwargs: Any) -> dict[str, Any]:
+            report = collect(**kwargs)
+            report['queues']['default'] |= {
+                'worker_concurrency': 4,
+                'partition_concurrency': 2,
+                'limiter': {'limit': 50, 'period': 60.0},
+                'partition_limiter': {'limit': 5, 'period': 1.5},
+            }
+            report['queues']['emails'] |= {
+                'partition_worker_concurrency': 1,
+                'partition_limiter': {'limit': 5, 'period': 10},
+            }
+            return report
+
+        mocker.patch.object(capacity, 'collect', side_effect=limited_report)
+        output = status('--queues', 'default,emails')
+
+        default, emails = output.split('Queue "emails"')
+        assert '  Concurrency: worker=4 global=unlimited\n' in default
+        assert '  Partition concurrency: worker=unlimited global=2\n' in default
+        assert '  Rate limit: 50 per 60s   Partition rate limit: 5 per 1.5s\n' in default
+        assert '  Partition concurrency: worker=1 global=unlimited\n' in emails
+        assert '  Partition rate limit: 5 per 10s\n' in emails
+        assert '  Rate limit' not in emails
 
     def test_human_output_reports_live_worker_with_metrics(
         self, dbos_environment: Any, monkeypatch: pytest.MonkeyPatch, mocker
