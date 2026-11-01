@@ -177,6 +177,16 @@ TASKS = {
 }
 ```
 
+A queue that needs its own machines gets its own process group, with a
+[dedicated worker](configuration.md#dedicated-workers):
+
+```toml
+[processes]
+  web = "gunicorn myproject.wsgi"
+  worker = "python manage.py dbos worker --queues=default,emails"
+  reports = "python manage.py dbos worker --queues=reports"
+```
+
 Scale each group on its own: `fly scale count web=2 worker=3`. To drive the
 `worker` count from the queues, poll `python manage.py dbos status --json`
 (or `capacity.collect()`) from a small scheduled job and follow each

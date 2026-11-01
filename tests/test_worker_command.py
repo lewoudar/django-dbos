@@ -37,7 +37,7 @@ def test_worker_default_run(dbos_environment, worker_mocks):
     output = run_worker()
 
     worker_mocks['autodiscover'].assert_called_once_with()
-    worker_mocks['ensure_launched'].assert_called_once_with()
+    worker_mocks['ensure_launched'].assert_called_once_with(listen_queues=None)
     worker_mocks['register_cron_schedules'].assert_called_once_with()
 
     worker_mocks['heartbeat_cls'].assert_called_once_with(
@@ -62,6 +62,23 @@ def test_worker_shutdown_timeout_is_forwarded(dbos_environment, worker_mocks, ti
 def test_worker_rejects_a_negative_shutdown_timeout(dbos_environment, worker_mocks):
     with pytest.raises(BadParameter, match=r'-1 is not in the range x>=0'):
         run_worker('--shutdown-timeout', '-1')
+
+    worker_mocks['ensure_launched'].assert_not_called()
+
+
+def test_worker_listens_to_the_selected_queues(dbos_environment, worker_mocks):
+    run_worker('--queues', ' emails, per_user ,')
+
+    worker_mocks['ensure_launched'].assert_called_once_with(listen_queues=['emails', 'per_user'])
+    # The heartbeat advertises only these queues, so `dbos status` counts this worker for them alone.
+    worker_mocks['heartbeat_cls'].assert_called_once_with(
+        executor_id='local', queues=('emails', 'per_user'), has_metrics=False
+    )
+
+
+def test_worker_rejects_an_unknown_queue(dbos_environment, worker_mocks):
+    with pytest.raises(BadParameter, match=r'unknown queue\(s\) mails\. Declared queues: default, emails, per_user\.'):
+        run_worker('--queues', 'emails,mails')
 
     worker_mocks['ensure_launched'].assert_not_called()
 

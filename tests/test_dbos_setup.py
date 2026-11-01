@@ -152,11 +152,28 @@ class TestEnsureLaunched:
         )
         mocker.patch.object(dbos_setup.DBOS, 'launch', side_effect=lambda: calls.append('launch'))
         mocker.patch.object(dbos_setup, '_register_queues', side_effect=lambda: calls.append('queues'))
+        listen_queues = mocker.patch.object(dbos_setup.DBOS, 'listen_queues')
 
         dbos_setup.ensure_launched()
 
         assert calls == ['register', 'cron', 'launch', 'queues']
         assert dbos_setup._launched is True
+        listen_queues.assert_not_called()  # every queue
+
+    def test_listens_to_the_selected_queues_before_launch(self, mocker):
+        # DBOS refuses listen_queues once launched.
+        mocker.patch.object(dbos_setup, '_initialized', True)
+        mocker.patch.object(dbos_setup, '_launched', False)
+        mocker.patch('django_dbos.dbos_setup.register_all_task_workflows')
+        mocker.patch('django_dbos.dbos_setup.register_cron_workflows')
+        mocker.patch.object(dbos_setup, '_register_queues')
+        calls: list[object] = []
+        mocker.patch.object(dbos_setup.DBOS, 'listen_queues', side_effect=calls.append)
+        mocker.patch.object(dbos_setup.DBOS, 'launch', side_effect=lambda: calls.append('launch'))
+
+        dbos_setup.ensure_launched(listen_queues=['emails'])
+
+        assert calls == [['emails'], 'launch']
 
     def test_second_call_is_a_noop(self, mocker):
         mocker.patch.object(dbos_setup, '_initialized', True)

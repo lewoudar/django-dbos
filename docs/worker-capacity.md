@@ -47,7 +47,8 @@ running, i.e. the backlog itself — are listed and aggregated:
   with that executor id recovers them (see
   [Executor identity](configuration.md#executor-identity)).
 - **Live workers** per queue: workers with a fresh
-  [heartbeat](#workers-heartbeats) that serve the queue.
+  [heartbeat](#workers-heartbeats) that serve the queue (all queues, or the
+  ones given to [`dbos worker --queues`](configuration.md#dedicated-workers)).
 - **Declared limits** as stored on the queue, so you can compare load with
   capacity at a glance: worker/global concurrency (`unlimited` when not
   declared), and for the queues that declare them the partition

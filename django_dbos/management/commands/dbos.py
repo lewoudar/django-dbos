@@ -31,6 +31,11 @@ def main() -> None:
     """DBOS operations: migrate the system database, run the worker, report capacity."""
 
 
+def _parse_queues(value: str) -> list[str] | None:
+    """The queue names of a comma-separated ``--queues`` value, ``None`` when empty (all queues)."""
+    return [name.strip() for name in value.split(',') if name.strip()] or None
+
+
 @main.command()
 @click.option(
     '--app-role',
@@ -52,10 +57,25 @@ def migrate(app_role: str | None) -> None:
     help='Seconds to wait for running tasks to finish on SIGTERM/SIGINT before disconnecting; keep it below '
     "your platform's grace period before SIGKILL. 0 does not wait: the tasks still running are recovered later.",
 )
-def worker(shutdown_timeout: int) -> None:
+@click.option(
+    '--queues',
+    default='',
+    help='Comma-separated names of the declared queues this worker dequeues from (default: all).',
+)
+def worker(shutdown_timeout: int, queues: str) -> None:
     """Run the DBOS worker: execute Django tasks durably and process cron schedules."""
+    declared = [queue.name for queue in settings_module.resolve_queues()]
+    selected = _parse_queues(queues)
+    if selected is not None:
+        unknown = [name for name in selected if name not in declared]
+        if unknown:
+            raise click.BadParameter(
+                f'unknown queue(s) {", ".join(unknown)}. Declared queues: {", ".join(declared)}.',
+                param_hint="'--queues'",
+            )
+
     discovery.autodiscover_tasks()
-    dbos_setup.ensure_launched()
+    dbos_setup.ensure_launched(listen_queues=selected)
     scheduling.register_cron_schedules()
 
     stop_event = threading.Event()
@@ -68,7 +88,7 @@ def worker(shutdown_timeout: int) -> None:
 
     heartbeat_thread = HeartbeatThread(
         executor_id=DBOS.executor_id or 'local',
-        queues=tuple(queue.name for queue in settings_module.resolve_queues()),
+        queues=tuple(selected if selected is not None else declared),
         has_metrics=importlib.util.find_spec('psutil') is not None,
     )
     heartbeat_thread.start()
@@ -91,9 +111,8 @@ _ADVICE_COLORS = {'SCALE_UP': 'red', 'SCALE_DOWN': 'yellow', 'OK': 'green'}
 @click.option('--queues', default='', help='Comma-separated queue names to report on (default: all).')
 def status_command(as_json: bool, queues: str) -> None:
     """Report on DBOS worker capacity: queue backlogs, waiting times and load."""
-    queue_filter = [name.strip() for name in queues.split(',') if name.strip()] or None
     try:
-        report = capacity.collect(queues=queue_filter)
+        report = capacity.collect(queues=_parse_queues(queues))
     except (ImproperlyConfiguredDbos, *system_database_errors()) as exc:
         raise CommandError(f'DBOS system database unavailable: {describe_error(exc)}') from None
 

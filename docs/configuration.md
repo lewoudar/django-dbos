@@ -451,6 +451,29 @@ python manage.py dbos worker --shutdown-timeout 25
 Every worker also takes part in [cron scheduling](cron.md): run as many
 workers as you like, each scheduled firing still executes once.
 
+### Dedicated workers
+
+By default, a worker dequeues from every declared queue. `--queues` restricts
+it to some of them, to give a slow or resource-hungry queue its own
+machines, for example:
+
+```bash
+python manage.py dbos worker --queues=default,emails
+python manage.py dbos worker --queues=reports
+```
+
+An unknown name is refused. Things to keep in mind:
+
+- A `@cron` firing runs on the queue of its task: make sure every queue,
+  that one included, is served by at least one worker. `dbos status`
+  advises `SCALE_UP` for a queue no live worker serves (with the default
+  `MIN_WORKERS` of 1), and its worker list shows the queues of each worker.
+- Crash recovery still follows the [executor identity](#executor-identity):
+  a restarted worker recovers the interrupted workflows of its own id
+  whatever their queue, by putting them back on that queue. If you changed
+  the worker's `--queues` meanwhile, the workflows of a queue it no longer
+  serves are run by a worker that does.
+
 ### Migrating the system database
 
 `manage.py migrate` creates the system database and applies DBOS' schema
