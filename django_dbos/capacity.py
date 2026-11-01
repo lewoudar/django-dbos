@@ -48,6 +48,8 @@ class QueueMetrics(TypedDict):
     """Deferred workflows whose ``run_after`` time has not come yet."""
     running: int
     """Workflows being executed."""
+    orphaned: int
+    """Running workflows whose executor has no live worker: interrupted, waiting for recovery."""
     backlog_age_seconds: float | None
     """How long the oldest waiting workflow has been waiting; ``None`` when none waits."""
     max_queue_wait_ms: int | None
@@ -165,6 +167,7 @@ def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) 
             'enqueued': 0,
             'delayed': 0,
             'running': 0,
+            'orphaned': 0,
             'backlog_age_seconds': None,
             'max_queue_wait_ms': None,
             'worker_concurrency': None,
@@ -183,6 +186,8 @@ def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) 
     capacities = _queue_capacities()
 
     executors: dict[str, dict[str, int]] = {}
+    # Executor of each running workflow, per queue: those without a live worker are orphaned.
+    running_executors: dict[str, list[str]] = {}
     now = datetime.now(tz=UTC)
 
     for status in _active_workflows(queues):
@@ -193,16 +198,22 @@ def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) 
             queues_metrics.setdefault(status.queue_name, _empty_queue_metrics()) if status.queue_name else None
         )
         _ingest_workflow(status, queue_metrics, executors, now)
+        if queue_metrics is not None and _status_value(status) == WorkflowStatusString.PENDING.value:
+            running_executors.setdefault(status.queue_name, []).append(status.executor_id)
 
     # Stale heartbeats are reported too: a worker that died without cleaning
     # up is exactly what an operator wants to see. Only live ones serve a queue.
     workers = read_heartbeats(include_stale=True)
     live_workers = [worker for worker in workers if worker['alive']]
+    live_executor_ids = {worker['executor_id'] for worker in live_workers}
 
     for queue_name, queue_metrics in queues_metrics.items():
         capacity = capacities.get(queue_name, {})
         for key in _LIMIT_KEYS:
             queue_metrics[key] = capacity.get(key)
+        queue_metrics['orphaned'] = sum(
+            executor_id not in live_executor_ids for executor_id in running_executors.get(queue_name, ())
+        )
         queue_metrics['workers'] = sum(queue_name in worker['queues'] for worker in live_workers)
         thresholds = cast(Thresholds, capacity_config.thresholds_for(declared.get(queue_name)))
         queue_metrics['thresholds'] = thresholds
@@ -220,6 +231,10 @@ def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) 
     }
 
 
+def _status_value(status: Any) -> str:
+    return str(getattr(status.status, 'value', status.status))
+
+
 def _ingest_workflow(
     status: Any,
     queue_metrics: QueueMetrics | None,
@@ -227,7 +242,7 @@ def _ingest_workflow(
     now: datetime,
 ) -> None:
     """Fold one active workflow into its queue's metrics (if any) and its executor's counts."""
-    workflow_status = str(getattr(status.status, 'value', status.status))
+    workflow_status = _status_value(status)
 
     if queue_metrics is None:
         pass

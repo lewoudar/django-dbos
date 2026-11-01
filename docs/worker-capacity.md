@@ -18,13 +18,14 @@ Queue "default"  [OK]
   Concurrency: worker=4 global=unlimited
 
 Queue "per_user"  [OK]
-  Backlog: 0 (delayed: 0)   Running: 3   Live workers: 1
+  Backlog: 0 (delayed: 0)   Running: 3 (1 orphaned)   Live workers: 1
   Concurrency: worker=unlimited global=unlimited
   Partition concurrency: worker=unlimited global=1
   Partition rate limit: 5 per 60s
 
 Workers:
   3f2a...: worker-1 pid 4212, queues default,per_user, CPU 12.0%, RSS 184.5 MB
+  9c1e...: NO HEARTBEAT (worker down, or django_dbos migrations not applied)
 
 No workflow exhausted its recovery attempts.
 ```
@@ -41,6 +42,10 @@ running, i.e. the backlog itself — are listed and aggregated:
   `run_after` time has not come yet (`DELAYED`) are counted apart.
 - **Running** per queue: workflows being executed (DBOS status `PENDING`),
   plus the longest time one of them waited in the queue before starting.
+  Those whose executor has no live worker are counted apart as
+  **orphaned**: their worker died, they make no progress until a worker
+  with that executor id recovers them (see
+  [Executor identity](configuration.md#executor-identity)).
 - **Live workers** per queue: workers with a fresh
   [heartbeat](#workers-heartbeats) that serve the queue.
 - **Declared limits** as stored on the queue, so you can compare load with
@@ -155,6 +160,7 @@ def advise(queue_name: str, metrics: QueueMetrics, thresholds: Thresholds) -> st
 | `enqueued` | `int` | Workflows waiting for a worker. |
 | `delayed` | `int` | Deferred workflows whose `run_after` time has not come yet. |
 | `running` | `int` | Workflows being executed. |
+| `orphaned` | `int` | Running workflows whose executor has no live worker: interrupted, waiting for recovery. |
 | `backlog_age_seconds` | `float` or `None` | How long the oldest waiting workflow has been waiting; `None` when none waits. |
 | `max_queue_wait_ms` | `int` or `None` | The longest time a running workflow waited in the queue before starting. |
 | `worker_concurrency` | `int` or `None` | The queue's declared per-worker concurrency. |

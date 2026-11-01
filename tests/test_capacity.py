@@ -36,6 +36,7 @@ def _metrics(**overrides: object) -> dict[str, object]:
         'enqueued': 0,
         'delayed': 0,
         'running': 0,
+        'orphaned': 0,
         'backlog_age_seconds': None,
         'max_queue_wait_ms': None,
         'worker_concurrency': None,
@@ -270,6 +271,36 @@ class TestCollect:
         }
         assert {key: queues['default'][key] for key in capacity._LIMIT_KEYS} == dict.fromkeys(capacity._LIMIT_KEYS)
 
+    def test_collect_counts_orphaned_running_workflows(self, dbos_environment, mocker):
+        def running(executor_id: str | None) -> types.SimpleNamespace:
+            return types.SimpleNamespace(
+                status='PENDING', queue_name='default', executor_id=executor_id, created_at=None, dequeued_at=None
+            )
+
+        mocker.patch(
+            'django_dbos.capacity._active_workflows',
+            return_value=[
+                running('live'),
+                running('dead'),  # stale heartbeat
+                running('ghost'),  # no heartbeat at all
+                running('ghost'),
+                types.SimpleNamespace(  # waiting: never orphaned
+                    status='ENQUEUED', queue_name='default', executor_id='ghost', created_at=None, dequeued_at=None
+                ),
+            ],
+        )
+        write_heartbeat('live', heartbeat_id=uuid.uuid4(), queues=('default',))
+        write_heartbeat('dead', heartbeat_id=uuid.uuid4(), queues=('default',))
+        WorkerHeartbeat.objects.filter(executor_id='dead').update(
+            last_seen_at=timezone.now() - timedelta(seconds=STALE_AFTER_SECONDS + 1)
+        )
+
+        queues = capacity.collect()['queues']
+
+        assert queues['default']['running'] == 4
+        assert queues['default']['orphaned'] == 3
+        assert queues['emails']['orphaned'] == 0
+
     def test_collect_filters_queues(self, dbos_environment):
         report = capacity.collect(queues=['emails'])
         assert list(report['queues']) == ['emails']
@@ -400,6 +431,21 @@ class TestCollect:
         assert '  Partition concurrency: worker=1 global=unlimited\n' in emails
         assert '  Partition rate limit: 5 per 10s\n' in emails
         assert '  Rate limit' not in emails
+
+    def test_human_output_flags_orphaned_running_workflows(self, dbos_environment: Any, mocker) -> None:
+        collect = capacity.collect
+
+        def orphaned_report(**kwargs: Any) -> dict[str, Any]:
+            report = collect(**kwargs)
+            report['queues']['default'] |= {'running': 4, 'orphaned': 2}
+            return report
+
+        mocker.patch.object(capacity, 'collect', side_effect=orphaned_report)
+        output = status()
+
+        default, others = output.split('Queue "emails"')
+        assert 'Running: 4 (2 orphaned)   Live workers:' in default
+        assert 'orphaned' not in others
 
     def test_human_output_reports_live_worker_with_metrics(
         self, dbos_environment: Any, monkeypatch: pytest.MonkeyPatch, mocker

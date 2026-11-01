@@ -109,8 +109,11 @@ def _print_human(report: dict[str, Any]) -> None:
         advice = metrics['advice']
         color = _ADVICE_COLORS.get(advice, 'green')
         click.echo(f'\nQueue "{queue_name}"  [{click.style(advice, fg=color)}]')
+        running = str(metrics['running'])
+        if metrics.get('orphaned'):
+            running += click.style(f' ({metrics["orphaned"]} orphaned)', fg='red')
         click.echo(
-            f'  Backlog: {metrics["enqueued"]} (delayed: {metrics["delayed"]})   Running: {metrics["running"]}'
+            f'  Backlog: {metrics["enqueued"]} (delayed: {metrics["delayed"]})   Running: {running}'
             f'   Live workers: {metrics["workers"]}'
         )
         if metrics['backlog_age_seconds'] is not None:
