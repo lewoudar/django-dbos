@@ -37,12 +37,14 @@ def send(**kwargs) -> None:
 class TestMigrateAfterDjangoMigrate:
     @pytest.mark.django_db
     def test_django_migrate_runs_it_once(self, system_database_url, run):
+        # post_migrate is sent once per installed app: the receiver is connected for ours only.
         call_command('migrate', verbosity=0)
 
         run.assert_called_once()
 
     @pytest.mark.django_db
     def test_connected_once_when_ready_runs_again(self, system_database_url, run, mocker):
+        # ready() may run more than once: connecting the same receiver again must not duplicate it.
         mocker.patch('django_dbos.admin.register_admin_sites')
         apps.get_app_config('django_dbos').ready()
 
@@ -158,7 +160,7 @@ class TestOnTheTestDatabase:
 
 
 @pytest.mark.integration
-def test_creates_a_usable_system_database(settings, monkeypatch, mocker, tmp_path: Path):
+def test_creates_a_usable_system_database(monkeypatch, mocker, tmp_path: Path):
     from django_dbos import client
 
     monkeypatch.setenv('DBOS_SYSTEM_DATABASE_URL', f'sqlite:///{tmp_path / "fresh.sqlite"}')
