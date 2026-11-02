@@ -100,7 +100,7 @@ def _finish_result(result: TaskResult, outcome: Any) -> TaskResult:
     return result
 
 
-def _check_inline_support(backend: Any, task: DBOSTask) -> None:
+def _check_inline_support(backend: DBOSBackend, task: DBOSTask) -> None:
     """Mirror the real backend's validation, and refuse what inline cannot reproduce.
 
     Durable operations are always refused: outside a DBOS workflow,
@@ -114,7 +114,7 @@ def _check_inline_support(backend: Any, task: DBOSTask) -> None:
             f"Task '{task.name}' uses durable operations, which the inline "
             'mode cannot reproduce. Use the dbos_system fixture.'
         )
-    if backend._inline_strict and task.run_after is not None:
+    if _inline_strict and task.run_after is not None:
         raise DjangoDbosError(
             f"Task '{task.name}' is deferred (run_after) and cannot be "
             'executed inline. Test the task body with run_task() or use '
@@ -161,6 +161,8 @@ async def _inline_aenqueue(self: Any, task: DBOSTask, args: Any, kwargs: Any) ->
 
 
 _results: dict[str, TaskResult] = {}
+# --dbos-inline-strict, set by the dbos_inline fixture for its test.
+_inline_strict = False
 
 
 def _lookup_result(self: Any, result_id: str) -> TaskResult:
@@ -178,7 +180,7 @@ async def _alookup_result(self: Any, result_id: str) -> TaskResult:
 def dbos_inline(monkeypatch: Any, request: Any) -> Any:
     """Make DBOS-backed tasks execute synchronously, without a system database."""
     strict = bool(request.config.getoption('--dbos-inline-strict'))
-    monkeypatch.setattr(DBOSBackend, '_inline_strict', strict, raising=False)
+    monkeypatch.setattr(f'{__name__}._inline_strict', strict)
     monkeypatch.setattr(DBOSBackend, 'enqueue', _inline_enqueue)
     monkeypatch.setattr(DBOSBackend, 'aenqueue', _inline_aenqueue)
     monkeypatch.setattr(DBOSBackend, 'get_result', _lookup_result)
