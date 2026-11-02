@@ -436,7 +436,9 @@ The worker loads tasks from every installed app's `tasks` (or `dbos_tasks`)
 module, registers them as DBOS workflows, launches DBOS' queue workers and the
 cron scheduler, and shuts down gracefully on `SIGTERM`/`SIGINT`. It also
 pushes a heartbeat to the Django database (see [Worker capacity](worker-capacity.md)),
-which is why django-dbos ships a migration.
+which is why django-dbos ships a migration. When `tasks` is a package, the
+worker imports its `__init__.py` only: import every submodule that defines
+tasks from there.
 
 On shutdown, the worker waits up to `--shutdown-timeout` seconds (10 by
 default) for the tasks it is running to finish, then disconnects; a task still

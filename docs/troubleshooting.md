@@ -19,6 +19,9 @@ The task was recorded in the system database, but no worker executed it.
     - the task is defined in a module named `tasks.py` (or `dbos_tasks.py`)
       of an app listed in `INSTALLED_APPS` — the worker imports those
       modules and nothing else;
+    - if `tasks` is a package, its `__init__.py` imports the submodule
+      defining the task: the worker imports the package, not its
+      submodules;
     - the worker was **restarted after the task was added**: it does not
       reload code on its own. Once restarted, it picks up the waiting
       executions.
@@ -232,7 +235,8 @@ setting.
   it into (or import it from) the `tasks.py` or `dbos_tasks.py` module of an
   installed app. The check only sees the tasks the checking process has
   imported (through your URLs and views, typically): it cannot catch every
-  case.
+  case. In particular, it trusts every submodule of a `tasks` package,
+  while the worker only loads those its `__init__.py` imports.
 - **`django_dbos.W002`** — the system database is an in-memory SQLite
   database, usually derived from an in-memory Django database. Every
   process gets its own, so the worker never sees what the web process
