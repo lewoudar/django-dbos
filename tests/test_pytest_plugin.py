@@ -53,6 +53,11 @@ def with_context(context):
     return context.task_result.id
 
 
+@task(takes_context=True)
+async def async_with_context(context):
+    return context.task_result.id
+
+
 
 @task
 async def async_explode():
@@ -135,7 +140,19 @@ from tasks_app.tasks import with_context
 
 def test_context_is_provided(dbos_inline):
     result = with_context.enqueue()
-    assert result.return_value == ''  # no DBOS workflow id inline, but a TaskContext
+    # The context wraps the inline result itself: no system database is read.
+    assert result.return_value == result.id
+"""
+
+INLINE_TEST_ASYNC_CONTEXT = """
+import asyncio
+
+from tasks_app.tasks import async_with_context
+
+
+def test_async_context_is_provided(dbos_inline):
+    result = asyncio.run(async_with_context.aenqueue())
+    assert result.return_value == result.id
 """
 
 INLINE_TEST_MISCONFIGURED_QUEUES = """
@@ -253,6 +270,7 @@ class TestDbosInline:
             pytest.param(INLINE_TEST_AENQUEUE, id='async-api'),
             pytest.param(INLINE_TEST_FAILURE, id='failure-is-a-failed-result'),
             pytest.param(INLINE_TEST_CONTEXT, id='takes-context'),
+            pytest.param(INLINE_TEST_ASYNC_CONTEXT, id='async-takes-context'),
             pytest.param(INLINE_TEST_MISCONFIGURED_QUEUES, id='misconfigured-queues'),
         ],
     )

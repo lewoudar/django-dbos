@@ -30,14 +30,14 @@ from traceback import format_exception
 from typing import Any
 
 import pytest
-from django.tasks import TaskResult, TaskResultStatus
+from django.tasks import TaskContext, TaskResult, TaskResultStatus
 from django.tasks.base import TaskError
 from django.tasks.exceptions import TaskResultDoesNotExist
 
 from django_dbos import client, dbos_setup
 from django_dbos.backends import DBOSBackend
 from django_dbos.exceptions import DjangoDbosError
-from django_dbos.tasks_registry import _build_task_context
+from django_dbos.tasks import DBOSTask
 
 
 def pytest_addoption(parser: Any) -> None:
@@ -62,40 +62,45 @@ def _now() -> datetime:
     return datetime.now(tz=UTC)
 
 
-def _inline_result(task: Any, args: tuple[Any, ...], kwargs: dict[str, Any], outcome: Any) -> Any:
-    """A finished TaskResult: SUCCESSFUL with the return value, or FAILED with the exception."""
+def _running_result(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str, Any]) -> TaskResult:
+    """The RUNNING TaskResult of an inline execution, also handed to the task through its TaskContext."""
     now = _now()
-    failed = isinstance(outcome, BaseException)
-    errors = []
-    if failed:
-        exception_type = type(outcome)
-        errors = [
-            TaskError(
-                exception_class_path=f'{exception_type.__module__}.{exception_type.__qualname__}',
-                traceback=''.join(format_exception(outcome)),
-            )
-        ]
-    result = TaskResult(
+    return TaskResult(
         task=task,
         id=str(uuid.uuid4()),
-        status=TaskResultStatus.FAILED if failed else TaskResultStatus.SUCCESSFUL,
+        status=TaskResultStatus.RUNNING,
         enqueued_at=now,
         started_at=now,
-        finished_at=now,
+        finished_at=None,
         last_attempted_at=now,
         args=list(args),
         kwargs=dict(kwargs),
         backend=task.backend,
-        errors=errors,
+        errors=[],
         worker_ids=['inline'],
     )
-    if not failed:
+
+
+def _finish_result(result: TaskResult, outcome: Any) -> TaskResult:
+    """Complete ``result`` in place: SUCCESSFUL with the return value, or FAILED with the exception."""
+    object.__setattr__(result, 'finished_at', _now())
+    if isinstance(outcome, BaseException):
+        exception_type = type(outcome)
+        result.errors.append(
+            TaskError(
+                exception_class_path=f'{exception_type.__module__}.{exception_type.__qualname__}',
+                traceback=''.join(format_exception(outcome)),
+            )
+        )
+        object.__setattr__(result, 'status', TaskResultStatus.FAILED)
+    else:
+        object.__setattr__(result, 'status', TaskResultStatus.SUCCESSFUL)
         object.__setattr__(result, '_return_value', outcome)
     _results[result.id] = result
     return result
 
 
-def _check_inline_support(backend: Any, task: Any) -> None:
+def _check_inline_support(backend: Any, task: DBOSTask) -> None:
     """Mirror the real backend's validation, and refuse what inline cannot reproduce.
 
     Durable operations are always refused: outside a DBOS workflow,
@@ -117,49 +122,55 @@ def _check_inline_support(backend: Any, task: Any) -> None:
         )
 
 
-def _inline_args(task: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[Any, ...]:
-    if not task.takes_context:
+def _inline_args(result: TaskResult, args: tuple[Any, ...]) -> tuple[Any, ...]:
+    """The positional arguments of the call, preceded by a TaskContext when the task takes one.
+
+    The context wraps the inline result itself, as Django's immediate backend
+    does: no system database is read, and ``context.task_result.id`` is the id
+    ``enqueue()`` returns.
+    """
+    if not result.task.takes_context:
         return tuple(args)
-    return (_build_task_context(task, args, kwargs), *args)
+    return (TaskContext(task_result=result), *args)
 
 
-def _inline_enqueue(self: Any, task: Any, args: Any, kwargs: Any) -> Any:
+def _inline_enqueue(self: Any, task: DBOSTask, args: Any, kwargs: Any) -> TaskResult:
     """Run the task now, like Django's immediate backend: a failure is a FAILED result, not an exception."""
     _check_inline_support(self, task)
-    call_args = _inline_args(task, args, kwargs)
+    result = _running_result(task, args, kwargs)
     try:
-        outcome = task.call(*call_args, **kwargs)
+        outcome = task.call(*_inline_args(result, args), **kwargs)
     except KeyboardInterrupt:
         raise
     except BaseException as exc:  # noqa: BLE001 - reported as a FAILED result, like the real backend
         outcome = exc
-    return _inline_result(task, tuple(args), kwargs, outcome)
+    return _finish_result(result, outcome)
 
 
-async def _inline_aenqueue(self: Any, task: Any, args: Any, kwargs: Any) -> Any:
+async def _inline_aenqueue(self: Any, task: DBOSTask, args: Any, kwargs: Any) -> TaskResult:
     """Async variant: awaits coroutine tasks directly (no async_to_sync inside the running loop)."""
     _check_inline_support(self, task)
-    call_args = _inline_args(task, args, kwargs)
+    result = _running_result(task, args, kwargs)
     try:
-        outcome = await task.acall(*call_args, **kwargs)
+        outcome = await task.acall(*_inline_args(result, args), **kwargs)
     except KeyboardInterrupt:
         raise
     except BaseException as exc:  # noqa: BLE001 - reported as a FAILED result, like the real backend
         outcome = exc
-    return _inline_result(task, tuple(args), kwargs, outcome)
+    return _finish_result(result, outcome)
 
 
-_results: dict[str, Any] = {}
+_results: dict[str, TaskResult] = {}
 
 
-def _lookup_result(self: Any, result_id: str) -> Any:
+def _lookup_result(self: Any, result_id: str) -> TaskResult:
     try:
         return _results[result_id]
     except KeyError:
         raise TaskResultDoesNotExist(result_id) from None
 
 
-async def _alookup_result(self: Any, result_id: str) -> Any:
+async def _alookup_result(self: Any, result_id: str) -> TaskResult:
     return _lookup_result(self, result_id)
 
 
