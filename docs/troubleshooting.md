@@ -22,9 +22,10 @@ The task was recorded in the system database, but no worker executed it.
     - if `tasks` is a package, its `__init__.py` imports the submodule
       defining the task: the worker imports the package, not its
       submodules;
-    - the worker was **restarted after the task was added**: it does not
-      reload code on its own. Once restarted, it picks up the waiting
-      executions.
+    - the worker was **restarted after the task was added**: a running
+      worker does not pick up code changes (there is no autoreload, unlike
+      `runserver`). A restarted worker imports the new task and runs the
+      executions waiting for it.
 
 `python manage.py dbos status` shows the backlog of every queue, which tells
 you at a glance whether executions pile up. `python manage.py check` reports
