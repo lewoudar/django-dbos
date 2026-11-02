@@ -249,7 +249,7 @@ if emails['advice'] == 'SCALE_UP':
     ...
 ```
 
-The report holds `queues` (queue name → its `QueueMetrics`, `thresholds`
+The report (a `CapacityReport`) holds `queues` (queue name → its `QueueMetrics`, `thresholds`
 and `advice` included), `executors` (executor ID → running and enqueued
 counts), `workers` (the heartbeats, stale ones included) and
 `max_recovery_attempts_exceeded`. `collect(advisor=...)` replaces the

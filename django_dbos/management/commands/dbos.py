@@ -123,7 +123,7 @@ def status_command(as_json: bool, queues: str) -> None:
     _print_human(report)
 
 
-def _print_human(report: dict[str, Any]) -> None:
+def _print_human(report: capacity.CapacityReport) -> None:
     for queue_name, metrics in report['queues'].items():
         advice = metrics['advice']
         color = _ADVICE_COLORS.get(advice, 'green')
@@ -155,11 +155,11 @@ def _concurrency(value: int | None) -> str:
     return 'unlimited' if value is None else str(value)
 
 
-def _rate(limiter: dict[str, Any]) -> str:
+def _rate(limiter: capacity.RateLimit) -> str:
     return f'{limiter["limit"]} per {limiter["period"]:g}s'
 
 
-def _print_limits(metrics: dict[str, Any]) -> None:
+def _print_limits(metrics: capacity.QueueMetrics) -> None:
     """The queue's declared limits; partition and rate limits only when the queue declares them."""
     click.echo(
         f'  Concurrency: worker={_concurrency(metrics["worker_concurrency"])}'
@@ -180,7 +180,7 @@ def _print_limits(metrics: dict[str, Any]) -> None:
         click.echo(f'  {"   ".join(rates)}')
 
 
-def _print_workers(report: dict[str, Any]) -> None:
+def _print_workers(report: capacity.CapacityReport) -> None:
     workers_by_executor: dict[str, list[dict[str, Any]]] = {}
     for worker_row in report.get('workers') or []:
         workers_by_executor.setdefault(worker_row['executor_id'], []).append(worker_row)

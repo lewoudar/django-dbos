@@ -20,7 +20,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, TypedDict, cast
 
-from dbos import WorkflowStatusString
+from dbos import WorkflowStatus, WorkflowStatusString
 
 from .client import get_client
 from .heartbeat import read_heartbeats
@@ -37,6 +37,31 @@ class Thresholds(TypedDict):
     scale_up_backlog_age_seconds: float
     scale_down_max_running: int
     min_workers: int
+
+
+class RateLimit(TypedDict):
+    """A queue's declared rate limit: at most ``limit`` workflows started per ``period`` seconds."""
+
+    limit: int
+    period: float
+
+
+class QueueLimits(TypedDict):
+    """A queue's declared limits, as read from the DBOS system database."""
+
+    worker_concurrency: int | None
+    global_concurrency: int | None
+    partition_concurrency: int | None
+    partition_worker_concurrency: int | None
+    limiter: RateLimit | None
+    partition_limiter: RateLimit | None
+
+
+class ExecutorLoad(TypedDict):
+    """One executor's active workflows in the report of ``collect``."""
+
+    running: int
+    enqueued: int
 
 
 class QueueMetrics(TypedDict):
@@ -62,9 +87,9 @@ class QueueMetrics(TypedDict):
     """The queue's declared global concurrency per partition."""
     partition_worker_concurrency: int | None
     """The queue's declared per-worker concurrency per partition."""
-    limiter: dict[str, Any] | None
-    """The queue's declared rate limit (``{"limit": int, "period": float}``)."""
-    partition_limiter: dict[str, Any] | None
+    limiter: RateLimit | None
+    """The queue's declared rate limit."""
+    partition_limiter: RateLimit | None
     """The queue's declared rate limit per partition, same shape as ``limiter``."""
     workers: int
     """Live workers (fresh heartbeat) serving the queue."""
@@ -72,6 +97,19 @@ class QueueMetrics(TypedDict):
     """The thresholds applied to the queue."""
     advice: str
     """The advisor's verdict; ``"OK"`` while the advisor runs."""
+
+
+class CapacityReport(TypedDict):
+    """The report of ``collect``."""
+
+    queues: dict[str, QueueMetrics]
+    """Per-queue load, thresholds and advice."""
+    executors: dict[str, ExecutorLoad]
+    """Per-executor running and enqueued counts."""
+    workers: list[dict[str, Any]]
+    """The worker heartbeats, stale ones included."""
+    max_recovery_attempts_exceeded: int
+    """The number of workflows that exhausted their recovery attempts."""
 
 
 # ``(queue_name, metrics, thresholds) -> advice`` — the signature of a custom advisor.
@@ -91,7 +129,7 @@ ACTIVE_STATUSES = (
 )
 
 
-def _active_workflows(queues: list[str] | None) -> list[Any]:
+def _active_workflows(queues: list[str] | None) -> list[WorkflowStatus]:
     """The workflows waiting or running right now — i.e. the backlog being measured."""
     return get_client().list_workflows(
         status=list(ACTIVE_STATUSES),
@@ -108,8 +146,8 @@ def _recovery_exceeded_count() -> int:
     return len(dead_lettered)
 
 
-def _queue_capacities() -> dict[str, dict[str, Any]]:
-    capacities: dict[str, dict[str, Any]] = {}
+def _queue_capacities() -> dict[str, QueueLimits]:
+    capacities: dict[str, QueueLimits] = {}
     for queue in get_client().list_queues():
         # Each property reads the queue row again: a few small queries per queue.
         capacities[queue.name] = {
@@ -123,7 +161,7 @@ def _queue_capacities() -> dict[str, dict[str, Any]]:
     return capacities
 
 
-def _rate_limit(limiter: Any) -> dict[str, Any] | None:
+def _rate_limit(limiter: RateLimit | None) -> RateLimit | None:
     return {'limit': limiter['limit'], 'period': limiter['period']} if limiter else None
 
 
@@ -138,7 +176,7 @@ _LIMIT_KEYS = (
 )
 
 
-def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) -> dict[str, Any]:
+def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) -> CapacityReport:
     """Collect worker capacity metrics from the DBOS system database.
 
     All declared queues (see ``settings.resolve_queues``) always appear in the
@@ -149,7 +187,7 @@ def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) 
         advisor: Overrides the configured advice function for this call.
 
     Returns:
-        A dict with ``queues`` (per-queue load: backlog, waiting age, running,
+        A ``CapacityReport``: ``queues`` (per-queue load: backlog, waiting age, running,
             declared concurrency, thresholds, advice), ``executors``
             (per-executor running and enqueued counts), ``workers`` (the
             worker heartbeats, stale ones included) and
@@ -185,7 +223,7 @@ def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) 
     queues_metrics: dict[str, QueueMetrics] = {name: _empty_queue_metrics() for name in declared}
     capacities = _queue_capacities()
 
-    executors: dict[str, dict[str, int]] = {}
+    executors: dict[str, ExecutorLoad] = {}
     # Executor of each running workflow, per queue: those without a live worker are orphaned.
     running_executors: dict[str, list[str]] = {}
     now = datetime.now(tz=UTC)
@@ -231,14 +269,14 @@ def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) 
     }
 
 
-def _status_value(status: Any) -> str:
+def _status_value(status: WorkflowStatus) -> str:
     return str(getattr(status.status, 'value', status.status))
 
 
 def _ingest_workflow(
-    status: Any,
+    status: WorkflowStatus,
     queue_metrics: QueueMetrics | None,
-    executors: dict[str, dict[str, int]],
+    executors: dict[str, ExecutorLoad],
     now: datetime,
 ) -> None:
     """Fold one active workflow into its queue's metrics (if any) and its executor's counts."""
