@@ -23,7 +23,7 @@ from django.core.management.base import CommandError
 from django_dbos import capacity, dbos_setup, discovery, scheduling, system_db
 from django_dbos import settings as settings_module
 from django_dbos.exceptions import ImproperlyConfiguredDbos, describe_error, system_database_errors
-from django_dbos.heartbeat import HeartbeatThread
+from django_dbos.heartbeat import HeartbeatRow, HeartbeatThread
 
 
 @click.group()
@@ -181,7 +181,7 @@ def _print_limits(metrics: capacity.QueueMetrics) -> None:
 
 
 def _print_workers(report: capacity.CapacityReport) -> None:
-    workers_by_executor: dict[str, list[dict[str, Any]]] = {}
+    workers_by_executor: dict[str, list[HeartbeatRow]] = {}
     for worker_row in report.get('workers') or []:
         workers_by_executor.setdefault(worker_row['executor_id'], []).append(worker_row)
     executor_ids = set(report.get('executors') or {}) | set(workers_by_executor)

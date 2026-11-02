@@ -18,12 +18,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any, TypedDict, cast
+from typing import TypedDict, cast
 
 from dbos import WorkflowStatus, WorkflowStatusString
 
 from .client import get_client
-from .heartbeat import read_heartbeats
+from .heartbeat import HeartbeatRow, read_heartbeats
 from .settings import CAPACITY_THRESHOLD_DEFAULTS, resolve_capacity, resolve_queues
 
 
@@ -106,7 +106,7 @@ class CapacityReport(TypedDict):
     """Per-queue load, thresholds and advice."""
     executors: dict[str, ExecutorLoad]
     """Per-executor running and enqueued counts."""
-    workers: list[dict[str, Any]]
+    workers: list[HeartbeatRow]
     """The worker heartbeats, stale ones included."""
     max_recovery_attempts_exceeded: int
     """The number of workflows that exhausted their recovery attempts."""

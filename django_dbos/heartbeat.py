@@ -21,12 +21,15 @@ import socket
 import threading
 import uuid
 from datetime import datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from django.db import DatabaseError, close_old_connections
 from django.utils import timezone
 
 from .logging import logger
+
+if TYPE_CHECKING:
+    from .models import WorkerHeartbeat
 
 HEARTBEAT_INTERVAL_SECONDS = 10.0
 # A heartbeat older than this means the worker died without cleaning up.
@@ -35,6 +38,24 @@ STALE_AFTER_SECONDS = 30.0
 PURGE_AFTER_SECONDS = 24 * 3600.0
 # How long stop() waits for the thread to delete its row before giving up.
 STOP_TIMEOUT_SECONDS = 5.0
+
+
+class HeartbeatRow(TypedDict):
+    """One worker heartbeat, as read back by ``read_heartbeats``."""
+
+    id: str
+    worker_id: str
+    executor_id: str
+    hostname: str
+    pid: int
+    queues: list[str]
+    has_metrics: bool
+    cpu_percent: float | None
+    memory_rss_mb: float | None
+    started_at: datetime
+    last_seen_at: datetime
+    alive: bool
+    """Whether the heartbeat is fresh (not older than ``STALE_AFTER_SECONDS``)."""
 
 
 def worker_id(executor_id: str) -> str:
@@ -115,7 +136,7 @@ def delete_heartbeat(heartbeat_id: uuid.UUID) -> None:
         close_old_connections()
 
 
-def _serialize(heartbeat: Any, now: datetime) -> dict[str, Any]:
+def _serialize(heartbeat: WorkerHeartbeat, now: datetime) -> HeartbeatRow:
     age = (now - heartbeat.last_seen_at).total_seconds()
     return {
         'id': str(heartbeat.pk),
@@ -133,7 +154,7 @@ def _serialize(heartbeat: Any, now: datetime) -> dict[str, Any]:
     }
 
 
-def read_heartbeats(*, include_stale: bool = False) -> list[dict[str, Any]]:
+def read_heartbeats(*, include_stale: bool = False) -> list[HeartbeatRow]:
     """Heartbeats of the workers, as plain dicts (alive ones only by default).
 
     Returns an empty list (with a warning) when the table is missing, i.e.
