@@ -244,11 +244,13 @@ def dbos_system(request: Any, tmp_path_factory: Any) -> Any:
             try:
                 from testcontainers.community.postgres import PostgresContainer
             except ImportError:
-                pytest.fail(
-                    'The dbos_system fixture needs testcontainers for PostgreSQL: '
-                    'install the django-dbos[test] extra (or pass --dbos-system-db=sqlite).',
-                    pytrace=False,
-                )
+                if mode == 'postgres':
+                    pytest.fail(
+                        'The dbos_system fixture needs testcontainers for PostgreSQL: '
+                        'install the django-dbos[test] extra (or pass --dbos-system-db=sqlite).',
+                        pytrace=False,
+                    )
+                raise  # auto: falls back to SQLite below
 
             container = PostgresContainer('postgres:17')
             container.start()

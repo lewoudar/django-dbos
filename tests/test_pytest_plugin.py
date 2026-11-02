@@ -243,6 +243,25 @@ def pytest_unconfigure(config):
     print('DBOS_SYSTEM_DATABASE_URL after the session:', os.environ.get('DBOS_SYSTEM_DATABASE_URL'))
 """
 
+MISSING_TESTCONTAINERS_CONFTEST = """
+import sys
+from importlib.abc import MetaPathFinder
+
+
+class BlockTestcontainers(MetaPathFinder):
+    # Simulate an environment without the [test] extra's testcontainers,
+    # raising the same error as a missing package. Not through
+    # sys.modules[...] = None: on Python 3.15, formatting that error
+    # re-imports the blocked parent package and crashes pytest.
+    def find_spec(self, name, path=None, target=None):
+        if name.partition('.')[0] == 'testcontainers':
+            raise ModuleNotFoundError(f'No module named {name!r}', name=name)
+        return None
+
+
+sys.meta_path.insert(0, BlockTestcontainers())
+"""
+
 SYSTEM_DB_TEST = """
 import os
 
@@ -349,26 +368,7 @@ class TestDbosInline:
 
     def test_dbos_system_without_testcontainers_explains_the_extra(self, pytester: pytest.Pytester):
         _make_project(pytester)
-        pytester.makepyfile(
-            conftest="""
-            import sys
-            from importlib.abc import MetaPathFinder
-
-
-            class BlockTestcontainers(MetaPathFinder):
-                # Simulate an environment without the [test] extra's testcontainers,
-                # raising the same error as a missing package. Not through
-                # sys.modules[...] = None: on Python 3.15, formatting that error
-                # re-imports the blocked parent package and crashes pytest.
-                def find_spec(self, name, path=None, target=None):
-                    if name.partition('.')[0] == 'testcontainers':
-                        raise ModuleNotFoundError(f'No module named {name!r}', name=name)
-                    return None
-
-
-            sys.meta_path.insert(0, BlockTestcontainers())
-            """
-        )
+        pytester.makepyfile(conftest=MISSING_TESTCONTAINERS_CONFTEST)
         pytester.makepyfile(
             """
             def test_needs_postgres(dbos_system):
@@ -409,6 +409,14 @@ class TestDbosSystem:
                 'DBOS_SYSTEM_DATABASE_URL after the session: sqlite:///previous.sqlite',
             ]
         )
+
+    def test_auto_mode_without_testcontainers_falls_back_to_sqlite(self, pytester: pytest.Pytester):
+        _make_project(pytester)
+        pytester.makepyfile(conftest=MISSING_TESTCONTAINERS_CONFTEST)
+        pytester.makepyfile(SYSTEM_DB_TEST)
+        result = pytester.runpytest_subprocess('--ds=settings', '-s', '-p', 'no:cacheprovider')
+        result.assert_outcomes(passed=1)
+        result.stdout.fnmatch_lines(["*Postgres unavailable (No module named 'testcontainers*'); using SQLite*"])
 
     def test_fixture_url_wins_over_the_configured_one(self, pytester: pytest.Pytester):
         # OPTIONS["SYSTEM_DATABASE_URL"] wins over the environment variable:

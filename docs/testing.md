@@ -123,9 +123,10 @@ imported by then, and shared by every test that uses it.
 
 With the default `--dbos-system-db=auto`, the system database is a
 PostgreSQL container started through testcontainers when Docker is
-available, and a SQLite file otherwise. Force one with
-`--dbos-system-db=postgres` (the tests are skipped if Docker is unavailable)
-or `--dbos-system-db=sqlite`. The PostgreSQL modes need the `test` extra.
+available (and the `test` extra installed), and a SQLite file otherwise.
+Force one with `--dbos-system-db=postgres` (the tests are skipped if Docker
+is unavailable, and fail if the `test` extra is missing) or
+`--dbos-system-db=sqlite`.
 Either way, the fixture's database replaces the one your settings point at:
 it sets `DBOS_SYSTEM_DATABASE_URL` for the session and, when your settings
 set `OPTIONS["SYSTEM_DATABASE_URL"]` (which wins over the variable),
