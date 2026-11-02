@@ -18,25 +18,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TypedDict, cast
+from typing import TypedDict
 
 from dbos import WorkflowStatus, WorkflowStatusString
 
 from .client import get_client
 from .heartbeat import HeartbeatRow, read_heartbeats
-from .settings import CAPACITY_THRESHOLD_DEFAULTS, resolve_capacity, resolve_queues
-
-
-class Thresholds(TypedDict):
-    """The thresholds applied to one queue.
-
-    ``OPTIONS["CAPACITY"]`` overridden by the queue's own ``capacity``
-    option, with lowercase keys.
-    """
-
-    scale_up_backlog_age_seconds: float
-    scale_down_max_running: int
-    min_workers: int
+from .settings import CAPACITY_THRESHOLD_DEFAULTS, Thresholds, resolve_capacity, resolve_queues
 
 
 class RateLimit(TypedDict):
@@ -253,7 +241,7 @@ def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) 
             executor_id not in live_executor_ids for executor_id in running_executors.get(queue_name, ())
         )
         queue_metrics['workers'] = sum(queue_name in worker['queues'] for worker in live_workers)
-        thresholds = cast(Thresholds, capacity_config.thresholds_for(declared.get(queue_name)))
+        thresholds = capacity_config.thresholds_for(declared.get(queue_name))
         queue_metrics['thresholds'] = thresholds
         queue_metrics['advice'] = advise(queue_name, queue_metrics, thresholds)
 

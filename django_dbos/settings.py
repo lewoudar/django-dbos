@@ -19,7 +19,7 @@ from __future__ import annotations
 import math
 import os
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypedDict
 from urllib.parse import quote
 
 from dbos import Serializer
@@ -156,6 +156,21 @@ CAPACITY_THRESHOLD_DEFAULTS: dict[str, float | int] = {
 INTEGER_THRESHOLDS = frozenset({'SCALE_DOWN_MAX_RUNNING', 'MIN_WORKERS'})
 
 
+class Thresholds(TypedDict):
+    """The thresholds applied to one queue.
+
+    ``OPTIONS["CAPACITY"]`` overridden by the queue's own ``capacity``
+    option, with lowercase keys.
+    """
+
+    scale_up_backlog_age_seconds: float
+    """SCALE_UP once the oldest waiting workflow has been waiting longer than this."""
+    scale_down_max_running: int
+    """SCALE_DOWN only when nothing waits and at most this many workflows run."""
+    min_workers: int
+    """Floor of live workers: SCALE_UP below it, no SCALE_DOWN at it."""
+
+
 @dataclass(frozen=True)
 class CapacityConfig:
     """Resolved ``OPTIONS["CAPACITY"]``: global thresholds and optional custom advisor."""
@@ -163,10 +178,15 @@ class CapacityConfig:
     thresholds: dict[str, float | int] = field(default_factory=lambda: dict(CAPACITY_THRESHOLD_DEFAULTS))
     advisor: Any = None
 
-    def thresholds_for(self, queue: QueueConfig | None) -> dict[str, float | int]:
+    def thresholds_for(self, queue: QueueConfig | None) -> Thresholds:
         """Global thresholds overridden by the queue's own ``capacity`` options, as lowercase keys."""
         merged = {**self.thresholds, **((queue.capacity if queue is not None else None) or {})}
-        return {key.lower(): value for key, value in merged.items()}
+        # INTEGER_THRESHOLDS are validated as integers: int() only narrows the type.
+        return {
+            'scale_up_backlog_age_seconds': merged['SCALE_UP_BACKLOG_AGE_SECONDS'],
+            'scale_down_max_running': int(merged['SCALE_DOWN_MAX_RUNNING']),
+            'min_workers': int(merged['MIN_WORKERS']),
+        }
 
 
 @dataclass(frozen=True)
