@@ -20,6 +20,7 @@ before ``DBOS.launch()``): other processes enqueue by name through
 from __future__ import annotations
 
 import inspect
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -40,7 +41,7 @@ from .workflow_names import workflow_name_for_task
 # (task workflows and cron parents alike). ``DBOS.workflow`` returns the
 # decorated function; keeping it here avoids the SDK's private registry and
 # makes registration idempotent.
-_workflows: dict[str, Any] = {}
+_workflows: dict[str, Callable[..., Any]] = {}
 
 
 def _step_options(params: DbosTaskParams) -> StepOptions:
@@ -53,7 +54,7 @@ def _step_options(params: DbosTaskParams) -> StepOptions:
     )
 
 
-def _build_task_context(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+def _build_task_context(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str, Any]) -> TaskContext:
     """Build a Django ``TaskContext`` for a currently-running task.
 
     Its ``task_result`` is read from the system database, so ``attempt``
@@ -64,29 +65,25 @@ def _build_task_context(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str,
     workflow_id = DBOS.workflow_id or ''
     try:
         status = get_client().retrieve_workflow(workflow_id).get_status()
-        return _context_for(build_task_result(workflow_id, status))
+        return TaskContext(task_result=build_task_result(workflow_id, status))
     except Exception as exc:  # noqa: BLE001 - a failed read must not fail the task itself
         logger.warning('could not read the task status, context.attempt defaults to 1', error=describe_error(exc))
         return _fallback_task_context(task, args, kwargs)
 
 
-async def _abuild_task_context(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+async def _abuild_task_context(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str, Any]) -> TaskContext:
     """Async variant of ``_build_task_context`` (the sync client read refuses a running event loop)."""
     workflow_id = DBOS.workflow_id or ''
     try:
         handle = await get_client().retrieve_workflow_async(workflow_id)
         status = await handle.get_status()
-        return _context_for(build_task_result(workflow_id, status))
+        return TaskContext(task_result=build_task_result(workflow_id, status))
     except Exception as exc:  # noqa: BLE001 - a failed read must not fail the task itself
         logger.warning('could not read the task status, context.attempt defaults to 1', error=describe_error(exc))
         return _fallback_task_context(task, args, kwargs)
 
 
-def _context_for(result: Any) -> Any:
-    return TaskContext(task_result=result)
-
-
-def _fallback_task_context(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+def _fallback_task_context(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str, Any]) -> TaskContext:
     """A context built without the system database: a single attempt, timestamps of now."""
     workflow_id = DBOS.workflow_id or ''
     now = datetime.now(tz=UTC)
@@ -107,7 +104,7 @@ def _fallback_task_context(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[s
     return TaskContext(task_result=result)
 
 
-def _call_with_fresh_connections(func: Any, *args: Any, **kwargs: Any) -> Any:
+def _call_with_fresh_connections(func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     """Run ``func`` with Django connections recycled before and after."""
     close_old_connections()
     try:
@@ -116,7 +113,7 @@ def _call_with_fresh_connections(func: Any, *args: Any, **kwargs: Any) -> Any:
         close_old_connections()
 
 
-async def _acall_with_fresh_connections(func: Any, *args: Any, **kwargs: Any) -> Any:
+async def _acall_with_fresh_connections(func: Callable[..., Awaitable[Any]], *args: Any, **kwargs: Any) -> Any:
     # Same thread-sensitive bridge Django's ASGI handler uses.
     aclose_old_connections = sync_to_async(close_old_connections, thread_sensitive=True)
     await aclose_old_connections()
@@ -133,6 +130,14 @@ def execute_task_body(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str, A
     function either as a single checkpointed step (default) or at workflow
     level (``durable_operations``: the task checkpoints its own operations
     through ``get_dbos_context()``).
+
+    Args:
+        task: The Django task to run.
+        args: The positional arguments it was enqueued with.
+        kwargs: The keyword arguments it was enqueued with.
+
+    Returns:
+        The task function's return value.
     """
     if task.takes_context:
         args = (_build_task_context(task, args, kwargs), *args)
@@ -142,7 +147,16 @@ def execute_task_body(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str, A
 
 
 async def aexecute_task_body(task: DBOSTask, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
-    """Async variant of ``execute_task_body``."""
+    """Async variant of ``execute_task_body``.
+
+    Args:
+        task: The Django task to run.
+        args: The positional arguments it was enqueued with.
+        kwargs: The keyword arguments it was enqueued with.
+
+    Returns:
+        The task coroutine's return value.
+    """
     if task.takes_context:
         args = (await _abuild_task_context(task, args, kwargs), *args)
     if task.dbos_params.durable_operations:
@@ -155,7 +169,11 @@ async def aexecute_task_body(task: DBOSTask, args: tuple[Any, ...], kwargs: dict
 def register_task_workflow(task: DBOSTask) -> str:
     """Register (or reuse) the DBOS workflow executing this task.
 
-    Returns the workflow name to enqueue.
+    Args:
+        task: The Django task to execute as a DBOS workflow.
+
+    Returns:
+        The workflow name to enqueue.
     """
     name = workflow_name_for_task(task)
     if name in _workflows:
@@ -180,18 +198,40 @@ def register_task_workflow(task: DBOSTask) -> str:
     return name
 
 
-def task_workflow(task: DBOSTask) -> Any:
-    """The registered DBOS workflow function executing ``task`` (registering it if needed)."""
+def task_workflow(task: DBOSTask) -> Callable[..., Any]:
+    """The registered DBOS workflow function executing ``task`` (registering it if needed).
+
+    Args:
+        task: The Django task whose workflow is wanted.
+
+    Returns:
+        The DBOS workflow function.
+    """
     return _workflows[register_task_workflow(task)]
 
 
-def registered_workflow(name: str) -> Any | None:
-    """The workflow function registered under ``name`` by this process, if any."""
+def registered_workflow(name: str) -> Callable[..., Any] | None:
+    """The workflow function registered under ``name`` by this process, if any.
+
+    Args:
+        name: The DBOS workflow name.
+
+    Returns:
+        The workflow function, or ``None`` when this process registered none under ``name``.
+    """
     return _workflows.get(name)
 
 
-def remember_workflow(name: str, workflow: Any) -> Any:
-    """Record a workflow function registered with DBOS under ``name``."""
+def remember_workflow(name: str, workflow: Callable[..., Any]) -> Callable[..., Any]:
+    """Record a workflow function registered with DBOS under ``name``.
+
+    Args:
+        name: The DBOS workflow name.
+        workflow: The function returned by ``DBOS.workflow``.
+
+    Returns:
+        ``workflow``, unchanged.
+    """
     _workflows[name] = workflow
     return workflow
 
