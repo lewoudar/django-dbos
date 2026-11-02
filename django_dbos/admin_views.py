@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlencode
 
-from dbos import WorkflowStatusString
+from dbos import WorkflowStatus, WorkflowStatusString
 from dbos import error as dbos_error
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
@@ -157,12 +157,8 @@ def _name_filter(name: str | None) -> str | list[str] | None:
     return [name, *(prefix + name for prefix in NAME_PREFIXES)]
 
 
-def _status_value(status: Any) -> str:
-    return status.status.value if hasattr(status.status, 'value') else str(status.status)
-
-
-def _row(status: Any) -> dict[str, Any]:
-    django_status = _status_value(status)
+def _row(status: WorkflowStatus) -> dict[str, Any]:
+    django_status = status.status
     return {
         'workflow_id': status.workflow_id,
         'name': status.name,

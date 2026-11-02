@@ -224,7 +224,7 @@ def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) 
             queues_metrics.setdefault(status.queue_name, _empty_queue_metrics()) if status.queue_name else None
         )
         _ingest_workflow(status, queue_metrics, executors, now)
-        if queue_metrics is not None and _status_value(status) == WorkflowStatusString.PENDING.value:
+        if queue_metrics is not None and status.status == WorkflowStatusString.PENDING.value:
             running_executors.setdefault(status.queue_name, []).append(status.executor_id)
 
     # Stale heartbeats are reported too: a worker that died without cleaning
@@ -257,10 +257,6 @@ def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) 
     }
 
 
-def _status_value(status: WorkflowStatus) -> str:
-    return str(getattr(status.status, 'value', status.status))
-
-
 def _ingest_workflow(
     status: WorkflowStatus,
     queue_metrics: QueueMetrics | None,
@@ -268,7 +264,7 @@ def _ingest_workflow(
     now: datetime,
 ) -> None:
     """Fold one active workflow into its queue's metrics (if any) and its executor's counts."""
-    workflow_status = _status_value(status)
+    workflow_status = status.status
 
     if queue_metrics is None:
         pass
