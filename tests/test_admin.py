@@ -25,7 +25,7 @@ from django_dbos.admin import (
     register_admin,
     register_admin_sites,
 )
-from django_dbos.admin_views import STEP_RESULT_INLINE_LENGTH
+from django_dbos.admin_views import STEP_RESULT_INLINE_LENGTH, is_active_superuser
 from django_dbos.heartbeat import write_heartbeat
 from django_dbos.models import WorkerHeartbeat
 from django_dbos.scheduling import register_cron_schedules
@@ -477,6 +477,19 @@ class TestAdminGating:
             assert response.status_code == 403
         finally:
             User.objects.filter(pk=staff.pk).delete()
+
+    @pytest.mark.parametrize(
+        ('user', 'expected'),
+        [
+            (SimpleNamespace(is_active=True, is_superuser=True), True),
+            (SimpleNamespace(is_active=False, is_superuser=True), False),
+            (SimpleNamespace(is_active=True, is_superuser=False), False),
+            # A custom user model without PermissionsMixin has no is_superuser field.
+            (SimpleNamespace(is_active=True), False),
+        ],
+    )
+    def test_is_active_superuser(self, user, expected):
+        assert is_active_superuser(SimpleNamespace(user=user)) is expected
 
     def test_disabled_admin_skips_registration(self, settings):
         set_dbos_options(settings, {**settings.TASKS['dbos']['OPTIONS'], 'ADMIN_ENABLED': False})

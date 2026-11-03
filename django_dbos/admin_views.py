@@ -64,6 +64,22 @@ RESUMABLE_STATUSES = frozenset(
 )
 
 
+def is_active_superuser(request: HttpRequest) -> bool:
+    """Whether the request comes from an active superuser, the only users allowed on django-dbos' pages.
+
+    A custom user model without ``PermissionsMixin`` has no ``is_superuser``
+    field: its users are never superusers.
+
+    Args:
+        request: The current request, authenticated by ``AuthenticationMiddleware``.
+
+    Returns:
+        ``True`` when ``request.user`` is active and has the superuser flag.
+    """
+    user = request.user
+    return bool(user.is_active and getattr(user, 'is_superuser', False))
+
+
 def bind_site(view: Any, site: Any) -> Any:
     """``view`` serving the admin ``site``: rendered with its context, URLs resolved in its namespace."""
 
@@ -92,7 +108,7 @@ def _dbos_view(view: Any) -> Any:
     """
 
     def wrapper(request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
-        if not request.user.is_active or not request.user.is_superuser:
+        if not is_active_superuser(request):
             raise PermissionDenied('django-dbos admin pages are restricted to superusers.')
         try:
             get_client()

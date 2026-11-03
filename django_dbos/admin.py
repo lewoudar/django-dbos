@@ -86,10 +86,10 @@ class WorkerHeartbeatAdmin(django_admin.ModelAdmin):
         return False
 
     def has_delete_permission(self, request: Any, obj: Any = None) -> bool:
-        return bool(request.user.is_superuser)
+        return admin_views.is_active_superuser(request)
 
     def has_view_permission(self, request: Any, obj: Any = None) -> bool:
-        return bool(request.user.is_superuser)
+        return admin_views.is_active_superuser(request)
 
 
 def _dbos_page_entries(site: Any) -> list[dict[str, Any]]:
@@ -189,7 +189,7 @@ def register_admin(site: Any) -> None:
 
     def get_app_list(request: Any, app_label: str | None = None) -> list[dict[str, Any]]:
         app_list = original_get_app_list(request, app_label)
-        if request.user.is_active and request.user.is_superuser:
+        if admin_views.is_active_superuser(request):
             for app in app_list:
                 if app['app_label'] == APP_LABEL:
                     app['models'].extend(_dbos_page_entries(site))
