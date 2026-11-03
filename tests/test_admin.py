@@ -19,6 +19,7 @@ from sqlalchemy.exc import OperationalError
 
 from django_dbos.admin import (
     WorkerHeartbeatAdmin,
+    _registered_sites,
     get_admin_site_paths,
     get_admin_sites,
     is_admin_enabled,
@@ -497,7 +498,7 @@ class TestAdminGating:
         register_admin_sites()
         # register_admin_sites() only touches the configured default sites;
         # our fresh site is untouched and directly registerable or not.
-        assert not getattr(site, '_django_dbos_registered', False)
+        assert site not in _registered_sites
 
     def test_custom_admin_site_registration(self, dbos_environment):
         custom_site = AdminSite(name='custom-test')
@@ -507,7 +508,8 @@ class TestAdminGating:
         assert 'django_dbos_schedule_changelist' in url_names
         # Idempotent: a second registration is a no-op.
         register_admin(custom_site)
-        assert 'django_dbos_workflow_changelist' in url_names
+        url_names = [p.name for p in custom_site.get_urls() if getattr(p, 'name', None)]
+        assert url_names.count('django_dbos_workflow_changelist') == 1
 
     @pytest.mark.parametrize('page', ['/admin/', '/admin/django_dbos/'])
     def test_superuser_app_list_links_the_dbos_pages(self, admin_client, page):

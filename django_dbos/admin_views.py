@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import functools
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlencode
 
-from dbos import WorkflowStatus, WorkflowStatusString
+from dbos import StepInfo, WorkflowSchedule, WorkflowStatus, WorkflowStatusString
 from dbos import error as dbos_error
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
@@ -28,6 +29,11 @@ from .logging import logger
 from .scheduling import SCHEDULE_PREFIX
 from .templatetags.dbos_admin import dbos_duration, dbos_time
 from .workflow_names import REGISTRY_PREFIX
+
+if TYPE_CHECKING:
+    from django.contrib.admin import AdminSite
+
+View = Callable[..., HttpResponse]
 
 PAGE_SIZE = 50
 
@@ -80,7 +86,7 @@ def is_active_superuser(request: HttpRequest) -> bool:
     return bool(user.is_active and getattr(user, 'is_superuser', False))
 
 
-def bind_site(view: Any, site: Any) -> Any:
+def bind_site(view: View, site: AdminSite) -> View:
     """``view`` serving the admin ``site``: rendered with its context, URLs resolved in its namespace."""
 
     @functools.wraps(view)
@@ -98,7 +104,7 @@ def _render(request: HttpRequest, template_name: str, context: dict[str, Any]) -
     return render(request, template_name, {**site_context, **context})
 
 
-def _dbos_view(view: Any) -> Any:
+def _dbos_view(view: View) -> View:
     """Wrap an admin view: require the superuser, render an error page when DBOS is unavailable.
 
     ``site.admin_view`` already enforces staff-only access; these pages also
@@ -152,7 +158,7 @@ def _epoch_ms(value: int | str | None) -> datetime | str | None:
     return datetime.fromtimestamp(value / 1000, tz=UTC)
 
 
-def _elapsed_ms(start: Any, end: Any) -> int | None:
+def _elapsed_ms(start: int | None, end: int | None) -> int | None:
     if not isinstance(start, int) or not isinstance(end, int):
         return None
     return end - start
@@ -258,7 +264,7 @@ def workflow_list(request: HttpRequest) -> HttpResponse:
     )
 
 
-def _get_workflow_or_404(workflow_id: str) -> Any:
+def _get_workflow_or_404(workflow_id: str) -> WorkflowStatus:
     try:
         return get_client().retrieve_workflow(workflow_id).get_status()
     except dbos_error.DBOSNonExistentWorkflowError:
@@ -277,7 +283,7 @@ def _workflows_of_schedule_url(schedule_name: str) -> str:
     return f'{reverse("admin:django_dbos_workflow_changelist")}?{urlencode({"schedule": schedule_name})}'
 
 
-def _step_row(step: dict[str, Any]) -> dict[str, Any]:
+def _step_row(step: StepInfo) -> dict[str, Any]:
     error = _pretty_error(step.get('error'))
     if error is not None:
         outcome, badge = 'ERROR', 'error'
@@ -410,7 +416,7 @@ def workflow_delete(request: HttpRequest, workflow_id: str) -> HttpResponse:
 # --- Schedules ------------------------------------------------------------
 
 
-def _schedule_row(schedule: dict[str, Any]) -> dict[str, Any]:
+def _schedule_row(schedule: WorkflowSchedule) -> dict[str, Any]:
     schedule_name = schedule.get('schedule_name') or ''
     workflow_name = schedule.get('workflow_name')
     return {
@@ -441,7 +447,7 @@ def _redirect_to_schedules() -> HttpResponseRedirect:
     return HttpResponseRedirect(reverse('admin:django_dbos_schedule_changelist'))
 
 
-def _get_schedule_or_404(schedule_name: str) -> Any:
+def _get_schedule_or_404(schedule_name: str) -> WorkflowSchedule:
     schedule = get_client().get_schedule(schedule_name)
     if schedule is None:
         raise Http404(f'No schedule found with name {schedule_name!r}')

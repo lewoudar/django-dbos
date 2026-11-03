@@ -15,11 +15,13 @@ standard staff membership is not enough.
 
 from __future__ import annotations
 
+import weakref
 from typing import Any
 
 from django.contrib import admin as django_admin
 from django.contrib.admin import AdminSite
-from django.urls import URLPattern, path, reverse
+from django.http import HttpRequest
+from django.urls import URLPattern, URLResolver, path, reverse
 from django.utils.module_loading import import_string
 
 from . import admin_views
@@ -31,6 +33,9 @@ from .settings import get_bool_option, get_dbos_setting
 APP_LABEL = 'django_dbos'
 ADMIN_URL_PREFIX = 'dbos/'
 DEFAULT_ADMIN_SITES = ('django.contrib.admin.site',)
+
+# Sites register_admin() already patched: registration is idempotent.
+_registered_sites: weakref.WeakSet[AdminSite] = weakref.WeakSet()
 
 
 def is_admin_enabled() -> bool:
@@ -49,14 +54,14 @@ def get_admin_site_paths() -> tuple[str, ...]:
     return tuple(sites)
 
 
-def get_admin_sites() -> list[Any]:
+def get_admin_sites() -> list[AdminSite]:
     """Resolve the configured AdminSite instances.
 
     When the default site is requested but ``django.contrib.admin`` is not
     installed, it is silently skipped (projects without an admin at all).
     """
     configured_paths = get_admin_site_paths()
-    resolved: list[Any] = []
+    resolved: list[AdminSite] = []
     for dotted_path in configured_paths:
         try:
             site = import_string(dotted_path)
@@ -79,20 +84,20 @@ class WorkerHeartbeatAdmin(django_admin.ModelAdmin):
     list_filter = ('executor_id',)
     ordering = ('executor_id', 'hostname', 'pid')
 
-    def has_add_permission(self, request: Any) -> bool:
+    def has_add_permission(self, request: HttpRequest) -> bool:
         return False
 
-    def has_change_permission(self, request: Any, obj: Any = None) -> bool:
+    def has_change_permission(self, request: HttpRequest, obj: WorkerHeartbeat | None = None) -> bool:
         return False
 
-    def has_delete_permission(self, request: Any, obj: Any = None) -> bool:
+    def has_delete_permission(self, request: HttpRequest, obj: WorkerHeartbeat | None = None) -> bool:
         return admin_views.is_active_superuser(request)
 
-    def has_view_permission(self, request: Any, obj: Any = None) -> bool:
+    def has_view_permission(self, request: HttpRequest, obj: WorkerHeartbeat | None = None) -> bool:
         return admin_views.is_active_superuser(request)
 
 
-def _dbos_page_entries(site: Any) -> list[dict[str, Any]]:
+def _dbos_page_entries(site: AdminSite) -> list[dict[str, Any]]:
     """App-list entries linking the workflow and schedule pages, shaped like the admin's model entries.
 
     They sit next to the worker heartbeats in the "django_dbos" app, on the
@@ -114,9 +119,9 @@ def _dbos_page_entries(site: Any) -> list[dict[str, Any]]:
     ]
 
 
-def register_admin(site: Any) -> None:
+def register_admin(site: AdminSite) -> None:
     """Append django-dbos URLs to an AdminSite instance (idempotent)."""
-    if getattr(site, '_django_dbos_registered', False):
+    if site in _registered_sites:
         return
 
     if not site.is_registered(WorkerHeartbeat):
@@ -124,12 +129,12 @@ def register_admin(site: Any) -> None:
 
     original_get_urls = site.get_urls
 
-    def dbos_view(view: Any) -> Any:
+    def dbos_view(view: admin_views.View) -> admin_views.View:
         return site.admin_view(admin_views.bind_site(view, site))
 
-    def get_urls() -> list[URLPattern]:
+    def get_urls() -> list[URLPattern | URLResolver]:
         urls = original_get_urls()
-        dbos_urls = [
+        dbos_urls: list[URLPattern | URLResolver] = [
             path(
                 f'{ADMIN_URL_PREFIX}workflows/',
                 dbos_view(admin_views.workflow_list),
@@ -187,7 +192,7 @@ def register_admin(site: Any) -> None:
 
     original_get_app_list = site.get_app_list
 
-    def get_app_list(request: Any, app_label: str | None = None) -> list[dict[str, Any]]:
+    def get_app_list(request: HttpRequest, app_label: str | None = None) -> list[dict[str, Any]]:
         app_list = original_get_app_list(request, app_label)
         if admin_views.is_active_superuser(request):
             for app in app_list:
@@ -198,7 +203,7 @@ def register_admin(site: Any) -> None:
 
     site.get_urls = get_urls
     site.get_app_list = get_app_list
-    site._django_dbos_registered = True
+    _registered_sites.add(site)
     logger.debug('registered django-dbos admin views', admin_site=site.name)
 
 
