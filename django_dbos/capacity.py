@@ -264,11 +264,15 @@ def _ingest_workflow(
     now: datetime,
 ) -> None:
     """Fold one active workflow into its queue's metrics (if any) and its executor's counts."""
-    workflow_status = status.status
+    if queue_metrics is not None:
+        _count_in_queue(status, queue_metrics, now)
+    _count_in_executor(status, executors)
 
-    if queue_metrics is None:
-        pass
-    elif workflow_status == WorkflowStatusString.ENQUEUED.value:
+
+def _count_in_queue(status: WorkflowStatus, queue_metrics: QueueMetrics, now: datetime) -> None:
+    """Count one active workflow in its queue's backlog, delayed or running figures."""
+    workflow_status = status.status
+    if workflow_status == WorkflowStatusString.ENQUEUED.value:
         queue_metrics['enqueued'] += 1
         if status.created_at is not None:
             age = (now - datetime.fromtimestamp(status.created_at / 1000, tz=UTC)).total_seconds()
@@ -283,6 +287,10 @@ def _ingest_workflow(
             queue_wait_ms = status.dequeued_at - status.created_at
             queue_metrics['max_queue_wait_ms'] = max(queue_metrics['max_queue_wait_ms'] or 0, queue_wait_ms)
 
+
+def _count_in_executor(status: WorkflowStatus, executors: dict[str, ExecutorLoad]) -> None:
+    """Count one enqueued or running workflow in its executor's load; delayed ones occupy no executor."""
+    workflow_status = status.status
     if (
         workflow_status in (WorkflowStatusString.ENQUEUED.value, WorkflowStatusString.PENDING.value)
         and status.executor_id
