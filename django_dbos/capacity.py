@@ -220,9 +220,9 @@ def collect(queues: list[str] | None = None, *, advisor: Advisor | None = None) 
         # Child workflows started inline by a parent (cron firings run the
         # task workflow that way) carry no queue: they count for their
         # executor's load, not for any queue's backlog.
-        queue_metrics = (
-            queues_metrics.setdefault(status.queue_name, _empty_queue_metrics()) if status.queue_name else None
-        )
+        queue_metrics = queues_metrics.get(status.queue_name) if status.queue_name else None
+        if status.queue_name and queue_metrics is None:
+            queue_metrics = queues_metrics[status.queue_name] = _empty_queue_metrics()
         _ingest_workflow(status, queue_metrics, executors, now)
         if queue_metrics is not None and status.status == WorkflowStatusString.PENDING.value:
             running_executors.setdefault(status.queue_name, []).append(status.executor_id)
