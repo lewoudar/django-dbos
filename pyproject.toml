@@ -52,6 +52,7 @@ dev = [
     "commitizen>=4.8",
     "deptry>=0.23",
     "django-extensions>=4.1",
+    "django-stubs>=6.1.2",
     "nox>=2025.5",
     "prek>=0.2",
     "pyrefly>=0.25",
