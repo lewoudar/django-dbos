@@ -26,7 +26,7 @@ from django_dbos.admin import (
     register_admin,
     register_admin_sites,
 )
-from django_dbos.admin_views import _MAX_PAGE, PAGE_SIZE, STEP_RESULT_INLINE_LENGTH, is_active_superuser
+from django_dbos.admin_views import MAX_PAGE, PAGE_SIZE, STEP_RESULT_INLINE_LENGTH, is_active_superuser
 from django_dbos.heartbeat import write_heartbeat
 from django_dbos.models import WorkerHeartbeat
 from django_dbos.scheduling import register_cron_schedules
@@ -84,6 +84,39 @@ def _workflow_status(**overrides: Any) -> SimpleNamespace:
         'error': None,
     }
     return SimpleNamespace(**(values | overrides))
+
+
+def _step(**overrides: Any) -> dict[str, Any]:
+    """A workflow step as returned by DBOSClient, every field empty unless overridden."""
+    values: dict[str, Any] = {
+        'function_id': 1,
+        'function_name': 'task_body',
+        'output': None,
+        'error': None,
+        'child_workflow_id': None,
+        'started_at_epoch_ms': None,
+        'completed_at_epoch_ms': None,
+    }
+    return values | overrides
+
+
+def _schedule(**overrides: Any) -> dict[str, Any]:
+    """A schedule as returned by DBOSClient, every optional field empty unless overridden."""
+    values: dict[str, Any] = {
+        'schedule_id': 'sched-1',
+        'schedule_name': 'nightly',
+        'workflow_name': 'other.workflow',
+        'workflow_class_name': None,
+        'schedule': '0 3 * * *',
+        'status': 'ACTIVE',
+        'context': None,
+        'last_fired_at': None,
+        'automatic_backfill': False,
+        'cron_timezone': None,
+        'queue_name': None,
+        'application_name': None,
+    }
+    return values | overrides
 
 
 def _mock_client(mocker: Any, status: SimpleNamespace | None = None, steps: list[dict[str, Any]] | None = None) -> Any:
@@ -179,8 +212,8 @@ class TestWorkflowPages:
         client.list_workflows.return_value = [_workflow_status(workflow_id=f'wf-{n}') for n in range(51)]
         response = admin_client.get('/admin/dbos/workflows/', {'page': '99999'})
         # Clamped to the last allowed page, which links back but not forward.
-        assert client.list_workflows.call_args.kwargs['offset'] == (_MAX_PAGE - 1) * PAGE_SIZE
-        assert_text(response, f'href="?page={_MAX_PAGE - 1}"')
+        assert client.list_workflows.call_args.kwargs['offset'] == (MAX_PAGE - 1) * PAGE_SIZE
+        assert_text(response, f'href="?page={MAX_PAGE - 1}"')
         assert 'next &raquo;' not in response.content.decode()
 
     def test_pages_show_the_django_priority(self, admin_client, dbos_environment):
@@ -218,7 +251,7 @@ class TestWorkflowPages:
             updated_at='not a timestamp',
             input=circular,
         )
-        _mock_client(mocker, status, [{'function_id': 1, 'function_name': 'task_body', 'started_at_epoch_ms': 1_000}])
+        _mock_client(mocker, status, [_step(started_at_epoch_ms=1_000)])
 
         response = admin_client.get('/admin/dbos/workflows/wf-odd/')
 
@@ -283,20 +316,14 @@ class TestWorkflowPages:
             mocker,
             _workflow_status(status='ERROR', error=ValueError('card declined')),
             [
-                {
-                    'function_id': 1,
-                    'function_name': 'task_body',
-                    'started_at_epoch_ms': 1_000,
-                    'completed_at_epoch_ms': 1_250,
-                    'error': 'ValueError: boom',
-                },
-                {
-                    'function_id': 2,
-                    'function_name': 'report',
-                    'started_at_epoch_ms': 1_000,
-                    'completed_at_epoch_ms': 1_250,
-                    'output': 'x' * 100,
-                },
+                _step(started_at_epoch_ms=1_000, completed_at_epoch_ms=1_250, error='ValueError: boom'),
+                _step(
+                    function_id=2,
+                    function_name='report',
+                    started_at_epoch_ms=1_000,
+                    completed_at_epoch_ms=1_250,
+                    output='x' * 100,
+                ),
             ],
         )
 
@@ -370,6 +397,12 @@ class TestWorkflowPages:
         assert status is not None
         assert str(status.status) != 'CANCELLED'
 
+    @pytest.mark.parametrize('action', ['cancel', 'resume', 'fork', 'delete'])
+    @pytest.mark.parametrize('method', ['get', 'post'])
+    def test_action_on_unknown_workflow_returns_404(self, admin_client, dbos_environment, action, method):
+        response = getattr(admin_client, method)(f'/admin/dbos/workflows/unknown-id/{action}/')
+        assert response.status_code == 404
+
     def test_delete_workflow_with_confirmation(self, admin_client, dbos_environment):
         result = _enqueue_sample_workflow()
         # GET shows the confirmation page
@@ -392,14 +425,13 @@ class TestSchedulePages:
     def test_schedule_rows(self, admin_client, mocker):
         client = _mock_client(mocker)
         client.list_schedules.return_value = [
-            {
-                'schedule_name': 'django_dbos.schedules.tests.tasks.cron_task',
-                'workflow_name': 'django_dbos.schedules.tests.tasks.cron_task',
-                'schedule': '*/10 * * * *',
-                'status': 'ACTIVE',
-                'last_fired_at': '2026-10-26T19:31:30+00:00',
-            },
-            {'schedule_name': 'nightly', 'workflow_name': 'other.workflow', 'status': 'PAUSED'},
+            _schedule(
+                schedule_name='django_dbos.schedules.tests.tasks.cron_task',
+                workflow_name='django_dbos.schedules.tests.tasks.cron_task',
+                schedule='*/10 * * * *',
+                last_fired_at='2026-10-26T19:31:30+00:00',
+            ),
+            _schedule(status='PAUSED'),
         ]
 
         response = admin_client.get('/admin/dbos/schedules/')
@@ -489,9 +521,7 @@ class TestSecondAdminSite:
 
     def test_schedule_rows_link_within_the_site(self, admin_client, mocker):
         client = _mock_client(mocker)
-        client.list_schedules.return_value = [
-            {'schedule_name': 'nightly', 'workflow_name': 'other', 'status': 'ACTIVE'}
-        ]
+        client.list_schedules.return_value = [_schedule()]
         response = admin_client.get('/ops/dbos/schedules/')
         assert response.context['rows'][0]['workflows_url'] == '/ops/dbos/workflows/?schedule=nightly'
 

@@ -113,6 +113,7 @@ def _dbos_view(view: View) -> View:
     renders ``error.html`` with a credential-free message instead of a 500.
     """
 
+    @functools.wraps(view)
     def wrapper(request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
         if not is_active_superuser(request):
             raise PermissionDenied('django-dbos admin pages are restricted to superusers.')
@@ -124,8 +125,6 @@ def _dbos_view(view: View) -> View:
             logger.error('admin: DBOS system database unavailable', error=message, view=view.__name__)
             return _render(request, 'admin/django_dbos/error.html', {'title': 'django-dbos', 'error_message': message})
 
-    wrapper.__name__ = view.__name__
-    wrapper.__qualname__ = view.__qualname__
     return wrapper
 
 
@@ -202,13 +201,13 @@ def _row(status: WorkflowStatus) -> dict[str, Any]:
 # Cap on the page query parameter: an unbounded offset overflows database
 # integers. 1000 pages of 50 reach the 50,000 newest workflows; older ones are
 # found through the filters or an ID search.
-_MAX_PAGE = 1000
+MAX_PAGE = 1000
 
 
 def _page_number(value: str | None) -> int:
     """Parse a page query parameter, clamped to a sane range."""
     try:
-        return min(max(int(value or ''), 1), _MAX_PAGE)
+        return min(max(int(value or ''), 1), MAX_PAGE)
     except ValueError:
         return 1
 
@@ -241,7 +240,7 @@ def workflow_list(request: HttpRequest) -> HttpResponse:
         load_output=False,
     )
     # No link past the cap: it would clamp back to this very page.
-    has_next = len(workflows) > PAGE_SIZE and page < _MAX_PAGE
+    has_next = len(workflows) > PAGE_SIZE and page < MAX_PAGE
     rows = [_row(status) for status in workflows[:PAGE_SIZE]]
 
     return _render(
@@ -299,27 +298,27 @@ def _redirect_to_workflow(request: HttpRequest, workflow_id: str) -> HttpRespons
 
 
 def _step_row(step: StepInfo) -> dict[str, Any]:
-    error = _pretty_error(step.get('error'))
+    error = _pretty_error(step['error'])
     if error is not None:
         outcome, badge = 'ERROR', 'error'
-    elif step.get('completed_at_epoch_ms') is not None:
+    elif step['completed_at_epoch_ms'] is not None:
         outcome, badge = 'SUCCESS', 'success'
     else:
         outcome, badge = 'RUNNING', 'info'
-    result = error if error is not None else _pretty(step.get('output'))
+    result = error if error is not None else _pretty(step['output'])
     return {
-        'function_id': step.get('function_id'),
-        'name': step.get('function_name'),
+        'function_id': step['function_id'],
+        'name': step['function_name'],
         'outcome': outcome,
         'badge': badge,
-        'duration_ms': _elapsed_ms(step.get('started_at_epoch_ms'), step.get('completed_at_epoch_ms')),
+        'duration_ms': _elapsed_ms(step['started_at_epoch_ms'], step['completed_at_epoch_ms']),
         # The error, or else the output; a long or multi-line one is folded in the page.
         'result': result,
         'result_is_error': error is not None,
         'result_is_long': result is not None and (len(result) > STEP_RESULT_INLINE_LENGTH or '\n' in result),
         # What a folded result shows before it is unfolded: as much as fits inline.
         'result_preview': Truncator(result).chars(STEP_RESULT_INLINE_LENGTH) if result is not None else None,
-        'child_workflow_id': step.get('child_workflow_id'),
+        'child_workflow_id': step['child_workflow_id'],
     }
 
 
@@ -382,9 +381,9 @@ def workflow_detail(request: HttpRequest, workflow_id: str) -> HttpResponse:
 
 @_dbos_view
 def workflow_cancel(request: HttpRequest, workflow_id: str) -> HttpResponse:
+    _get_workflow_or_404(workflow_id)
     if request.method != 'POST':
         return _redirect_to_workflow(request, workflow_id)
-    _get_workflow_or_404(workflow_id)
     get_client().cancel_workflow(workflow_id)
     logger.info('admin: cancelled workflow', workflow_id=workflow_id, user=request.user.pk)
     return _redirect_to_workflow(request, workflow_id)
@@ -392,9 +391,9 @@ def workflow_cancel(request: HttpRequest, workflow_id: str) -> HttpResponse:
 
 @_dbos_view
 def workflow_resume(request: HttpRequest, workflow_id: str) -> HttpResponse:
+    _get_workflow_or_404(workflow_id)
     if request.method != 'POST':
         return _redirect_to_workflow(request, workflow_id)
-    _get_workflow_or_404(workflow_id)
     get_client().resume_workflow(workflow_id)
     logger.info('admin: resumed workflow', workflow_id=workflow_id, user=request.user.pk)
     return _redirect_to_workflow(request, workflow_id)
@@ -402,9 +401,9 @@ def workflow_resume(request: HttpRequest, workflow_id: str) -> HttpResponse:
 
 @_dbos_view
 def workflow_fork(request: HttpRequest, workflow_id: str) -> HttpResponse:
+    _get_workflow_or_404(workflow_id)
     if request.method != 'POST':
         return _redirect_to_workflow(request, workflow_id)
-    _get_workflow_or_404(workflow_id)
     handle = get_client().fork_workflow(workflow_id, 0)
     logger.info('admin: forked workflow', workflow_id=workflow_id, fork=handle.workflow_id, user=request.user.pk)
     return _redirect_to_workflow(request, handle.workflow_id)
@@ -437,19 +436,19 @@ def workflow_delete(request: HttpRequest, workflow_id: str) -> HttpResponse:
 
 
 def _schedule_row(request: HttpRequest, schedule: WorkflowSchedule) -> dict[str, Any]:
-    schedule_name = schedule.get('schedule_name') or ''
-    workflow_name = schedule.get('workflow_name')
+    schedule_name = schedule['schedule_name']
+    workflow_name = schedule['workflow_name']
     return {
         'schedule_name': schedule_name,
         'short_name': short_name(schedule_name),
         # @cron schedules run a workflow of the same name: only show a different one.
         'workflow_name': workflow_name if workflow_name != schedule_name else None,
         'workflows_url': _workflows_of_schedule_url(request, schedule_name),
-        'crontab': schedule.get('schedule'),
-        'status': schedule.get('status'),
-        'queue_name': schedule.get('queue_name'),
-        'cron_timezone': schedule.get('cron_timezone'),
-        'last_fired_at': _epoch_ms(schedule.get('last_fired_at')),
+        'crontab': schedule['schedule'],
+        'status': schedule['status'],
+        'queue_name': schedule['queue_name'],
+        'cron_timezone': schedule['cron_timezone'],
+        'last_fired_at': _epoch_ms(schedule['last_fired_at']),
     }
 
 
