@@ -39,6 +39,12 @@ _registered_sites: weakref.WeakSet[AdminSite] = weakref.WeakSet()
 
 
 def is_admin_enabled() -> bool:
+    """Whether the django-dbos admin pages are enabled (``OPTIONS["ADMIN_ENABLED"]``).
+
+    Returns:
+        The option's value, ``True`` when it is unset or invalid: an invalid
+            value is reported by the ``django_dbos.E001`` check instead.
+    """
     try:
         return get_bool_option('ADMIN_ENABLED')
     except ImproperlyConfiguredDbos:
@@ -48,6 +54,12 @@ def is_admin_enabled() -> bool:
 
 
 def get_admin_site_paths() -> tuple[str, ...]:
+    """The dotted paths of the admin sites to register the pages on (``OPTIONS["ADMIN_SITE"]``).
+
+    Returns:
+        The configured paths, a single string being one path, or
+            ``DEFAULT_ADMIN_SITES`` when the option is unset.
+    """
     sites = get_dbos_setting('ADMIN_SITE') or DEFAULT_ADMIN_SITES
     if isinstance(sites, str):
         sites = (sites,)
@@ -59,6 +71,15 @@ def get_admin_sites() -> list[AdminSite]:
 
     When the default site is requested but ``django.contrib.admin`` is not
     installed, it is silently skipped (projects without an admin at all).
+
+    Returns:
+        The admin sites, in the configured order.
+
+    Raises:
+        ImportError: A configured path does not resolve.
+        LookupError: A configured site needs ``django.contrib.admin``, which
+            is not installed.
+        TypeError: A configured path does not point to an ``AdminSite``.
     """
     configured_paths = get_admin_site_paths()
     resolved: list[AdminSite] = []
@@ -78,7 +99,11 @@ def get_admin_sites() -> list[AdminSite]:
 
 
 class WorkerHeartbeatAdmin(django_admin.ModelAdmin):
-    """Read-only view of the live workers (superusers only, like the DBOS pages)."""
+    """The worker heartbeats, stale ones included (superusers only, like the DBOS pages).
+
+    Rows are written by the workers alone: they cannot be added or changed,
+    only deleted, to clear a dead worker's row before its automatic purge.
+    """
 
     list_display = ('worker_id', 'executor_id', 'hostname', 'pid', 'cpu_percent', 'memory_rss_mb', 'last_seen_at')
     list_filter = ('executor_id',)
@@ -120,7 +145,15 @@ def _dbos_page_entries(site: AdminSite) -> list[dict[str, Any]]:
 
 
 def register_admin(site: AdminSite) -> None:
-    """Append django-dbos URLs to an AdminSite instance (idempotent)."""
+    """Add the django-dbos pages to an AdminSite instance (idempotent).
+
+    Registers ``WorkerHeartbeat`` unless the project already did, prepends
+    the pages' URLs to the site's own and lists the pages next to the
+    heartbeats in the site's app list, for superusers.
+
+    Args:
+        site: The admin site to patch; a site already registered is left as is.
+    """
     if site in _registered_sites:
         return
 
@@ -208,7 +241,16 @@ def register_admin(site: AdminSite) -> None:
 
 
 def register_admin_sites() -> None:
-    """Register admin views on every configured AdminSite (called on ready)."""
+    """Register the django-dbos pages on every configured AdminSite (called on ready).
+
+    Does nothing when ``OPTIONS["ADMIN_ENABLED"]`` is false.
+
+    Raises:
+        ImportError: A configured path does not resolve.
+        LookupError: A configured site needs ``django.contrib.admin``, which
+            is not installed.
+        TypeError: A configured path does not point to an ``AdminSite``.
+    """
     if not is_admin_enabled():
         return
     for site in get_admin_sites():

@@ -87,7 +87,15 @@ def is_active_superuser(request: HttpRequest) -> bool:
 
 
 def bind_site(view: View, site: AdminSite) -> View:
-    """``view`` serving the admin ``site``: rendered with its context, URLs resolved in its namespace."""
+    """``view`` serving the admin ``site``: rendered with its context, URLs resolved in its namespace.
+
+    Args:
+        view: The django-dbos view to serve.
+        site: The admin site serving it.
+
+    Returns:
+        The view, recording ``site`` on each request before calling it.
+    """
 
     @functools.wraps(view)
     def inner(request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
@@ -164,7 +172,14 @@ def _elapsed_ms(start: int | None, end: int | None) -> int | None:
 
 
 def short_name(name: str | None) -> str | None:
-    """A workflow name without django-dbos' prefix: the task's module path."""
+    """A workflow name without django-dbos' prefix: the task's module path.
+
+    Args:
+        name: A workflow or schedule name.
+
+    Returns:
+        ``name`` without its django-dbos prefix; any other name (or ``None``) as it is.
+    """
     for prefix in NAME_PREFIXES:
         if name and name.startswith(prefix):
             return name.removeprefix(prefix)
@@ -214,6 +229,18 @@ def _page_number(value: str | None) -> int:
 
 @_dbos_view
 def workflow_list(request: HttpRequest) -> HttpResponse:
+    """The workflow list: newest first, filtered and paginated by the query parameters.
+
+    Query parameters: ``status``, ``queue``, ``name`` (with or without
+    django-dbos' prefix), ``schedule``, ``q`` (a workflow ID prefix),
+    ``children=1`` (show child workflows) and ``page``.
+
+    Args:
+        request: The current request.
+
+    Returns:
+        The rendered list page.
+    """
     status_filter = request.GET.get('status') or None
     queue_filter = request.GET.get('queue') or None
     name_filter = request.GET.get('name') or None
@@ -324,6 +351,18 @@ def _step_row(step: StepInfo) -> dict[str, Any]:
 
 @_dbos_view
 def workflow_detail(request: HttpRequest, workflow_id: str) -> HttpResponse:
+    """A workflow's page: identity, timing, input, output, error, steps and actions.
+
+    Args:
+        request: The current request.
+        workflow_id: The workflow's ID.
+
+    Returns:
+        The rendered detail page.
+
+    Raises:
+        Http404: No workflow has this ID.
+    """
     status = _get_workflow_or_404(workflow_id)
     row = _row(status)
     steps = [_step_row(step) for step in get_client().list_workflow_steps(workflow_id, load_output=True)]
@@ -381,6 +420,18 @@ def workflow_detail(request: HttpRequest, workflow_id: str) -> HttpResponse:
 
 @_dbos_view
 def workflow_cancel(request: HttpRequest, workflow_id: str) -> HttpResponse:
+    """Cancel a workflow on POST; any other method only redirects to its page.
+
+    Args:
+        request: The current request.
+        workflow_id: The workflow's ID.
+
+    Returns:
+        A redirect to the workflow's page.
+
+    Raises:
+        Http404: No workflow has this ID.
+    """
     _get_workflow_or_404(workflow_id)
     if request.method != 'POST':
         return _redirect_to_workflow(request, workflow_id)
@@ -391,6 +442,18 @@ def workflow_cancel(request: HttpRequest, workflow_id: str) -> HttpResponse:
 
 @_dbos_view
 def workflow_resume(request: HttpRequest, workflow_id: str) -> HttpResponse:
+    """Resume a cancelled or dead-lettered workflow on POST; any other method only redirects to its page.
+
+    Args:
+        request: The current request.
+        workflow_id: The workflow's ID.
+
+    Returns:
+        A redirect to the workflow's page.
+
+    Raises:
+        Http404: No workflow has this ID.
+    """
     _get_workflow_or_404(workflow_id)
     if request.method != 'POST':
         return _redirect_to_workflow(request, workflow_id)
@@ -401,6 +464,18 @@ def workflow_resume(request: HttpRequest, workflow_id: str) -> HttpResponse:
 
 @_dbos_view
 def workflow_fork(request: HttpRequest, workflow_id: str) -> HttpResponse:
+    """Fork a workflow (a new run from its start) on POST; any other method only redirects to its page.
+
+    Args:
+        request: The current request.
+        workflow_id: The workflow's ID.
+
+    Returns:
+        A redirect to the fork's page, or to the workflow's page without a POST.
+
+    Raises:
+        Http404: No workflow has this ID.
+    """
     _get_workflow_or_404(workflow_id)
     if request.method != 'POST':
         return _redirect_to_workflow(request, workflow_id)
@@ -411,6 +486,18 @@ def workflow_fork(request: HttpRequest, workflow_id: str) -> HttpResponse:
 
 @_dbos_view
 def workflow_delete(request: HttpRequest, workflow_id: str) -> HttpResponse:
+    """Delete a workflow on POST; any other method shows the confirmation page.
+
+    Args:
+        request: The current request.
+        workflow_id: The workflow's ID.
+
+    Returns:
+        A redirect to the workflow list, or the rendered confirmation page.
+
+    Raises:
+        Http404: No workflow has this ID.
+    """
     _get_workflow_or_404(workflow_id)
     if request.method == 'POST':
         get_client().delete_workflow(workflow_id)
@@ -454,6 +541,14 @@ def _schedule_row(request: HttpRequest, schedule: WorkflowSchedule) -> dict[str,
 
 @_dbos_view
 def schedule_list(request: HttpRequest) -> HttpResponse:
+    """The schedule list, with each schedule's crontab, status and last firing.
+
+    Args:
+        request: The current request.
+
+    Returns:
+        The rendered list page.
+    """
     rows = [_schedule_row(request, schedule) for schedule in get_client().list_schedules()]
     return _render(
         request,
@@ -475,6 +570,18 @@ def _get_schedule_or_404(schedule_name: str) -> WorkflowSchedule:
 
 @_dbos_view
 def schedule_pause(request: HttpRequest, schedule_name: str) -> HttpResponse:
+    """Pause a schedule on POST; any other method only redirects to the list.
+
+    Args:
+        request: The current request.
+        schedule_name: The schedule's name.
+
+    Returns:
+        A redirect to the schedule list.
+
+    Raises:
+        Http404: No schedule has this name.
+    """
     _get_schedule_or_404(schedule_name)
     if request.method == 'POST':
         get_client().pause_schedule(schedule_name)
@@ -484,6 +591,18 @@ def schedule_pause(request: HttpRequest, schedule_name: str) -> HttpResponse:
 
 @_dbos_view
 def schedule_resume(request: HttpRequest, schedule_name: str) -> HttpResponse:
+    """Resume a paused schedule on POST; any other method only redirects to the list.
+
+    Args:
+        request: The current request.
+        schedule_name: The schedule's name.
+
+    Returns:
+        A redirect to the schedule list.
+
+    Raises:
+        Http404: No schedule has this name.
+    """
     _get_schedule_or_404(schedule_name)
     if request.method == 'POST':
         get_client().resume_schedule(schedule_name)
@@ -493,6 +612,18 @@ def schedule_resume(request: HttpRequest, schedule_name: str) -> HttpResponse:
 
 @_dbos_view
 def schedule_delete(request: HttpRequest, schedule_name: str) -> HttpResponse:
+    """Delete a schedule on POST; any other method shows the confirmation page.
+
+    Args:
+        request: The current request.
+        schedule_name: The schedule's name.
+
+    Returns:
+        A redirect to the schedule list, or the rendered confirmation page.
+
+    Raises:
+        Http404: No schedule has this name.
+    """
     _get_schedule_or_404(schedule_name)
     if request.method == 'POST':
         get_client().delete_schedule(schedule_name)
