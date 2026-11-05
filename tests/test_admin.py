@@ -26,7 +26,7 @@ from django_dbos.admin import (
     register_admin,
     register_admin_sites,
 )
-from django_dbos.admin_views import STEP_RESULT_INLINE_LENGTH, is_active_superuser
+from django_dbos.admin_views import _MAX_PAGE, PAGE_SIZE, STEP_RESULT_INLINE_LENGTH, is_active_superuser
 from django_dbos.heartbeat import write_heartbeat
 from django_dbos.models import WorkerHeartbeat
 from django_dbos.scheduling import register_cron_schedules
@@ -173,6 +173,15 @@ class TestWorkflowPages:
         response = admin_client.get('/admin/dbos/workflows/', {'status': 'SUCCESS', 'page': '2'})
         assert_text(response, 'href="?status=SUCCESS&amp;page=1"')
         assert_text(response, 'href="?status=SUCCESS&amp;page=3"')
+
+    def test_workflow_list_last_allowed_page_has_no_next_link(self, admin_client, mocker):
+        client = _mock_client(mocker)
+        client.list_workflows.return_value = [_workflow_status(workflow_id=f'wf-{n}') for n in range(51)]
+        response = admin_client.get('/admin/dbos/workflows/', {'page': '99999'})
+        # Clamped to the last allowed page, which links back but not forward.
+        assert client.list_workflows.call_args.kwargs['offset'] == (_MAX_PAGE - 1) * PAGE_SIZE
+        assert_text(response, f'href="?page={_MAX_PAGE - 1}"')
+        assert 'next &raquo;' not in response.content.decode()
 
     def test_pages_show_the_django_priority(self, admin_client, dbos_environment):
         # DBOS stores 101 - priority; the admin translates it back.

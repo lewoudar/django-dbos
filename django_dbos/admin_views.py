@@ -199,9 +199,10 @@ def _row(status: WorkflowStatus) -> dict[str, Any]:
     }
 
 
-# Cap on the page query parameter: beyond this there is no meaningful data
-# (50 pages of 50 workflows), and unbounded offsets overflow database integers.
-_MAX_PAGE = 50
+# Cap on the page query parameter: an unbounded offset overflows database
+# integers. 1000 pages of 50 reach the 50,000 newest workflows; older ones are
+# found through the filters or an ID search.
+_MAX_PAGE = 1000
 
 
 def _page_number(value: str | None) -> int:
@@ -239,7 +240,8 @@ def workflow_list(request: HttpRequest) -> HttpResponse:
         load_input=False,
         load_output=False,
     )
-    has_next = len(workflows) > PAGE_SIZE
+    # No link past the cap: it would clamp back to this very page.
+    has_next = len(workflows) > PAGE_SIZE and page < _MAX_PAGE
     rows = [_row(status) for status in workflows[:PAGE_SIZE]]
 
     return _render(
