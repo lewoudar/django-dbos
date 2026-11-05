@@ -455,6 +455,52 @@ class TestSchedulePages:
         assert DBOS.get_schedule(name)['status'] == 'ACTIVE'
 
 
+@pytest.mark.urls('tests.urls_two_sites')
+class TestSecondAdminSite:
+    """Pages served by another admin site link and redirect within that site."""
+
+    @pytest.mark.parametrize(
+        ('method', 'url', 'location'),
+        [
+            pytest.param('post', '/ops/dbos/workflows/wf-1/cancel/', '/ops/dbos/workflows/wf-1/', id='cancel'),
+            pytest.param('get', '/ops/dbos/workflows/wf-1/resume/', '/ops/dbos/workflows/wf-1/', id='get-on-action'),
+            pytest.param('post', '/ops/dbos/workflows/wf-1/delete/', '/ops/dbos/workflows/', id='delete'),
+            pytest.param('post', '/ops/dbos/schedules/nightly/pause/', '/ops/dbos/schedules/', id='schedule-pause'),
+        ],
+    )
+    def test_redirects_stay_on_the_site(self, admin_client, mocker, method, url, location):
+        _mock_client(mocker, status=_workflow_status())
+        response = getattr(admin_client, method)(url)
+        assert response.status_code == 302
+        assert response['Location'] == location
+
+    def test_detail_links_stay_on_the_site(self, admin_client, mocker):
+        status = _workflow_status(parent_workflow_id='wf-parent', schedule_name='nightly')
+        _mock_client(mocker, status=status)
+        response = admin_client.get('/ops/dbos/workflows/wf-1/')
+        assert _field_url(response, 'Parent workflow') == '/ops/dbos/workflows/wf-parent/'
+        assert _field_url(response, 'Schedule') == '/ops/dbos/workflows/?schedule=nightly'
+
+    def test_delete_confirmation_links_stay_on_the_site(self, admin_client, mocker):
+        _mock_client(mocker, status=_workflow_status())
+        response = admin_client.get('/ops/dbos/workflows/wf-1/delete/')
+        assert response.context['back_url'] == '/ops/dbos/workflows/wf-1/'
+        assert response.context['back_list_url'] == '/ops/dbos/workflows/'
+
+    def test_schedule_rows_link_within_the_site(self, admin_client, mocker):
+        client = _mock_client(mocker)
+        client.list_schedules.return_value = [
+            {'schedule_name': 'nightly', 'workflow_name': 'other', 'status': 'ACTIVE'}
+        ]
+        response = admin_client.get('/ops/dbos/schedules/')
+        assert response.context['rows'][0]['workflows_url'] == '/ops/dbos/workflows/?schedule=nightly'
+
+
+def _field_url(response: Any, label: str) -> str | None:
+    """The URL of a detail page's workflow field."""
+    return next(field['url'] for field in response.context['identity'] if field['label'] == label)
+
+
 class TestAdminGating:
     @pytest.mark.parametrize(
         ('admin_enabled', 'expected'),
@@ -529,7 +575,7 @@ class TestAdminGating:
         (app,) = [app for app in response.context['app_list'] if app['app_label'] == 'django_dbos']
         assert [entry['name'] for entry in app['models']] == ['Schedules', 'Worker heartbeats', 'Workflows']
 
-    def test_staff_without_superuser_sees_no_dbos_links(self, db):
+    def test_staff_without_superuser_sees_no_dbos_field_url(self, db):
         staff = User.objects.create_user(username='editor', password='hunter2', is_staff=True)
         client = Client()
         client.force_login(staff)

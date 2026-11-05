@@ -277,16 +277,25 @@ def _field(label: str, value: Any, *, url: str | None = None, mono: bool = False
     return {'label': label, 'value': value, 'url': url, 'mono': mono}
 
 
-def _workflow_url(workflow_id: str | None) -> str | None:
-    return reverse('admin:django_dbos_workflow_detail', args=[workflow_id]) if workflow_id else None
+def _admin_url(request: HttpRequest, name: str, *args: str) -> str:
+    """The URL of a django-dbos admin page on the admin site serving ``request``.
+
+    ``reverse()`` does not read ``request.current_app`` (only the ``{% url %}``
+    tag does): without it, a page served by another site links to the default one.
+    """
+    return reverse(f'admin:django_dbos_{name}', args=args, current_app=request.current_app)
 
 
-def _workflows_of_schedule_url(schedule_name: str) -> str:
-    return f'{reverse("admin:django_dbos_workflow_changelist")}?{urlencode({"schedule": schedule_name})}'
+def _workflow_url(request: HttpRequest, workflow_id: str | None) -> str | None:
+    return _admin_url(request, 'workflow_detail', workflow_id) if workflow_id else None
 
 
-def _redirect_to_workflow(workflow_id: str) -> HttpResponseRedirect:
-    return HttpResponseRedirect(reverse('admin:django_dbos_workflow_detail', args=[workflow_id]))
+def _workflows_of_schedule_url(request: HttpRequest, schedule_name: str) -> str:
+    return f'{_admin_url(request, "workflow_changelist")}?{urlencode({"schedule": schedule_name})}'
+
+
+def _redirect_to_workflow(request: HttpRequest, workflow_id: str) -> HttpResponseRedirect:
+    return HttpResponseRedirect(_admin_url(request, 'workflow_detail', workflow_id))
 
 
 def _step_row(step: StepInfo) -> dict[str, Any]:
@@ -332,10 +341,15 @@ def workflow_detail(request: HttpRequest, workflow_id: str) -> HttpResponse:
         _field(
             'Schedule',
             short_name(status.schedule_name),
-            url=_workflows_of_schedule_url(status.schedule_name) if status.schedule_name else None,
+            url=_workflows_of_schedule_url(request, status.schedule_name) if status.schedule_name else None,
         ),
-        _field('Parent workflow', status.parent_workflow_id, url=_workflow_url(status.parent_workflow_id), mono=True),
-        _field('Forked from', status.forked_from, url=_workflow_url(status.forked_from), mono=True),
+        _field(
+            'Parent workflow',
+            status.parent_workflow_id,
+            url=_workflow_url(request, status.parent_workflow_id),
+            mono=True,
+        ),
+        _field('Forked from', status.forked_from, url=_workflow_url(request, status.forked_from), mono=True),
         _field('Executor', status.executor_id, mono=True),
         _field('Application version', status.app_version, mono=True),
     ]
@@ -369,31 +383,31 @@ def workflow_detail(request: HttpRequest, workflow_id: str) -> HttpResponse:
 @_dbos_view
 def workflow_cancel(request: HttpRequest, workflow_id: str) -> HttpResponse:
     if request.method != 'POST':
-        return _redirect_to_workflow(workflow_id)
+        return _redirect_to_workflow(request, workflow_id)
     _get_workflow_or_404(workflow_id)
     get_client().cancel_workflow(workflow_id)
     logger.info('admin: cancelled workflow', workflow_id=workflow_id, user=request.user.pk)
-    return _redirect_to_workflow(workflow_id)
+    return _redirect_to_workflow(request, workflow_id)
 
 
 @_dbos_view
 def workflow_resume(request: HttpRequest, workflow_id: str) -> HttpResponse:
     if request.method != 'POST':
-        return _redirect_to_workflow(workflow_id)
+        return _redirect_to_workflow(request, workflow_id)
     _get_workflow_or_404(workflow_id)
     get_client().resume_workflow(workflow_id)
     logger.info('admin: resumed workflow', workflow_id=workflow_id, user=request.user.pk)
-    return _redirect_to_workflow(workflow_id)
+    return _redirect_to_workflow(request, workflow_id)
 
 
 @_dbos_view
 def workflow_fork(request: HttpRequest, workflow_id: str) -> HttpResponse:
     if request.method != 'POST':
-        return _redirect_to_workflow(workflow_id)
+        return _redirect_to_workflow(request, workflow_id)
     _get_workflow_or_404(workflow_id)
     handle = get_client().fork_workflow(workflow_id, 0)
     logger.info('admin: forked workflow', workflow_id=workflow_id, fork=handle.workflow_id, user=request.user.pk)
-    return _redirect_to_workflow(handle.workflow_id)
+    return _redirect_to_workflow(request, handle.workflow_id)
 
 
 @_dbos_view
@@ -402,19 +416,19 @@ def workflow_delete(request: HttpRequest, workflow_id: str) -> HttpResponse:
     if request.method == 'POST':
         get_client().delete_workflow(workflow_id)
         logger.info('admin: deleted workflow', workflow_id=workflow_id, user=request.user.pk)
-        return HttpResponseRedirect(reverse('admin:django_dbos_workflow_changelist'))
+        return HttpResponseRedirect(_admin_url(request, 'workflow_changelist'))
 
     return _render(
         request,
         'admin/django_dbos/delete_confirmation.html',
         {
             'title': f'Delete workflow {workflow_id}',
-            'back_list_url': reverse('admin:django_dbos_workflow_changelist'),
+            'back_list_url': _admin_url(request, 'workflow_changelist'),
             'back_list_label': 'Workflows',
             'object_kind': 'workflow',
             'object_id': workflow_id,
             'warning': 'permanently removes its execution history and steps from the system database.',
-            'back_url': reverse('admin:django_dbos_workflow_detail', args=[workflow_id]),
+            'back_url': _admin_url(request, 'workflow_detail', workflow_id),
         },
     )
 
@@ -422,7 +436,7 @@ def workflow_delete(request: HttpRequest, workflow_id: str) -> HttpResponse:
 # --- Schedules ------------------------------------------------------------
 
 
-def _schedule_row(schedule: WorkflowSchedule) -> dict[str, Any]:
+def _schedule_row(request: HttpRequest, schedule: WorkflowSchedule) -> dict[str, Any]:
     schedule_name = schedule.get('schedule_name') or ''
     workflow_name = schedule.get('workflow_name')
     return {
@@ -430,7 +444,7 @@ def _schedule_row(schedule: WorkflowSchedule) -> dict[str, Any]:
         'short_name': short_name(schedule_name),
         # @cron schedules run a workflow of the same name: only show a different one.
         'workflow_name': workflow_name if workflow_name != schedule_name else None,
-        'workflows_url': _workflows_of_schedule_url(schedule_name),
+        'workflows_url': _workflows_of_schedule_url(request, schedule_name),
         'crontab': schedule.get('schedule'),
         'status': schedule.get('status'),
         'queue_name': schedule.get('queue_name'),
@@ -441,7 +455,7 @@ def _schedule_row(schedule: WorkflowSchedule) -> dict[str, Any]:
 
 @_dbos_view
 def schedule_list(request: HttpRequest) -> HttpResponse:
-    rows = [_schedule_row(schedule) for schedule in get_client().list_schedules()]
+    rows = [_schedule_row(request, schedule) for schedule in get_client().list_schedules()]
     return _render(
         request,
         'admin/django_dbos/schedule_list.html',
@@ -449,8 +463,8 @@ def schedule_list(request: HttpRequest) -> HttpResponse:
     )
 
 
-def _redirect_to_schedules() -> HttpResponseRedirect:
-    return HttpResponseRedirect(reverse('admin:django_dbos_schedule_changelist'))
+def _redirect_to_schedules(request: HttpRequest) -> HttpResponseRedirect:
+    return HttpResponseRedirect(_admin_url(request, 'schedule_changelist'))
 
 
 def _get_schedule_or_404(schedule_name: str) -> WorkflowSchedule:
@@ -466,7 +480,7 @@ def schedule_pause(request: HttpRequest, schedule_name: str) -> HttpResponse:
     if request.method == 'POST':
         get_client().pause_schedule(schedule_name)
         logger.info('admin: paused schedule', schedule_name=schedule_name, user=request.user.pk)
-    return _redirect_to_schedules()
+    return _redirect_to_schedules(request)
 
 
 @_dbos_view
@@ -475,7 +489,7 @@ def schedule_resume(request: HttpRequest, schedule_name: str) -> HttpResponse:
     if request.method == 'POST':
         get_client().resume_schedule(schedule_name)
         logger.info('admin: resumed schedule', schedule_name=schedule_name, user=request.user.pk)
-    return _redirect_to_schedules()
+    return _redirect_to_schedules(request)
 
 
 @_dbos_view
@@ -484,14 +498,14 @@ def schedule_delete(request: HttpRequest, schedule_name: str) -> HttpResponse:
     if request.method == 'POST':
         get_client().delete_schedule(schedule_name)
         logger.info('admin: deleted schedule', schedule_name=schedule_name, user=request.user.pk)
-        return _redirect_to_schedules()
+        return _redirect_to_schedules(request)
 
     return _render(
         request,
         'admin/django_dbos/delete_confirmation.html',
         {
             'title': f'Delete schedule {schedule_name}',
-            'back_list_url': reverse('admin:django_dbos_schedule_changelist'),
+            'back_list_url': _admin_url(request, 'schedule_changelist'),
             'back_list_label': 'Schedules',
             'object_kind': 'schedule',
             'object_id': schedule_name,
