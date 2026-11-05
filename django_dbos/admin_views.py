@@ -180,15 +180,15 @@ def _name_filter(name: str | None) -> str | list[str] | None:
 
 
 def _row(status: WorkflowStatus) -> dict[str, Any]:
-    django_status = status.status
+    dbos_status = status.status
     return {
         'workflow_id': status.workflow_id,
         'name': status.name,
         'short_name': short_name(status.name),
         'fired_by_cron': bool(status.name and status.name.startswith(SCHEDULE_PREFIX)),
         'is_child': status.parent_workflow_id is not None,
-        'status': django_status,
-        'badge': STATUS_BADGES.get(django_status, 'neutral'),
+        'status': dbos_status,
+        'badge': STATUS_BADGES.get(dbos_status, 'neutral'),
         'queue_name': status.queue_name,
         'priority': _dbos_to_django_priority(status.priority),
         'created_at': _epoch_ms(status.created_at),
