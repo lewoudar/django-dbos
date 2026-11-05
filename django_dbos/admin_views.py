@@ -285,6 +285,10 @@ def _workflows_of_schedule_url(schedule_name: str) -> str:
     return f'{reverse("admin:django_dbos_workflow_changelist")}?{urlencode({"schedule": schedule_name})}'
 
 
+def _redirect_to_workflow(workflow_id: str) -> HttpResponseRedirect:
+    return HttpResponseRedirect(reverse('admin:django_dbos_workflow_detail', args=[workflow_id]))
+
+
 def _step_row(step: StepInfo) -> dict[str, Any]:
     error = _pretty_error(step.get('error'))
     if error is not None:
@@ -365,7 +369,7 @@ def workflow_detail(request: HttpRequest, workflow_id: str) -> HttpResponse:
 @_dbos_view
 def workflow_cancel(request: HttpRequest, workflow_id: str) -> HttpResponse:
     if request.method != 'POST':
-        return HttpResponseRedirect(reverse('admin:django_dbos_workflow_detail', args=[workflow_id]))
+        return _redirect_to_workflow(workflow_id)
     _get_workflow_or_404(workflow_id)
     get_client().cancel_workflow(workflow_id)
     logger.info('admin: cancelled workflow', workflow_id=workflow_id, user=request.user.pk)
@@ -375,7 +379,7 @@ def workflow_cancel(request: HttpRequest, workflow_id: str) -> HttpResponse:
 @_dbos_view
 def workflow_resume(request: HttpRequest, workflow_id: str) -> HttpResponse:
     if request.method != 'POST':
-        return HttpResponseRedirect(reverse('admin:django_dbos_workflow_detail', args=[workflow_id]))
+        return _redirect_to_workflow(workflow_id)
     _get_workflow_or_404(workflow_id)
     get_client().resume_workflow(workflow_id)
     logger.info('admin: resumed workflow', workflow_id=workflow_id, user=request.user.pk)
@@ -385,7 +389,7 @@ def workflow_resume(request: HttpRequest, workflow_id: str) -> HttpResponse:
 @_dbos_view
 def workflow_fork(request: HttpRequest, workflow_id: str) -> HttpResponse:
     if request.method != 'POST':
-        return HttpResponseRedirect(reverse('admin:django_dbos_workflow_detail', args=[workflow_id]))
+        return _redirect_to_workflow(workflow_id)
     _get_workflow_or_404(workflow_id)
     handle = get_client().fork_workflow(workflow_id, 0)
     logger.info('admin: forked workflow', workflow_id=workflow_id, fork=handle.workflow_id, user=request.user.pk)
@@ -494,7 +498,3 @@ def schedule_delete(request: HttpRequest, schedule_name: str) -> HttpResponse:
             'warning': 'stops its cron firings (it is re-created on the next `dbos worker` start if the task is still scheduled).',
         },
     )
-
-
-def _redirect_to_workflow(workflow_id: str) -> HttpResponseRedirect:
-    return HttpResponseRedirect(reverse('admin:django_dbos_workflow_detail', args=[workflow_id]))
