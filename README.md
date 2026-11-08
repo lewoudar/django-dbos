@@ -1,5 +1,13 @@
 # django-dbos
 
+[![PyPI](https://img.shields.io/pypi/v/django-dbos)](https://pypi.org/project/django-dbos/)
+[![Python versions](https://img.shields.io/pypi/pyversions/django-dbos)](https://pypi.org/project/django-dbos/)
+[![Django versions](https://img.shields.io/pypi/frameworkversions/django/django-dbos)](https://pypi.org/project/django-dbos/)
+[![License](https://img.shields.io/pypi/l/django-dbos)](https://github.com/lewoudar/django-dbos/blob/main/LICENSE)
+[![CI](https://github.com/lewoudar/django-dbos/actions/workflows/ci.yml/badge.svg)](https://github.com/lewoudar/django-dbos/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/lewoudar/django-dbos/graph/badge.svg)](https://codecov.io/gh/lewoudar/django-dbos)
+[![Documentation](https://github.com/lewoudar/django-dbos/actions/workflows/docs.yml/badge.svg)](https://lewoudar.github.io/django-dbos/)
+
 **⚠️ Experimental project. Do not use in production.**
 
 A [DBOS](https://docs.dbos.dev/)-backed backend for Django's
