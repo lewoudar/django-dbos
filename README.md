@@ -54,19 +54,28 @@ from django.tasks import task
 from django_dbos import dbos_params, get_dbos_context
 
 
+def recipient_ids() -> list[int]:
+    return list(User.objects.order_by('id').values_list('id', flat=True))
+
+
 @dbos_params(durable_operations=True)
 @task
 def send_newsletter(campaign_id: int) -> None:
     ctx = get_dbos_context()
-    for user_id in User.objects.values_list('id', flat=True):
+    for user_id in ctx.run_step(recipient_ids):
         ctx.run_step(send_one_email, user_id, campaign_id, name=f'email-{user_id}')
 ```
 
 Each `run_step` call is recorded in the system database as it completes.
-Kill the worker at #6,000, restart it, and the task resumes from there: the
-5,999 emails already sent are skipped, and only the one in flight at the
-moment of the crash may go out again. No external state to reconcile, no
-idempotency keys to invent yourself.
+Kill the worker at #6,000 and restart it: the task replays from the top, but
+every recorded step returns its saved result instead of running again. The
+recipient list is the one read the first time, the 5,999 emails already sent
+are skipped, and only the one in flight at the moment of the crash may go out
+again. No external state to reconcile, no idempotency keys to invent yourself.
+
+Replays match steps by their position, so the task body must take the same
+path every time: anything that may change between two runs, like a query, goes
+in a step too — see [Workflows](https://github.com/lewoudar/django-dbos/blob/main/docs/workflows.md).
 
 Cron schedules are just `@task`s with a firing time attached — same
 durability, same retries, same admin page:
