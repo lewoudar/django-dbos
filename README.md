@@ -75,7 +75,7 @@ again. No external state to reconcile, no idempotency keys to invent yourself.
 
 Replays match steps by their position, so the task body must take the same
 path every time: anything that may change between two runs, like a query, goes
-in a step too — see [Workflows](https://github.com/lewoudar/django-dbos/blob/main/docs/workflows.md).
+in a step too — see [Workflows](https://lewoudar.github.io/django-dbos/workflows/).
 
 Cron schedules are just `@task`s with a firing time attached — same
 durability, same retries, same admin page:
@@ -137,10 +137,10 @@ pip install django-dbos
 ```
 
 Poetry and PDM work too, see
-[Installation](https://github.com/lewoudar/django-dbos/blob/main/docs/index.md#installation).
+[Installation](https://lewoudar.github.io/django-dbos/#installation).
 Add the `msgspec` extra (`uv add "django-dbos[msgspec]"` or
 `pip install "django-dbos[msgspec]"`) for fast, safe serialization of task data; see
-[Serialization](https://github.com/lewoudar/django-dbos/blob/main/docs/configuration.md#serialization).
+[Serialization](https://lewoudar.github.io/django-dbos/configuration/#serialization).
 
 ```python
 INSTALLED_APPS = [
@@ -166,7 +166,7 @@ Put your tasks in a `tasks.py` module of an installed app: that is where the
 worker looks for them. Your web processes only ever talk to the system
 database — they enqueue tasks, they never execute them.
 
-New to background tasks? [Your first task](https://github.com/lewoudar/django-dbos/blob/main/docs/first-task.md) walks through
+New to background tasks? [Your first task](https://lewoudar.github.io/django-dbos/first-task/) walks through
 writing, running and checking one, step by step.
 
 ## Using an AI coding agent
@@ -180,7 +180,7 @@ how to write tasks, workflows and cron schedules with it. Install it with the
 npx skills add lewoudar/django-dbos --skill django-dbos
 ```
 
-[AI agents](https://github.com/lewoudar/django-dbos/blob/main/docs/ai-agents.md) has the command for each agent
+[AI agents](https://lewoudar.github.io/django-dbos/ai-agents/) has the command for each agent
 and how to install the skill by hand.
 
 ## Examples
@@ -195,15 +195,14 @@ project you can `uv sync` and run on its own:
 
 ## Documentation
 
-The full documentation lives in [`docs/`](https://github.com/lewoudar/django-dbos/tree/main/docs/) (a hosted version is coming
-once the repository goes public). Good places to start:
+The full documentation is at <https://lewoudar.github.io/django-dbos/>. Good places to start:
 
-- [Your first task](https://github.com/lewoudar/django-dbos/blob/main/docs/first-task.md) — a hands-on walkthrough.
-- [Tasks](https://github.com/lewoudar/django-dbos/blob/main/docs/tasks.md) and [Workflows](https://github.com/lewoudar/django-dbos/blob/main/docs/workflows.md) — options,
+- [Your first task](https://lewoudar.github.io/django-dbos/first-task/) — a hands-on walkthrough.
+- [Tasks](https://lewoudar.github.io/django-dbos/tasks/) and [Workflows](https://lewoudar.github.io/django-dbos/workflows/) — options,
   retries, durable primitives.
-- [Cron scheduling](https://github.com/lewoudar/django-dbos/blob/main/docs/cron.md) — schedules and Sentry monitors.
-- [Deployment](https://github.com/lewoudar/django-dbos/blob/main/docs/deployment.md) — what to settle before production.
-- [Troubleshooting](https://github.com/lewoudar/django-dbos/blob/main/docs/troubleshooting.md) — the errors you are most
+- [Cron scheduling](https://lewoudar.github.io/django-dbos/cron/) — schedules and Sentry monitors.
+- [Deployment](https://lewoudar.github.io/django-dbos/deployment/) — what to settle before production.
+- [Troubleshooting](https://lewoudar.github.io/django-dbos/troubleshooting/) — the errors you are most
   likely to meet.
 
 ## License
