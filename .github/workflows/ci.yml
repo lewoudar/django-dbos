@@ -50,6 +50,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+      id-token: write  # OIDC upload to Codecov, no token secret
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -58,3 +59,11 @@ jobs:
       - run: uv run coverage run -m pytest --dbos-system-db=postgres
       - run: uv run coverage combine
       - run: uv run coverage report --skip-covered --format=markdown >> "$GITHUB_STEP_SUMMARY"
+      - run: uv run coverage xml
+      # Pushes to main only: pull requests from forks get no OIDC token.
+      - if: github.event_name == 'push'
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: coverage.xml
+          use_oidc: true
+          fail_ci_if_error: true

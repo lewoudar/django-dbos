@@ -16,6 +16,7 @@ venv/
 .coverage
 .coverage.*
 htmlcov/
+coverage.xml
 
 # Editors / OS
 .idea/

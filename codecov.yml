@@ -1,0 +1,6 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 98%  # same floor as [tool.coverage.report] fail_under
+comment: false
